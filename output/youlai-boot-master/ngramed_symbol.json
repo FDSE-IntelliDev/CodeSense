@@ -1,0 +1,2549 @@
+{
+    "you": [
+        "YouLaiBootApplication"
+    ],
+    "lai": [
+        "YouLaiBootApplication"
+    ],
+    "boot": [
+        "YouLaiBootApplication"
+    ],
+    "application": [
+        "YouLaiBootApplication"
+    ],
+    "main": [
+        "main"
+    ],
+    "field": [
+        "FieldValidator",
+        "GenFieldConfig",
+        "GenFieldConfigServiceImpl",
+        "createDefaultFieldConfig",
+        "field",
+        "fieldComment",
+        "fieldConfigs",
+        "fieldName",
+        "fieldSort",
+        "fieldType",
+        "genFieldConfigService",
+        "processDateTimeField"
+    ],
+    "validator": [
+        "FieldValidator",
+        "validator"
+    ],
+    "allowed": [
+        "allowedValues"
+    ],
+    "values": [
+        "allowedValues"
+    ],
+    "initialize": [
+        "initialize"
+    ],
+    "valid": [
+        "isValid",
+        "validCount"
+    ],
+    "redis": [
+        "RedisCacheConfig",
+        "RedisConfig",
+        "RedisTokenManager",
+        "redisCacheConfiguration",
+        "redisCacheManager",
+        "redisTemplate",
+        "redissonClient",
+        "setRedisValue",
+        "storeTokensInRedis"
+    ],
+    "token": [
+        "AuthenticationToken",
+        "JwtTokenManager",
+        "RedisTokenManager",
+        "SmsAuthenticationToken",
+        "TokenAuthenticationFilter",
+        "WxMiniAppCodeAuthenticationToken",
+        "WxMiniAppPhoneAuthenticationToken",
+        "accessToken",
+        "formatRefreshTokenKey",
+        "formatTokenKey",
+        "generateToken",
+        "getTokenFromRequest",
+        "invalidateToken",
+        "parseToken",
+        "refreshToken",
+        "storeAccessToken",
+        "tokenManager",
+        "tokenType",
+        "validateRefreshToken",
+        "validateToken"
+    ],
+    "manager": [
+        "JwtTokenManager",
+        "RedisTokenManager",
+        "authenticationManager",
+        "cacheManager",
+        "redisCacheManager",
+        "tokenManager"
+    ],
+    "security": [
+        "SecurityConfig",
+        "SecurityProperties",
+        "SecurityUtils",
+        "securityFilterChain",
+        "securityProperties",
+        "webSecurityCustomizer"
+    ],
+    "properties": [
+        "AliyunSmsProperties",
+        "CaptchaProperties",
+        "CodegenProperties",
+        "MailProperties",
+        "SecurityProperties",
+        "aliyunSmsProperties",
+        "captchaProperties",
+        "codegenProperties",
+        "knife4jProperties",
+        "mailProperties",
+        "properties",
+        "securityProperties"
+    ],
+    "template": [
+        "downloadTemplate",
+        "messagingTemplate",
+        "redisTemplate",
+        "setMessagingTemplate",
+        "templateConfigs"
+    ],
+    "generate": [
+        "generateAndZipCode",
+        "generateDeptTreePath",
+        "generateMenuTreePath",
+        "generateToken"
+    ],
+    "parse": [
+        "parseToken"
+    ],
+    "validate": [
+        "validateRefreshToken",
+        "validateToken"
+    ],
+    "refresh": [
+        "formatRefreshTokenKey",
+        "refreshCache",
+        "refreshRolePermsCache",
+        "refreshToken",
+        "validateRefreshToken"
+    ],
+    "invalidate": [
+        "invalidateToken"
+    ],
+    "store": [
+        "storeAccessToken",
+        "storeTokensInRedis"
+    ],
+    "tokens": [
+        "storeTokensInRedis"
+    ],
+    "handle": [
+        "handle",
+        "handleBadSqlGrammarException",
+        "handleBizException",
+        "handleException",
+        "handleIllegalArgumentException",
+        "handleJsonProcessingException",
+        "handleRepeatSubmit",
+        "handleSingleDeviceLogin"
+    ],
+    "single": [
+        "handleSingleDeviceLogin"
+    ],
+    "device": [
+        "handleSingleDeviceLogin"
+    ],
+    "login": [
+        "LOGIN_PATH_REQUEST_MATCHER",
+        "WxMiniAppCodeLoginDTO",
+        "WxMiniAppPhoneLoginDTO",
+        "handleSingleDeviceLogin",
+        "login",
+        "loginBySms",
+        "loginByWechat",
+        "loginByWxMiniAppCode",
+        "loginByWxMiniAppPhone",
+        "sendLoginVerifyCode",
+        "sendSmsLoginCode"
+    ],
+    "access": [
+        "MyAccessDeniedHandler",
+        "accessKey",
+        "accessKeyId",
+        "accessKeySecret",
+        "accessToken",
+        "storeAccessToken"
+    ],
+    "build": [
+        "buildLockKey",
+        "buildMenuOptions",
+        "buildMenuTree",
+        "buildRoutes",
+        "buildUserDetails"
+    ],
+    "user": [
+        "CurrentUserDTO",
+        "OnlineUser",
+        "OnlineUserJobHandler",
+        "SysUserDetails",
+        "SysUserDetailsService",
+        "User",
+        "UserAuthCredentials",
+        "UserBO",
+        "UserController",
+        "UserExportDTO",
+        "UserForm",
+        "UserImportDTO",
+        "UserImportListener",
+        "UserNotice",
+        "UserNoticePageVO",
+        "UserNoticeServiceImpl",
+        "UserOnlineService",
+        "UserPageQuery",
+        "UserPageVO",
+        "UserProfileForm",
+        "UserProfileVO",
+        "UserRole",
+        "UserRoleServiceImpl",
+        "UserServiceImpl",
+        "UserSessionDTO",
+        "bindUserOpenId",
+        "buildUserDetails",
+        "getCurrentUser",
+        "getCurrentUserInfo",
+        "getCurrentUserRoutes",
+        "getOnlineUserCount",
+        "getUser",
+        "getUserForm",
+        "getUserFormData",
+        "getUserId",
+        "getUserIdentifier",
+        "getUserPage",
+        "getUserProfile",
+        "isUserOnline",
+        "listUserOptions",
+        "loadUserByUsername",
+        "registerOrBindWechatUser",
+        "registerUserByMobileAndOpenId",
+        "resolveUserAgent",
+        "saveUser",
+        "saveUserRoles",
+        "sendOnlineUserCount",
+        "sendToUser",
+        "targetUserIds",
+        "updateUser",
+        "updateUserProfile",
+        "updateUserStatus",
+        "userConnected",
+        "userConverter",
+        "userDetailsService",
+        "userDisconnected",
+        "userId",
+        "userNoticeMapper",
+        "userNoticeService",
+        "userOnlineService",
+        "userRoleService",
+        "userService"
+    ],
+    "details": [
+        "SysUserDetails",
+        "SysUserDetailsService",
+        "buildUserDetails",
+        "userDetailsService"
+    ],
+    "format": [
+        "formatMessage",
+        "formatRefreshTokenKey",
+        "formatTokenKey",
+        "toDatabaseFormat"
+    ],
+    "key": [
+        "CAPTCHA_KEY_PARAM_NAME",
+        "KeyValue",
+        "accessKey",
+        "accessKeyId",
+        "accessKeySecret",
+        "buildLockKey",
+        "captchaKey",
+        "configKey",
+        "formatRefreshTokenKey",
+        "formatTokenKey",
+        "isPrimaryKey",
+        "key",
+        "secretKey"
+    ],
+    "set": [
+        "characterSetName",
+        "setMessagingTemplate",
+        "setRedisValue",
+        "setRequestParameters"
+    ],
+    "value": [
+        "KeyValue",
+        "configValue",
+        "getGenderValue",
+        "setRedisValue",
+        "value"
+    ],
+    "jwt": [
+        "JwtTokenManager"
+    ],
+    "secret": [
+        "accessKeySecret",
+        "appSecret",
+        "secretKey"
+    ],
+    "sms": [
+        "AliyunSmsProperties",
+        "AliyunSmsService",
+        "SmsAuthenticationProvider",
+        "SmsAuthenticationToken",
+        "SmsController",
+        "aliyunSmsProperties",
+        "loginBySms",
+        "sendSms",
+        "sendSmsLoginCode",
+        "smsAuthenticationProvider",
+        "smsService"
+    ],
+    "authentication": [
+        "AuthenticationToken",
+        "MyAuthenticationEntryPoint",
+        "SmsAuthenticationProvider",
+        "SmsAuthenticationToken",
+        "TokenAuthenticationFilter",
+        "WxMiniAppCodeAuthenticationProvider",
+        "WxMiniAppCodeAuthenticationToken",
+        "WxMiniAppPhoneAuthenticationProvider",
+        "WxMiniAppPhoneAuthenticationToken",
+        "authenticationManager",
+        "daoAuthenticationProvider",
+        "smsAuthenticationProvider",
+        "wxMiniAppCodeAuthenticationProvider",
+        "wxMiniAppPhoneAuthenticationProvider"
+    ],
+    "provider": [
+        "SmsAuthenticationProvider",
+        "WxMiniAppCodeAuthenticationProvider",
+        "WxMiniAppPhoneAuthenticationProvider",
+        "daoAuthenticationProvider",
+        "smsAuthenticationProvider",
+        "wxMiniAppCodeAuthenticationProvider",
+        "wxMiniAppPhoneAuthenticationProvider"
+    ],
+    "service": [
+        "AliyunFileService",
+        "AliyunSmsService",
+        "AuthServiceImpl",
+        "CodegenServiceImpl",
+        "ConfigServiceImpl",
+        "DeptServiceImpl",
+        "DictItemServiceImpl",
+        "DictServiceImpl",
+        "GenConfigServiceImpl",
+        "GenFieldConfigServiceImpl",
+        "LocalFileService",
+        "LogServiceImpl",
+        "MailServiceImpl",
+        "MemberService",
+        "MenuServiceImpl",
+        "MinioFileService",
+        "NoticeServiceImpl",
+        "OrderService",
+        "PermissionService",
+        "ProductService",
+        "RoleMenuServiceImpl",
+        "RoleServiceImpl",
+        "SysUserDetailsService",
+        "UserNoticeServiceImpl",
+        "UserOnlineService",
+        "UserRoleServiceImpl",
+        "UserServiceImpl",
+        "WebSocketServiceImpl",
+        "authService",
+        "codegenService",
+        "configService",
+        "deptService",
+        "dictItemService",
+        "dictService",
+        "fileService",
+        "genConfigService",
+        "genFieldConfigService",
+        "logService",
+        "mailService",
+        "menuService",
+        "noticeService",
+        "permissionService",
+        "roleMenuService",
+        "roleService",
+        "smsService",
+        "userDetailsService",
+        "userNoticeService",
+        "userOnlineService",
+        "userRoleService",
+        "userService",
+        "webSocketService",
+        "wxMaService"
+    ],
+    "authenticate": [
+        "authenticate"
+    ],
+    "supports": [
+        "supports"
+    ],
+    "serial": [
+        "serialVersionUID"
+    ],
+    "version": [
+        "browserVersion",
+        "serialVersionUID"
+    ],
+    "uid": [
+        "serialVersionUID"
+    ],
+    "principal": [
+        "getPrincipal",
+        "principal"
+    ],
+    "credentials": [
+        "UserAuthCredentials",
+        "credentials",
+        "getAuthCredentialsByMobile",
+        "getAuthCredentialsByOpenId",
+        "getAuthCredentialsByUsername",
+        "getCredentials"
+    ],
+    "authenticated": [
+        "authenticated"
+    ],
+    "get": [
+        "getAuthCredentialsByMobile",
+        "getAuthCredentialsByOpenId",
+        "getAuthCredentialsByUsername",
+        "getAuthorities",
+        "getCaptcha",
+        "getCodeContent",
+        "getCodegenPreviewData",
+        "getConfigForm",
+        "getConfigFormData",
+        "getCredentials",
+        "getCurrentUser",
+        "getCurrentUserInfo",
+        "getCurrentUserRoutes",
+        "getDataScope",
+        "getDeptForm",
+        "getDeptId",
+        "getDeptList",
+        "getDeptOptions",
+        "getDictCodesByIds",
+        "getDictForm",
+        "getDictItemForm",
+        "getDictItemPage",
+        "getDictItems",
+        "getDictList",
+        "getDictPage",
+        "getEncryptedData",
+        "getFileName",
+        "getFilePath",
+        "getGenConfigFormData",
+        "getGenderValue",
+        "getIpAddr",
+        "getIv",
+        "getLocalAddr",
+        "getLogPage",
+        "getMaximumDataScope",
+        "getMenuForm",
+        "getMyNoticePage",
+        "getNoticeDetail",
+        "getNoticeForm",
+        "getNoticeFormData",
+        "getNoticePage",
+        "getOnlineUserCount",
+        "getOnlineUsers",
+        "getPassword",
+        "getPrincipal",
+        "getRegion",
+        "getRoleForm",
+        "getRoleIds",
+        "getRoleMenuIds",
+        "getRolePage",
+        "getRolePermsByRoleCodes",
+        "getRolePermsFormCache",
+        "getRoles",
+        "getSqlSegment",
+        "getSystemConfig",
+        "getTablePage",
+        "getTablePreviewData",
+        "getTag",
+        "getTokenFromRequest",
+        "getUser",
+        "getUserForm",
+        "getUserFormData",
+        "getUserId",
+        "getUserIdentifier",
+        "getUserPage",
+        "getUserProfile",
+        "getUsername",
+        "getVisitStats",
+        "getVisitTrend"
+    ],
+    "wx": [
+        "WxMiniAppCodeAuthenticationProvider",
+        "WxMiniAppCodeAuthenticationToken",
+        "WxMiniAppCodeLoginDTO",
+        "WxMiniAppConfig",
+        "WxMiniAppPhoneAuthenticationProvider",
+        "WxMiniAppPhoneAuthenticationToken",
+        "WxMiniAppPhoneLoginDTO",
+        "loginByWxMiniAppCode",
+        "loginByWxMiniAppPhone",
+        "wxMaConfig",
+        "wxMaService",
+        "wxMiniAppCodeAuthenticationProvider",
+        "wxMiniAppPhoneAuthenticationProvider"
+    ],
+    "mini": [
+        "WxMiniAppCodeAuthenticationProvider",
+        "WxMiniAppCodeAuthenticationToken",
+        "WxMiniAppCodeLoginDTO",
+        "WxMiniAppConfig",
+        "WxMiniAppPhoneAuthenticationProvider",
+        "WxMiniAppPhoneAuthenticationToken",
+        "WxMiniAppPhoneLoginDTO",
+        "loginByWxMiniAppCode",
+        "loginByWxMiniAppPhone",
+        "wxMiniAppCodeAuthenticationProvider",
+        "wxMiniAppPhoneAuthenticationProvider"
+    ],
+    "app": [
+        "WxMiniAppCodeAuthenticationProvider",
+        "WxMiniAppCodeAuthenticationToken",
+        "WxMiniAppCodeLoginDTO",
+        "WxMiniAppConfig",
+        "WxMiniAppPhoneAuthenticationProvider",
+        "WxMiniAppPhoneAuthenticationToken",
+        "WxMiniAppPhoneLoginDTO",
+        "appId",
+        "appSecret",
+        "appname",
+        "backendAppName",
+        "frontendAppName",
+        "loginByWxMiniAppCode",
+        "loginByWxMiniAppPhone",
+        "wxMiniAppCodeAuthenticationProvider",
+        "wxMiniAppPhoneAuthenticationProvider"
+    ],
+    "phone": [
+        "WxMiniAppPhoneAuthenticationProvider",
+        "WxMiniAppPhoneAuthenticationToken",
+        "WxMiniAppPhoneLoginDTO",
+        "loginByWxMiniAppPhone",
+        "wxMiniAppPhoneAuthenticationProvider"
+    ],
+    "ma": [
+        "wxMaConfig",
+        "wxMaService"
+    ],
+    "code": [
+        "CAPTCHA_CODE_PARAM_NAME",
+        "WxMiniAppCodeAuthenticationProvider",
+        "WxMiniAppCodeAuthenticationToken",
+        "WxMiniAppCodeLoginDTO",
+        "code",
+        "codeGenerator",
+        "deptCode",
+        "dictCode",
+        "downloadCode",
+        "generateAndZipCode",
+        "getCodeContent",
+        "loginByWxMiniAppCode",
+        "resultCode",
+        "roleCode",
+        "sendEmailCode",
+        "sendLoginVerifyCode",
+        "sendMobileCode",
+        "sendSmsLoginCode",
+        "wxMiniAppCodeAuthenticationProvider"
+    ],
+    "encrypted": [
+        "encryptedData",
+        "getEncryptedData"
+    ],
+    "data": [
+        "ColumnMetaData",
+        "MyDataPermissionHandler",
+        "TableMetaData",
+        "data",
+        "dataScope",
+        "dataScopeFilter",
+        "dataType",
+        "encryptedData",
+        "getCodegenPreviewData",
+        "getConfigFormData",
+        "getDataScope",
+        "getEncryptedData",
+        "getGenConfigFormData",
+        "getMaximumDataScope",
+        "getNoticeFormData",
+        "getTablePreviewData",
+        "getUserFormData"
+    ],
+    "iv": [
+        "getIv",
+        "iv"
+    ],
+    "utils": [
+        "DateUtils",
+        "ExcelUtils",
+        "IPUtils",
+        "SecurityUtils"
+    ],
+    "id": [
+        "accessKeyId",
+        "appId",
+        "bindUserOpenId",
+        "configId",
+        "deptId",
+        "getAuthCredentialsByOpenId",
+        "getDeptId",
+        "getUserId",
+        "id",
+        "listMenuIdsByRoleId",
+        "menuId",
+        "noticeId",
+        "openId",
+        "openid",
+        "parentId",
+        "parentMenuId",
+        "publisherId",
+        "regionId",
+        "registerUserByMobileAndOpenId",
+        "roleId",
+        "userId"
+    ],
+    "username": [
+        "getAuthCredentialsByUsername",
+        "getUsername",
+        "loadUserByUsername",
+        "username"
+    ],
+    "dept": [
+        "Dept",
+        "DeptController",
+        "DeptForm",
+        "DeptQuery",
+        "DeptServiceImpl",
+        "DeptVO",
+        "deptCode",
+        "deptConverter",
+        "deptId",
+        "deptList",
+        "deptName",
+        "deptService",
+        "generateDeptTreePath",
+        "getDeptForm",
+        "getDeptId",
+        "getDeptList",
+        "getDeptOptions",
+        "listDeptOptions",
+        "recurDeptList",
+        "recurDeptTreeOptions",
+        "saveDept",
+        "updateDept"
+    ],
+    "scope": [
+        "dataScope",
+        "dataScopeFilter",
+        "getDataScope",
+        "getMaximumDataScope"
+    ],
+    "roles": [
+        "deleteRoles",
+        "getRoles",
+        "roles",
+        "saveUserRoles"
+    ],
+    "root": [
+        "isRoot"
+    ],
+    "request": [
+        "LOGIN_PATH_REQUEST_MATCHER",
+        "RequestLogFilter",
+        "afterRequest",
+        "beforeRequest",
+        "getTokenFromRequest",
+        "request",
+        "requestMethod",
+        "requestParams",
+        "requestUri",
+        "setRequestParameters"
+    ],
+    "type": [
+        "columnType",
+        "dataType",
+        "dictType",
+        "fieldType",
+        "formType",
+        "queryType",
+        "tagType",
+        "targetType",
+        "tokenType",
+        "tsType",
+        "type",
+        "typeLabel"
+    ],
+    "expires": [
+        "expiresIn"
+    ],
+    "auth": [
+        "AuthController",
+        "AuthServiceImpl",
+        "UserAuthCredentials",
+        "authService",
+        "getAuthCredentialsByMobile",
+        "getAuthCredentialsByOpenId",
+        "getAuthCredentialsByUsername"
+    ],
+    "nickname": [
+        "nickname"
+    ],
+    "password": [
+        "PasswordEncoderConfig",
+        "PasswordUpdateForm",
+        "changePassword",
+        "confirmPassword",
+        "getPassword",
+        "newPassword",
+        "oldPassword",
+        "password",
+        "passwordEncoder",
+        "resetPassword"
+    ],
+    "status": [
+        "publishStatus",
+        "status",
+        "updateRoleStatus",
+        "updateUserStatus"
+    ],
+    "sys": [
+        "SysUserDetails",
+        "SysUserDetailsService"
+    ],
+    "enabled": [
+        "enabled",
+        "isEnabled"
+    ],
+    "authorities": [
+        "authorities",
+        "getAuthorities"
+    ],
+    "online": [
+        "OnlineUser",
+        "OnlineUserJobHandler",
+        "UserOnlineService",
+        "getOnlineUserCount",
+        "getOnlineUsers",
+        "isUserOnline",
+        "notifyOnlineUsersChange",
+        "notifyOnlineUsersChangeInternal",
+        "onlineUsers",
+        "sendOnlineUserCount",
+        "userOnlineService"
+    ],
+    "captcha": [
+        "CAPTCHA_CODE_PARAM_NAME",
+        "CAPTCHA_KEY_PARAM_NAME",
+        "CaptchaConfig",
+        "CaptchaInfo",
+        "CaptchaProperties",
+        "CaptchaValidationException",
+        "CaptchaValidationFilter",
+        "captchaBase64",
+        "captchaFont",
+        "captchaKey",
+        "captchaProperties",
+        "getCaptcha"
+    ],
+    "validation": [
+        "CaptchaValidationException",
+        "CaptchaValidationFilter"
+    ],
+    "filter": [
+        "CaptchaValidationFilter",
+        "RateLimiterFilter",
+        "RequestLogFilter",
+        "TokenAuthenticationFilter",
+        "dataScopeFilter",
+        "doFilterInternal",
+        "filterRegistrationBean",
+        "securityFilterChain",
+        "shouldFilterObject"
+    ],
+    "path": [
+        "DB_PATH",
+        "LOGIN_PATH_REQUEST_MATCHER",
+        "generateDeptTreePath",
+        "generateMenuTreePath",
+        "getFilePath",
+        "logPath",
+        "path",
+        "routePath",
+        "storagePath",
+        "treePath",
+        "updateChildrenTreePath"
+    ],
+    "matcher": [
+        "LOGIN_PATH_REQUEST_MATCHER"
+    ],
+    "param": [
+        "CAPTCHA_CODE_PARAM_NAME",
+        "CAPTCHA_KEY_PARAM_NAME"
+    ],
+    "name": [
+        "CAPTCHA_CODE_PARAM_NAME",
+        "CAPTCHA_KEY_PARAM_NAME",
+        "appname",
+        "backendAppName",
+        "bucketName",
+        "businessName",
+        "characterSetName",
+        "collationName",
+        "columnName",
+        "configName",
+        "deptName",
+        "downloadFileName",
+        "entityName",
+        "fieldName",
+        "fileName",
+        "frontendAppName",
+        "getFileName",
+        "moduleName",
+        "name",
+        "packageName",
+        "publisherName",
+        "routeName",
+        "signName",
+        "tableName"
+    ],
+    "generator": [
+        "codeGenerator"
+    ],
+    "internal": [
+        "doFilterInternal",
+        "notifyOnlineUsersChangeInternal"
+    ],
+    "load": [
+        "loadUserByUsername"
+    ],
+    "permission": [
+        "MyDataPermissionHandler",
+        "PermissionService",
+        "permissionService"
+    ],
+    "perm": [
+        "hasPerm",
+        "perm"
+    ],
+    "role": [
+        "Role",
+        "RoleController",
+        "RoleForm",
+        "RoleMenu",
+        "RoleMenuServiceImpl",
+        "RolePageQuery",
+        "RolePageVO",
+        "RolePermsBO",
+        "RoleServiceImpl",
+        "UserRole",
+        "UserRoleServiceImpl",
+        "addRole",
+        "assignMenusToRole",
+        "getRoleForm",
+        "getRoleIds",
+        "getRoleMenuIds",
+        "getRolePage",
+        "getRolePermsByRoleCodes",
+        "getRolePermsFormCache",
+        "initRolePermsCache",
+        "listMenuIdsByRoleId",
+        "listRoleOptions",
+        "refreshRolePermsCache",
+        "roleCode",
+        "roleCodes",
+        "roleConverter",
+        "roleId",
+        "roleIds",
+        "roleList",
+        "roleMenuService",
+        "roleNames",
+        "roleService",
+        "saveRole",
+        "updateRole",
+        "updateRoleStatus",
+        "userRoleService"
+    ],
+    "perms": [
+        "RolePermsBO",
+        "getRolePermsByRoleCodes",
+        "getRolePermsFormCache",
+        "initRolePermsCache",
+        "perms",
+        "refreshRolePermsCache"
+    ],
+    "form": [
+        "ConfigForm",
+        "DeptForm",
+        "DictForm",
+        "DictItemForm",
+        "EmailUpdateForm",
+        "GenConfigForm",
+        "MenuForm",
+        "MobileUpdateForm",
+        "NoticeForm",
+        "PasswordUpdateForm",
+        "RoleForm",
+        "UserForm",
+        "UserProfileForm",
+        "formType",
+        "getConfigForm",
+        "getConfigFormData",
+        "getDeptForm",
+        "getDictForm",
+        "getDictItemForm",
+        "getGenConfigFormData",
+        "getMenuForm",
+        "getNoticeForm",
+        "getNoticeFormData",
+        "getRoleForm",
+        "getRolePermsFormCache",
+        "getUserForm",
+        "getUserFormData",
+        "isShowInForm"
+    ],
+    "cache": [
+        "RedisCacheConfig",
+        "cacheManager",
+        "getRolePermsFormCache",
+        "initRolePermsCache",
+        "redisCacheConfiguration",
+        "redisCacheManager",
+        "refreshCache",
+        "refreshRolePermsCache"
+    ],
+    "my": [
+        "MyAccessDeniedHandler",
+        "MyAuthenticationEntryPoint",
+        "MyDataPermissionHandler",
+        "MyMetaObjectHandler",
+        "getMyNoticePage"
+    ],
+    "entry": [
+        "MyAuthenticationEntryPoint"
+    ],
+    "point": [
+        "MyAuthenticationEntryPoint",
+        "logPointcut",
+        "repeatSubmitPointCut"
+    ],
+    "commence": [
+        "commence"
+    ],
+    "exception": [
+        "BusinessException",
+        "CaptchaValidationException",
+        "GlobalExceptionHandler",
+        "handleBadSqlGrammarException",
+        "handleBizException",
+        "handleException",
+        "handleIllegalArgumentException",
+        "handleJsonProcessingException",
+        "processException",
+        "processSQLSyntaxErrorException"
+    ],
+    "denied": [
+        "MyAccessDeniedHandler"
+    ],
+    "handler": [
+        "GlobalExceptionHandler",
+        "MyAccessDeniedHandler",
+        "MyDataPermissionHandler",
+        "MyMetaObjectHandler",
+        "OnlineUserJobHandler",
+        "XxlJobSampleHandler",
+        "demoJobHandler"
+    ],
+    "repeat": [
+        "RepeatSubmitAspect",
+        "handleRepeatSubmit",
+        "repeatSubmitPointCut"
+    ],
+    "submit": [
+        "RepeatSubmitAspect",
+        "handleRepeatSubmit",
+        "repeatSubmitPointCut"
+    ],
+    "aspect": [
+        "LogAspect",
+        "RepeatSubmitAspect"
+    ],
+    "son": [
+        "redissonClient"
+    ],
+    "client": [
+        "aliyunOssClient",
+        "configureClientInboundChannel",
+        "minioClient",
+        "redissonClient"
+    ],
+    "cut": [
+        "logPointcut",
+        "repeatSubmitPointCut"
+    ],
+    "lock": [
+        "buildLockKey"
+    ],
+    "identifier": [
+        "getUserIdentifier"
+    ],
+    "log": [
+        "Log",
+        "LogAspect",
+        "LogController",
+        "LogPageQuery",
+        "LogPageVO",
+        "LogServiceImpl",
+        "RequestLogFilter",
+        "getLogPage",
+        "logPath",
+        "logPointcut",
+        "logRetentionDays",
+        "logService",
+        "saveLog",
+        "shouldLog"
+    ],
+    "around": [
+        "doAround"
+    ],
+    "save": [
+        "save",
+        "saveDept",
+        "saveDict",
+        "saveDictItem",
+        "saveGenConfig",
+        "saveLog",
+        "saveMenu",
+        "saveNotice",
+        "saveRole",
+        "saveUser",
+        "saveUserRoles"
+    ],
+    "parameters": [
+        "setRequestParameters"
+    ],
+    "convert": [
+        "convertArgumentsToString",
+        "convertMessage"
+    ],
+    "arguments": [
+        "convertArgumentsToString"
+    ],
+    "string": [
+        "convertArgumentsToString"
+    ],
+    "should": [
+        "shouldFilterObject",
+        "shouldLog"
+    ],
+    "object": [
+        "MyMetaObjectHandler",
+        "objectMapper",
+        "shouldFilterObject"
+    ],
+    "resolve": [
+        "resolveUserAgent"
+    ],
+    "agent": [
+        "resolveUserAgent"
+    ],
+    "rate": [
+        "RateLimiterFilter",
+        "growthRate",
+        "pvGrowthRate",
+        "rateLimit",
+        "uvGrowthRate"
+    ],
+    "limiter": [
+        "RateLimiterFilter"
+    ],
+    "config": [
+        "CaffeineConfig",
+        "CaptchaConfig",
+        "Config",
+        "ConfigController",
+        "ConfigForm",
+        "ConfigPageQuery",
+        "ConfigServiceImpl",
+        "ConfigVO",
+        "CorsConfig",
+        "GenConfig",
+        "GenConfigForm",
+        "GenConfigServiceImpl",
+        "GenFieldConfig",
+        "GenFieldConfigServiceImpl",
+        "MailConfig",
+        "MybatisConfig",
+        "OpenApiConfig",
+        "PasswordEncoderConfig",
+        "RedisCacheConfig",
+        "RedisConfig",
+        "SecurityConfig",
+        "WebMvcConfig",
+        "WebSocketConfig",
+        "WxMiniAppConfig",
+        "XxlJobConfig",
+        "configConverter",
+        "configId",
+        "configKey",
+        "configName",
+        "configService",
+        "configValue",
+        "createDefaultFieldConfig",
+        "defaultConfig",
+        "deleteGenConfig",
+        "genConfigService",
+        "genFieldConfigService",
+        "getConfigForm",
+        "getConfigFormData",
+        "getGenConfigFormData",
+        "getSystemConfig",
+        "globalConfig",
+        "saveGenConfig",
+        "wxMaConfig"
+    ],
+    "default": [
+        "DEFAULT_IP_LIMIT",
+        "createDefaultFieldConfig",
+        "defaultConfig"
+    ],
+    "ip": [
+        "DEFAULT_IP_LIMIT",
+        "IPUtils",
+        "checkIp",
+        "getIpAddr",
+        "ip",
+        "ipList"
+    ],
+    "limit": [
+        "DEFAULT_IP_LIMIT",
+        "rateLimit"
+    ],
+    "before": [
+        "beforeRequest"
+    ],
+    "after": [
+        "afterRequest",
+        "doAfterAllAnalysed"
+    ],
+    "mail": [
+        "MailConfig",
+        "MailController",
+        "MailProperties",
+        "MailServiceImpl",
+        "javaMailSender",
+        "mailProperties",
+        "mailSender",
+        "mailService",
+        "sendMail",
+        "sendMailWithAttachment"
+    ],
+    "java": [
+        "javaMailSender"
+    ],
+    "sender": [
+        "javaMailSender",
+        "mailSender",
+        "sender"
+    ],
+    "web": [
+        "WebMvcConfig",
+        "WebSocketConfig",
+        "WebSocketServiceImpl",
+        "webSecurityCustomizer",
+        "webSocketService"
+    ],
+    "mvc": [
+        "WebMvcConfig"
+    ],
+    "date": [
+        "DATE_TIME_FORMATTER",
+        "DateUtils",
+        "date",
+        "endDate",
+        "processDateTimeField",
+        "startDate"
+    ],
+    "time": [
+        "DATE_TIME_FORMATTER",
+        "createTime",
+        "executionTime",
+        "lastActiveTime",
+        "processDateTimeField",
+        "publishTime",
+        "readTime",
+        "revokeTime",
+        "updateTime"
+    ],
+    "formatter": [
+        "DATE_TIME_FORMATTER"
+    ],
+    "configure": [
+        "configureClientInboundChannel",
+        "configureMessageBroker",
+        "configureMessageConverters"
+    ],
+    "message": [
+        "ChatMessage",
+        "broadcastMessage",
+        "configureMessageBroker",
+        "configureMessageConverters",
+        "convertMessage",
+        "formatMessage",
+        "messageList"
+    ],
+    "converters": [
+        "configureMessageConverters"
+    ],
+    "caffeine": [
+        "CaffeineConfig",
+        "caffeineSpec"
+    ],
+    "spec": [
+        "caffeineSpec"
+    ],
+    "font": [
+        "captchaFont",
+        "font"
+    ],
+    "encoder": [
+        "PasswordEncoderConfig",
+        "passwordEncoder"
+    ],
+    "chain": [
+        "securityFilterChain"
+    ],
+    "customizer": [
+        "Knife4jOpenApiCustomizer",
+        "globalOpenApiCustomizer",
+        "webSecurityCustomizer"
+    ],
+    "dao": [
+        "daoAuthenticationProvider"
+    ],
+    "open": [
+        "Knife4jOpenApiCustomizer",
+        "OpenApiConfig",
+        "bindUserOpenId",
+        "getAuthCredentialsByOpenId",
+        "globalOpenApiCustomizer",
+        "openApi",
+        "openId",
+        "openid",
+        "registerUserByMobileAndOpenId"
+    ],
+    "api": [
+        "Knife4jOpenApiCustomizer",
+        "OpenApiConfig",
+        "globalOpenApiCustomizer",
+        "openApi"
+    ],
+    "environment": [
+        "environment"
+    ],
+    "global": [
+        "GlobalExceptionHandler",
+        "globalConfig",
+        "globalOpenApiCustomizer"
+    ],
+    "xxl": [
+        "XxlJobConfig",
+        "XxlJobSampleHandler",
+        "xxlJobExecutor"
+    ],
+    "job": [
+        "OnlineUserJobHandler",
+        "XxlJobConfig",
+        "XxlJobSampleHandler",
+        "demoJobHandler",
+        "xxlJobExecutor"
+    ],
+    "admin": [
+        "adminAddresses"
+    ],
+    "addresses": [
+        "adminAddresses"
+    ],
+    "address": [
+        "address"
+    ],
+    "port": [
+        "port"
+    ],
+    "retention": [
+        "logRetentionDays"
+    ],
+    "days": [
+        "logRetentionDays"
+    ],
+    "executor": [
+        "xxlJobExecutor"
+    ],
+    "socket": [
+        "WebSocketConfig",
+        "WebSocketServiceImpl",
+        "webSocketService"
+    ],
+    "register": [
+        "registerOrBindWechatUser",
+        "registerStompEndpoints",
+        "registerUserByMobileAndOpenId"
+    ],
+    "stomp": [
+        "registerStompEndpoints"
+    ],
+    "endpoints": [
+        "registerStompEndpoints"
+    ],
+    "broker": [
+        "configureMessageBroker"
+    ],
+    "inbound": [
+        "configureClientInboundChannel"
+    ],
+    "channel": [
+        "configureClientInboundChannel"
+    ],
+    "mybatis": [
+        "MybatisConfig",
+        "mybatisPlusInterceptor"
+    ],
+    "plus": [
+        "mybatisPlusInterceptor"
+    ],
+    "interceptor": [
+        "mybatisPlusInterceptor"
+    ],
+    "cors": [
+        "CorsConfig"
+    ],
+    "registration": [
+        "filterRegistrationBean"
+    ],
+    "bean": [
+        "filterRegistrationBean"
+    ],
+    "configuration": [
+        "redisCacheConfiguration"
+    ],
+    "host": [
+        "host"
+    ],
+    "aliyun": [
+        "AliyunFileService",
+        "AliyunSmsProperties",
+        "AliyunSmsService",
+        "aliyunOssClient",
+        "aliyunSmsProperties"
+    ],
+    "domain": [
+        "customDomain",
+        "domain"
+    ],
+    "region": [
+        "getRegion",
+        "region",
+        "regionId"
+    ],
+    "sign": [
+        "signName"
+    ],
+    "templates": [
+        "templates"
+    ],
+    "codegen": [
+        "CodegenController",
+        "CodegenPreviewVO",
+        "CodegenProperties",
+        "CodegenServiceImpl",
+        "addMenuForCodegen",
+        "codegenConverter",
+        "codegenProperties",
+        "codegenService",
+        "getCodegenPreviewData"
+    ],
+    "configs": [
+        "fieldConfigs",
+        "templateConfigs"
+    ],
+    "backend": [
+        "backendAppName"
+    ],
+    "frontend": [
+        "frontendAppName"
+    ],
+    "download": [
+        "downloadCode",
+        "downloadFileName",
+        "downloadTemplate",
+        "downloadZip"
+    ],
+    "file": [
+        "AliyunFileService",
+        "FileController",
+        "FileInfo",
+        "LocalFileService",
+        "MinioFileService",
+        "deleteFile",
+        "downloadFileName",
+        "fileName",
+        "fileService",
+        "getFileName",
+        "getFilePath",
+        "uploadFile"
+    ],
+    "exclude": [
+        "excludeTables"
+    ],
+    "tables": [
+        "excludeTables"
+    ],
+    "width": [
+        "width"
+    ],
+    "height": [
+        "height"
+    ],
+    "interfere": [
+        "interfereCount"
+    ],
+    "count": [
+        "VisitCount",
+        "count",
+        "getOnlineUserCount",
+        "interfereCount",
+        "invalidCount",
+        "sendOnlineUserCount",
+        "todayCount",
+        "todayPvCount",
+        "todayUvCount",
+        "totalCount",
+        "totalPvCount",
+        "totalUvCount",
+        "validCount"
+    ],
+    "text": [
+        "textAlpha"
+    ],
+    "alpha": [
+        "textAlpha"
+    ],
+    "expire": [
+        "expireSeconds"
+    ],
+    "seconds": [
+        "expireSeconds"
+    ],
+    "session": [
+        "UserSessionDTO",
+        "session",
+        "sessionIds"
+    ],
+    "ignore": [
+        "ignoreUrls"
+    ],
+    "urls": [
+        "ignoreUrls",
+        "unsecuredUrls"
+    ],
+    "unsecured": [
+        "unsecuredUrls"
+    ],
+    "controller": [
+        "AuthController",
+        "CodegenController",
+        "ConfigController",
+        "DeptController",
+        "DictController",
+        "FileController",
+        "LogController",
+        "MailController",
+        "MemberController",
+        "MenuController",
+        "NoticeController",
+        "OrderController",
+        "ProductController",
+        "RoleController",
+        "SmsController",
+        "UserController",
+        "WebsocketController"
+    ],
+    "send": [
+        "sendDictEvent",
+        "sendEmailCode",
+        "sendLoginVerifyCode",
+        "sendMail",
+        "sendMailWithAttachment",
+        "sendMobileCode",
+        "sendNotification",
+        "sendOnlineUserCount",
+        "sendSms",
+        "sendSmsLoginCode",
+        "sendToAll",
+        "sendToUser"
+    ],
+    "verify": [
+        "sendLoginVerifyCode"
+    ],
+    "wechat": [
+        "loginByWechat",
+        "registerOrBindWechatUser"
+    ],
+    "logout": [
+        "logout"
+    ],
+    "info": [
+        "CaptchaInfo",
+        "FileInfo",
+        "getCurrentUserInfo"
+    ],
+    "base64": [
+        "captchaBase64"
+    ],
+    "dto": [
+        "CurrentUserDTO",
+        "NoticeDTO",
+        "UserExportDTO",
+        "UserImportDTO",
+        "UserSessionDTO",
+        "WxMiniAppCodeLoginDTO",
+        "WxMiniAppPhoneLoginDTO"
+    ],
+    "impl": [
+        "AuthServiceImpl",
+        "CodegenServiceImpl",
+        "ConfigServiceImpl",
+        "DeptServiceImpl",
+        "DictItemServiceImpl",
+        "DictServiceImpl",
+        "GenConfigServiceImpl",
+        "GenFieldConfigServiceImpl",
+        "LogServiceImpl",
+        "MailServiceImpl",
+        "MenuServiceImpl",
+        "NoticeServiceImpl",
+        "RoleMenuServiceImpl",
+        "RoleServiceImpl",
+        "UserNoticeServiceImpl",
+        "UserRoleServiceImpl",
+        "UserServiceImpl",
+        "WebSocketServiceImpl"
+    ],
+    "order": [
+        "Order",
+        "OrderController",
+        "OrderMapper",
+        "OrderService",
+        "addOrderExtension"
+    ],
+    "mapper": [
+        "MemberMapper",
+        "OrderMapper",
+        "ProductMapper",
+        "databaseMapper",
+        "objectMapper",
+        "userNoticeMapper"
+    ],
+    "member": [
+        "Member",
+        "MemberController",
+        "MemberMapper",
+        "MemberService"
+    ],
+    "product": [
+        "Product",
+        "ProductController",
+        "ProductMapper",
+        "ProductService"
+    ],
+    "websocket": [
+        "WebsocketController"
+    ],
+    "messaging": [
+        "messagingTemplate",
+        "setMessagingTemplate"
+    ],
+    "all": [
+        "doAfterAllAnalysed",
+        "readAll",
+        "sendToAll"
+    ],
+    "chat": [
+        "ChatMessage"
+    ],
+    "content": [
+        "content",
+        "getCodeContent",
+        "responseContent"
+    ],
+    "upload": [
+        "uploadFile"
+    ],
+    "delete": [
+        "delete",
+        "deleteByIds",
+        "deleteDepartments",
+        "deleteDictByIds",
+        "deleteDictItemByIds",
+        "deleteDictItems",
+        "deleteDictionaries",
+        "deleteFile",
+        "deleteGenConfig",
+        "deleteMenu",
+        "deleteNotices",
+        "deleteRoles",
+        "deleteUsers"
+    ],
+    "url": [
+        "url"
+    ],
+    "local": [
+        "LocalFileService",
+        "getLocalAddr"
+    ],
+    "storage": [
+        "storagePath"
+    ],
+    "min": [
+        "MinioFileService",
+        "minioClient"
+    ],
+    "io": [
+        "MinioFileService",
+        "minioClient"
+    ],
+    "endpoint": [
+        "endpoint"
+    ],
+    "bucket": [
+        "bucketName",
+        "createBucketIfAbsent",
+        "publicBucketPolicy"
+    ],
+    "custom": [
+        "customDomain"
+    ],
+    "init": [
+        "init",
+        "initRolePermsCache"
+    ],
+    "public": [
+        "publicBucketPolicy"
+    ],
+    "policy": [
+        "publicBucketPolicy"
+    ],
+    "create": [
+        "createBucketIfAbsent",
+        "createBy",
+        "createDefaultFieldConfig",
+        "createTime"
+    ],
+    "absent": [
+        "createBucketIfAbsent"
+    ],
+    "oss": [
+        "aliyunOssClient"
+    ],
+    "attachment": [
+        "sendMailWithAttachment"
+    ],
+    "gen": [
+        "GenConfig",
+        "GenConfigForm",
+        "GenConfigServiceImpl",
+        "GenFieldConfig",
+        "GenFieldConfigServiceImpl",
+        "deleteGenConfig",
+        "genConfigService",
+        "genFieldConfigService",
+        "getGenConfigFormData",
+        "saveGenConfig"
+    ],
+    "table": [
+        "TableMetaData",
+        "TablePageQuery",
+        "TablePageVO",
+        "getTablePage",
+        "getTablePreviewData",
+        "tableCollation",
+        "tableComment",
+        "tableName"
+    ],
+    "page": [
+        "BasePageQuery",
+        "ConfigPageQuery",
+        "DictItemPageQuery",
+        "DictItemPageVO",
+        "DictPageQuery",
+        "DictPageVO",
+        "LogPageQuery",
+        "LogPageVO",
+        "NoticePageQuery",
+        "NoticePageVO",
+        "PageResult",
+        "RolePageQuery",
+        "RolePageVO",
+        "TablePageQuery",
+        "TablePageVO",
+        "UserNoticePageVO",
+        "UserPageQuery",
+        "UserPageVO",
+        "getDictItemPage",
+        "getDictPage",
+        "getLogPage",
+        "getMyNoticePage",
+        "getNoticePage",
+        "getRolePage",
+        "getTablePage",
+        "getUserPage",
+        "page",
+        "pageNum",
+        "pageSize"
+    ],
+    "preview": [
+        "CodegenPreviewVO",
+        "getCodegenPreviewData",
+        "getTablePreviewData"
+    ],
+    "zip": [
+        "downloadZip",
+        "generateAndZipCode"
+    ],
+    "vo": [
+        "BaseVO",
+        "CodegenPreviewVO",
+        "ConfigVO",
+        "DeptVO",
+        "DictItemOptionVO",
+        "DictItemPageVO",
+        "DictPageVO",
+        "LogPageVO",
+        "MenuVO",
+        "NoticeDetailVO",
+        "NoticePageVO",
+        "RolePageVO",
+        "RouteVO",
+        "TablePageVO",
+        "UserNoticePageVO",
+        "UserPageVO",
+        "UserProfileVO",
+        "VisitStatsVO",
+        "VisitTrendVO",
+        "toRouteVo"
+    ],
+    "comment": [
+        "columnComment",
+        "fieldComment",
+        "tableComment"
+    ],
+    "collation": [
+        "collationName",
+        "tableCollation"
+    ],
+    "engine": [
+        "engine"
+    ],
+    "charset": [
+        "charset"
+    ],
+    "configured": [
+        "isConfigured"
+    ],
+    "business": [
+        "BusinessException",
+        "businessName"
+    ],
+    "module": [
+        "module",
+        "moduleName"
+    ],
+    "package": [
+        "packageName",
+        "scanPackageByAnnotation"
+    ],
+    "entity": [
+        "BaseEntity",
+        "entityName"
+    ],
+    "author": [
+        "author"
+    ],
+    "parent": [
+        "parentId",
+        "parentMenuId"
+    ],
+    "menu": [
+        "Menu",
+        "MenuController",
+        "MenuForm",
+        "MenuQuery",
+        "MenuServiceImpl",
+        "MenuVO",
+        "RoleMenu",
+        "RoleMenuServiceImpl",
+        "addMenu",
+        "addMenuForCodegen",
+        "buildMenuOptions",
+        "buildMenuTree",
+        "deleteMenu",
+        "generateMenuTreePath",
+        "getMenuForm",
+        "getRoleMenuIds",
+        "listMenuIdsByRoleId",
+        "listMenuOptions",
+        "menuConverter",
+        "menuId",
+        "menuService",
+        "parentMenuId",
+        "roleMenuService",
+        "saveMenu",
+        "updateMenu",
+        "updateMenuVisible"
+    ],
+    "column": [
+        "ColumnMetaData",
+        "columnComment",
+        "columnName",
+        "columnType"
+    ],
+    "max": [
+        "maxLength"
+    ],
+    "length": [
+        "characterMaximumLength",
+        "maxLength"
+    ],
+    "sort": [
+        "fieldSort",
+        "sort"
+    ],
+    "query": [
+        "BasePageQuery",
+        "ConfigPageQuery",
+        "DeptQuery",
+        "DictItemPageQuery",
+        "DictPageQuery",
+        "LogPageQuery",
+        "MenuQuery",
+        "NoticePageQuery",
+        "RolePageQuery",
+        "TablePageQuery",
+        "UserPageQuery",
+        "isShowInQuery",
+        "queryType"
+    ],
+    "show": [
+        "alwaysShow",
+        "isShowInForm",
+        "isShowInList",
+        "isShowInQuery"
+    ],
+    "list": [
+        "deptList",
+        "genderList",
+        "getDeptList",
+        "getDictList",
+        "ipList",
+        "isShowInList",
+        "listDeptOptions",
+        "listExportUsers",
+        "listMenuIdsByRoleId",
+        "listMenuOptions",
+        "listMenus",
+        "listRoleOptions",
+        "listUserOptions",
+        "messageList",
+        "pvList",
+        "recurDeptList",
+        "roleList"
+    ],
+    "required": [
+        "isRequired"
+    ],
+    "ts": [
+        "tsType"
+    ],
+    "dict": [
+        "Dict",
+        "DictController",
+        "DictEvent",
+        "DictForm",
+        "DictItem",
+        "DictItemForm",
+        "DictItemOptionVO",
+        "DictItemPageQuery",
+        "DictItemPageVO",
+        "DictItemServiceImpl",
+        "DictPageQuery",
+        "DictPageVO",
+        "DictServiceImpl",
+        "broadcastDictChange",
+        "deleteDictByIds",
+        "deleteDictItemByIds",
+        "deleteDictItems",
+        "dictCode",
+        "dictConverter",
+        "dictItemConverter",
+        "dictItemService",
+        "dictService",
+        "dictType",
+        "getDictCodesByIds",
+        "getDictForm",
+        "getDictItemForm",
+        "getDictItemPage",
+        "getDictItems",
+        "getDictList",
+        "getDictPage",
+        "saveDict",
+        "saveDictItem",
+        "sendDictEvent",
+        "updateDict",
+        "updateDictItem"
+    ],
+    "meta": [
+        "ColumnMetaData",
+        "MyMetaObjectHandler",
+        "TableMetaData",
+        "meta"
+    ],
+    "character": [
+        "characterMaximumLength",
+        "characterSetName"
+    ],
+    "maximum": [
+        "characterMaximumLength",
+        "getMaximumDataScope"
+    ],
+    "primary": [
+        "isPrimaryKey"
+    ],
+    "nullable": [
+        "isNullable"
+    ],
+    "keywords": [
+        "keywords"
+    ],
+    "database": [
+        "databaseMapper",
+        "toDatabaseFormat"
+    ],
+    "converter": [
+        "codegenConverter",
+        "configConverter",
+        "deptConverter",
+        "dictConverter",
+        "dictItemConverter",
+        "menuConverter",
+        "noticeConverter",
+        "roleConverter",
+        "userConverter"
+    ],
+    "spring": [
+        "springProfilesActive"
+    ],
+    "profiles": [
+        "springProfilesActive"
+    ],
+    "active": [
+        "lastActiveTime",
+        "springProfilesActive"
+    ],
+    "sql": [
+        "getSqlSegment",
+        "handleBadSqlGrammarException",
+        "processSQLSyntaxErrorException"
+    ],
+    "segment": [
+        "getSqlSegment"
+    ],
+    "insert": [
+        "insertFill"
+    ],
+    "fill": [
+        "insertFill",
+        "updateFill"
+    ],
+    "update": [
+        "EmailUpdateForm",
+        "MobileUpdateForm",
+        "PasswordUpdateForm",
+        "update",
+        "updateBy",
+        "updateChildrenTreePath",
+        "updateDept",
+        "updateDict",
+        "updateDictItem",
+        "updateFill",
+        "updateMenu",
+        "updateMenuVisible",
+        "updateNotice",
+        "updateRole",
+        "updateRoleStatus",
+        "updateTime",
+        "updateUser",
+        "updateUserProfile",
+        "updateUserStatus"
+    ],
+    "knife": [
+        "Knife4jOpenApiCustomizer",
+        "knife4jProperties"
+    ],
+    "customise": [
+        "customise"
+    ],
+    "add": [
+        "addMenu",
+        "addMenuForCodegen",
+        "addOrderExtension",
+        "addRole"
+    ],
+    "extension": [
+        "addOrderExtension"
+    ],
+    "tag": [
+        "getTag",
+        "tag",
+        "tagType"
+    ],
+    "scan": [
+        "scanPackageByAnnotation"
+    ],
+    "annotation": [
+        "scanPackageByAnnotation"
+    ],
+    "sample": [
+        "XxlJobSampleHandler"
+    ],
+    "demo": [
+        "demoJobHandler"
+    ],
+    "execute": [
+        "execute"
+    ],
+    "import": [
+        "UserImportDTO",
+        "UserImportListener",
+        "importExcel",
+        "importUsers"
+    ],
+    "listener": [
+        "UserImportListener"
+    ],
+    "excel": [
+        "ExcelResult",
+        "ExcelUtils",
+        "excelResult",
+        "importExcel"
+    ],
+    "result": [
+        "ExcelResult",
+        "PageResult",
+        "Result",
+        "excelResult",
+        "result",
+        "resultCode"
+    ],
+    "gender": [
+        "gender",
+        "genderLabel",
+        "genderList",
+        "getGenderValue"
+    ],
+    "current": [
+        "CurrentUserDTO",
+        "currentRow",
+        "getCurrentUser",
+        "getCurrentUserInfo",
+        "getCurrentUserRoutes"
+    ],
+    "row": [
+        "currentRow"
+    ],
+    "invoke": [
+        "invoke"
+    ],
+    "ids": [
+        "deleteByIds",
+        "deleteDictByIds",
+        "deleteDictItemByIds",
+        "getDictCodesByIds",
+        "getRoleIds",
+        "getRoleMenuIds",
+        "listMenuIdsByRoleId",
+        "roleIds",
+        "sessionIds",
+        "targetUserIds"
+    ],
+    "analysed": [
+        "doAfterAllAnalysed"
+    ],
+    "item": [
+        "DictItem",
+        "DictItemForm",
+        "DictItemOptionVO",
+        "DictItemPageQuery",
+        "DictItemPageVO",
+        "DictItemServiceImpl",
+        "deleteDictItemByIds",
+        "dictItemConverter",
+        "dictItemService",
+        "getDictItemForm",
+        "getDictItemPage",
+        "saveDictItem",
+        "updateDictItem"
+    ],
+    "dictionaries": [
+        "deleteDictionaries"
+    ],
+    "items": [
+        "deleteDictItems",
+        "getDictItems"
+    ],
+    "menus": [
+        "assignMenusToRole",
+        "listMenus"
+    ],
+    "options": [
+        "buildMenuOptions",
+        "getDeptOptions",
+        "listDeptOptions",
+        "listMenuOptions",
+        "listRoleOptions",
+        "listUserOptions",
+        "recurDeptTreeOptions"
+    ],
+    "routes": [
+        "buildRoutes",
+        "getCurrentUserRoutes"
+    ],
+    "visible": [
+        "updateMenuVisible",
+        "visible"
+    ],
+    "assign": [
+        "assignMenusToRole"
+    ],
+    "notice": [
+        "Notice",
+        "NoticeBO",
+        "NoticeController",
+        "NoticeDTO",
+        "NoticeDetailVO",
+        "NoticeForm",
+        "NoticePageQuery",
+        "NoticePageVO",
+        "NoticeServiceImpl",
+        "UserNotice",
+        "UserNoticePageVO",
+        "UserNoticeServiceImpl",
+        "getMyNoticePage",
+        "getNoticeDetail",
+        "getNoticeForm",
+        "getNoticeFormData",
+        "getNoticePage",
+        "noticeConverter",
+        "noticeId",
+        "noticeService",
+        "publishNotice",
+        "revokeNotice",
+        "saveNotice",
+        "updateNotice",
+        "userNoticeMapper",
+        "userNoticeService"
+    ],
+    "detail": [
+        "NoticeDetailVO",
+        "getNoticeDetail"
+    ],
+    "publish": [
+        "publishNotice",
+        "publishStatus",
+        "publishTime"
+    ],
+    "revoke": [
+        "revokeNotice",
+        "revokeTime"
+    ],
+    "notices": [
+        "deleteNotices"
+    ],
+    "read": [
+        "isRead",
+        "readAll",
+        "readTime"
+    ],
+    "visit": [
+        "VisitCount",
+        "VisitStatsBO",
+        "VisitStatsVO",
+        "VisitTrendVO",
+        "getVisitStats",
+        "getVisitTrend"
+    ],
+    "trend": [
+        "VisitTrendVO",
+        "getVisitTrend"
+    ],
+    "stats": [
+        "VisitStatsBO",
+        "VisitStatsVO",
+        "getVisitStats"
+    ],
+    "departments": [
+        "deleteDepartments"
+    ],
+    "users": [
+        "deleteUsers",
+        "exportUsers",
+        "getOnlineUsers",
+        "hasAssignedUsers",
+        "importUsers",
+        "listExportUsers",
+        "notifyOnlineUsersChange",
+        "notifyOnlineUsersChangeInternal",
+        "onlineUsers"
+    ],
+    "export": [
+        "UserExportDTO",
+        "exportUsers",
+        "listExportUsers"
+    ],
+    "profile": [
+        "UserProfileForm",
+        "UserProfileVO",
+        "getUserProfile",
+        "updateUserProfile"
+    ],
+    "reset": [
+        "resetPassword"
+    ],
+    "change": [
+        "bindOrChangeEmail",
+        "bindOrChangeMobile",
+        "broadcastDictChange",
+        "changePassword",
+        "notifyOnlineUsersChange",
+        "notifyOnlineUsersChangeInternal"
+    ],
+    "mobile": [
+        "MobileUpdateForm",
+        "bindOrChangeMobile",
+        "getAuthCredentialsByMobile",
+        "mobile",
+        "registerUserByMobileAndOpenId",
+        "sendMobileCode"
+    ],
+    "bind": [
+        "bindOrChangeEmail",
+        "bindOrChangeMobile",
+        "bindUserOpenId",
+        "registerOrBindWechatUser"
+    ],
+    "email": [
+        "EmailUpdateForm",
+        "bindOrChangeEmail",
+        "email",
+        "sendEmailCode"
+    ],
+    "avatar": [
+        "avatar"
+    ],
+    "title": [
+        "title"
+    ],
+    "last": [
+        "lastActiveTime"
+    ],
+    "label": [
+        "genderLabel",
+        "label",
+        "typeLabel"
+    ],
+    "codes": [
+        "getDictCodesByIds",
+        "getRolePermsByRoleCodes",
+        "roleCodes"
+    ],
+    "route": [
+        "RouteVO",
+        "routeName",
+        "routePath",
+        "toRouteVo"
+    ],
+    "component": [
+        "component"
+    ],
+    "icon": [
+        "icon"
+    ],
+    "redirect": [
+        "redirect"
+    ],
+    "children": [
+        "children",
+        "updateChildrenTreePath"
+    ],
+    "level": [
+        "level"
+    ],
+    "publisher": [
+        "publisherId",
+        "publisherName"
+    ],
+    "today": [
+        "todayCount",
+        "todayPvCount",
+        "todayUvCount"
+    ],
+    "uv": [
+        "todayUvCount",
+        "totalUvCount",
+        "uvGrowthRate"
+    ],
+    "total": [
+        "totalCount",
+        "totalPvCount",
+        "totalUvCount"
+    ],
+    "growth": [
+        "growthRate",
+        "pvGrowthRate",
+        "uvGrowthRate"
+    ],
+    "pv": [
+        "pvGrowthRate",
+        "pvList",
+        "todayPvCount",
+        "totalPvCount"
+    ],
+    "target": [
+        "targetType",
+        "targetUserIds"
+    ],
+    "dates": [
+        "dates"
+    ],
+    "remark": [
+        "remark"
+    ],
+    "uri": [
+        "requestUri"
+    ],
+    "method": [
+        "method",
+        "requestMethod"
+    ],
+    "browser": [
+        "browser",
+        "browserVersion"
+    ],
+    "os": [
+        "os"
+    ],
+    "execution": [
+        "executionTime"
+    ],
+    "operator": [
+        "operator"
+    ],
+    "option": [
+        "DictItemOptionVO",
+        "Option"
+    ],
+    "names": [
+        "roleNames"
+    ],
+    "keep": [
+        "keepAlive"
+    ],
+    "alive": [
+        "keepAlive"
+    ],
+    "always": [
+        "alwaysShow"
+    ],
+    "params": [
+        "params",
+        "requestParams"
+    ],
+    "old": [
+        "oldPassword"
+    ],
+    "new": [
+        "newPassword"
+    ],
+    "confirm": [
+        "confirmPassword"
+    ],
+    "deleted": [
+        "isDeleted"
+    ],
+    "tree": [
+        "buildMenuTree",
+        "generateDeptTreePath",
+        "generateMenuTreePath",
+        "recurDeptTreeOptions",
+        "treePath",
+        "updateChildrenTreePath"
+    ],
+    "response": [
+        "responseContent"
+    ],
+    "province": [
+        "province"
+    ],
+    "city": [
+        "city"
+    ],
+    "bo": [
+        "NoticeBO",
+        "RolePermsBO",
+        "UserBO",
+        "VisitStatsBO"
+    ],
+    "start": [
+        "startDate"
+    ],
+    "end": [
+        "endDate"
+    ],
+    "direction": [
+        "direction"
+    ],
+    "event": [
+        "DictEvent",
+        "sendDictEvent"
+    ],
+    "timestamp": [
+        "timestamp"
+    ],
+    "connected": [
+        "userConnected"
+    ],
+    "disconnected": [
+        "userDisconnected"
+    ],
+    "notify": [
+        "notifyOnlineUsersChange",
+        "notifyOnlineUsersChangeInternal"
+    ],
+    "edit": [
+        "edit"
+    ],
+    "system": [
+        "getSystemConfig"
+    ],
+    "recur": [
+        "recurDeptList",
+        "recurDeptTreeOptions"
+    ],
+    "broadcast": [
+        "broadcastDictChange",
+        "broadcastMessage"
+    ],
+    "notification": [
+        "sendNotification"
+    ],
+    "assigned": [
+        "hasAssignedUsers"
+    ],
+    "invalid": [
+        "invalidCount"
+    ],
+    "msg": [
+        "msg"
+    ],
+    "success": [
+        "isSuccess",
+        "success"
+    ],
+    "failed": [
+        "failed"
+    ],
+    "judge": [
+        "judge"
+    ],
+    "db": [
+        "DB_PATH"
+    ],
+    "searcher": [
+        "searcher"
+    ],
+    "addr": [
+        "getIpAddr",
+        "getLocalAddr"
+    ],
+    "check": [
+        "checkIp"
+    ],
+    "process": [
+        "processDateTimeField",
+        "processException",
+        "processSQLSyntaxErrorException"
+    ],
+    "illegal": [
+        "handleIllegalArgumentException"
+    ],
+    "argument": [
+        "handleIllegalArgumentException"
+    ],
+    "json": [
+        "handleJsonProcessingException"
+    ],
+    "processing": [
+        "handleJsonProcessingException"
+    ],
+    "bad": [
+        "handleBadSqlGrammarException"
+    ],
+    "grammar": [
+        "handleBadSqlGrammarException"
+    ],
+    "syntax": [
+        "processSQLSyntaxErrorException"
+    ],
+    "error": [
+        "processSQLSyntaxErrorException"
+    ],
+    "biz": [
+        "handleBizException"
+    ],
+    "base": [
+        "BaseEntity",
+        "BasePageQuery",
+        "BaseVO"
+    ],
+    "num": [
+        "pageNum"
+    ],
+    "size": [
+        "pageSize"
+    ]
+}

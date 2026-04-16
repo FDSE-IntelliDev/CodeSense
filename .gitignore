@@ -1,0 +1,6 @@
+# IDE settings
+.idea/
+
+# Python cache directories (all levels)
+__pycache__/
+**/__pycache__/

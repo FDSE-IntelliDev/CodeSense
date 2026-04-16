@@ -1,0 +1,42 @@
+experiment:
+  name: code-search-dual-encoder
+  seed: 42
+  output_dir: embedding/runs/dual_encoder
+
+data:
+  train_pairs: embedding/data/train_pairs.jsonl
+  documents: embedding/data/documents.jsonl
+  max_query_length: 64
+  max_code_length: 256
+  num_workers: 4
+
+model:
+  # Baseline options: BAAI/bge-m3 or jinaai/jina-embeddings-v3
+  query_encoder_name: BAAI/bge-m3
+  code_encoder_name: BAAI/bge-m3
+  shared_weights: true
+  normalize_embeddings: true
+
+training:
+  epochs: 3
+  batch_size: 32
+  learning_rate: 2e-5
+  weight_decay: 0.01
+  warmup_ratio: 0.1
+  temperature: 0.05
+  loss: info_nce
+  gradient_accumulation_steps: 1
+  mixed_precision: fp16
+  save_steps: 500
+  eval_steps: 500
+  log_steps: 50
+
+negative_sampling:
+  easy: 1
+  medium: 1
+  hard: 2
+  hard_mining_refresh_steps: 1000
+
+retrieval_eval:
+  metrics: [recall@10, mrr@10, ndcg@10]
+  topk: 50
