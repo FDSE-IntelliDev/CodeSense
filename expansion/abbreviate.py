@@ -106,7 +106,7 @@ handler = NameHandler.get_inst()
 # 1. phrase tokenizer
 # =========================
 
-def tokenize(phrase: str, split_camel_case=False) -> List[str]:
+def tokenize(phrase: str, split_type=False) -> List[str]:
     """
     Tokenize a phrase into lowercase alphabetic tokens.
 
@@ -117,17 +117,26 @@ def tokenize(phrase: str, split_camel_case=False) -> List[str]:
         List of lowercase alphabetic tokens
     """
     phrase = phrase.strip()
-    if not split_camel_case:
+    if not split_type:
         return phrase.lower().split()
 
     tokens = []
-    for word in phrase.split():
-        for part in tokenizer(word).split():
-            for token in NON_ALPHA_PATTERN.split(part):
-                if token:
-                    tokens.append(token.lower())
+    if split_type=="camel":
+        for word in phrase.split():
+            for part in Delimiter.split_camel(word).split():
+                for token in NON_ALPHA_PATTERN.split(part):
+                    if token:
+                        tokens.append(token.lower())
+        return tokens
 
-    return tokens
+    if split_type=="tokenizer":
+        for word in phrase.split():
+            for part in tokenizer(word).split():
+                for token in NON_ALPHA_PATTERN.split(part):
+                    if token:
+                        tokens.append(token.lower())
+
+        return tokens
 
 # =========================
 # 2. Prefix family generation
@@ -462,13 +471,16 @@ def abbreviate(
                     res.append(abbr)
         return res
         # return {abbr for abbr in abbreviations if abbr != phrase.lower()and handler.check_abbr(phrase.lower(),abbr,True)}
-
+    # 目前通过ngram_split的normalize_token函数处理之后所有代码元素都会变成小写形式，所以这里的驼峰分词应该没用
     abbreviations = set()
-    tokens_without_splitting_camelcase = tuple(tokenize(phrase, split_camel_case=False))
+    tokens_without_splitting_camelcase = tuple(tokenize(phrase, split_type=False))
     abbreviations.update(_abbreviate_tokens(tokens_without_splitting_camelcase))
-    tokens_with_splitting_camelcase = tuple(tokenize(phrase, split_camel_case=True))
+    tokens_with_splitting_camelcase = tuple(tokenize(phrase, split_type="camel"))
     if tokens_with_splitting_camelcase != tokens_without_splitting_camelcase:
         abbreviations.update(_abbreviate_tokens(tokens_with_splitting_camelcase))
+    tokens_with_splitting_tokenizer=tuple(tokenize(phrase,split_type="tokenizer"))
+    if tokens_with_splitting_tokenizer != tokens_without_splitting_camelcase and tokens_with_splitting_tokenizer != tokens_with_splitting_camelcase:
+        abbreviations.update(_abbreviate_tokens(tokens_with_splitting_tokenizer))
     return abbreviations
 
 

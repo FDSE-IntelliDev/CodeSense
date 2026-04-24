@@ -129,24 +129,40 @@ class SymbolNgramer:
         从 symbols_index.json 读取代码元素 name，分词后构建倒排索引：
           子词 -> [原始代码标识符, ...]
         """
-        invert_index=defaultdict(set)
+        invert_index = defaultdict(list)
+        seen = defaultdict(set)  # token -> {unique_key}
+
         with open(self.symbols_index_path, "r", encoding="utf-8") as f:
             data = json.load(f)
+
         for item in data:
             name = item.get("name", "")
             if not isinstance(name, str) or not name.strip():
                 continue
+
             original_name = name.strip()
-            sub_tokens = tokenizer(original_name,"bpe")
-            sub_tokens=sub_tokens.split(' ')
+            sub_tokens = tokenizer(original_name, "bpe").split(" ")
             sub_tokens = filter_sub_tokens(sub_tokens, use_wordnet=use_wordnet)
 
-            for tok in sub_tokens:
-                invert_index[tok].add(original_name)
-        with open(self.ngramed_symbol_path, "w", encoding="utf-8") as f:
-            json.dump({k: sorted(list(v)) for k, v in invert_index.items()}, f, ensure_ascii=False, indent=4)
+            # 用稳定键去重，避免同一 symbol 被重复写入同一 token
+            file_ = item.get("file", "")
+            rng = item.get("range", {}) or {}
+            start_line = rng.get("start_line", -1)
+            end_line = rng.get("end_line", -1)
+            unique_key = f"{name}|{file_}|{start_line}|{end_line}"
 
-    def get_ngramed_symbol(self):
+            for tok in sub_tokens:
+                if unique_key in seen[tok]:
+                    continue
+                seen[tok].add(unique_key)
+                invert_index[tok].append(item)
+
+        with open(self.ngramed_symbol_path, "w", encoding="utf-8") as f:
+            # dict value 是 list[dict]，不做 sorted，保持原始顺序
+            json.dump(dict(invert_index), f, ensure_ascii=False, indent=4)
+
+
+def get_ngramed_symbol(self):
         with open(self.ngramed_symbol_path, "r", encoding="utf-8") as f:
             return json.load(f)
 

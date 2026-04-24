@@ -8,3 +8,7 @@ OUTPUT_DIR=str(Path(ROOT_DIR) / "output")
 TOKENIZER_DIR=str(Path(ROOT_DIR) / "tokenizer")
 EMBEDDING_DIR=str(Path(ROOT_DIR) / "embedding")
 EXPANSION_DIR=str(Path(ROOT_DIR) / "expansion")
+
+BASE_URL="https://dashscope.aliyuncs.com/compatible-mode/v1"
+API_KEY="sk-e2a20472cac148bdb711c663110c4d6f"
+BASE_MODEL="qwen-plus"

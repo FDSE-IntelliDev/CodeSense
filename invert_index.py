@@ -72,7 +72,7 @@ class InvertedIndexBuilder:
             max_abbr_len = math.ceil(len(original_name.replace(' ', '')) * 0.8)
             sub_seq=abbreviate(original_name, max_part_len=8 if 8 <= max_abbr_len else int(max_abbr_len * 0.8),
                            max_abbr_len=max_abbr_len)
-            invert_index[original_name].union(sub_seq)
+            invert_index[original_name].update(sub_seq)
 
         result = {k: sorted(list(v)) for k, v in invert_index.items()}
 

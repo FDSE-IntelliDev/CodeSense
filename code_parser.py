@@ -88,11 +88,11 @@ def list_source_files(project_path: str) -> List[str]:
 
 
 def analyze_file_ast(project_path: str, file_path: str):
-    file_rel = relpath(file_path, project_path)
+    file_abs = os.path.abspath(file_path)
     source = read_text(file_path)
     if source is None:
         return [], [], []
-    return parse_file_with_registry(file_rel, file_path, source)
+    return parse_file_with_registry(file_abs, file_path, source)
 
 
 def build_symbol_lookup(symbols: List[SymbolItem]) -> Dict[str, List[SymbolItem]]:

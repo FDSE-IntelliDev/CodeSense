@@ -8,13 +8,12 @@ Design goals from project requirements:
 4) Output stable JSON format: [{"keyword": str, "score": float}, ...].
 """
 
-from __future__ import annotations
-
 import json
 import re
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 from openai import OpenAI
+from definition import BASE_URL,BASE_MODEL,API_KEY
 
 @dataclass
 class LLMKeywordExtractorConfig:
@@ -53,7 +52,7 @@ class LLMKeywordExtractor:
             # self.client = OpenAI(base_url="https://api.poixe.com/v1",api_key="sk-wxSYiJvqK8bUVQPY3p4HRP1oePt6qFrhe4vQtrQZDLBWPCpf")
             # self.client = OpenAI(base_url="https://openkey.cloud/v1",
             #                  api_key="sk-qJN0l8K8tFDtobxlDc083e5c4d684062B49b02A5C6F3Be6a")
-            self.client=OpenAI(base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",api_key="sk-e2a20472cac148bdb711c663110c4d6f")
+            self.client=OpenAI(base_url=BASE_URL,api_key=API_KEY)
 
         prompt = self._build_prompt(query)
         # OpenAI Responses API style
