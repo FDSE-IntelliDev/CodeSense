@@ -1,0 +1,15 @@
+{
+  "keywords": [
+    {
+      "term": "readahead",
+      "synonyms": ["read-ahead", "read_ahead", "prefetch"]
+    }
+  ],
+  "target": "function",
+  "filters": [
+    { "concept": "disk", "relation": "related_to" },
+    { "concept": "performance", "relation": "related_to" }
+  ],
+  "exclude": [],
+  "raw_query": "search functions that enhance readahead performance in disk"
+}

@@ -4,3 +4,6 @@
 # Python cache directories (all levels)
 __pycache__/
 **/__pycache__/
+
+# Local history
+.history
