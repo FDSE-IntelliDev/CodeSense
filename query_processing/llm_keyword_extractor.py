@@ -9,6 +9,7 @@ Design goals from project requirements:
 """
 
 import json
+import os
 import re
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
@@ -32,20 +33,19 @@ class LLMKeywordExtractor:
     ) -> None:
         self.config = config or LLMKeywordExtractorConfig()
         self.client = client
+        dsl_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "DSL", "query_dsl.json")
+        with open(dsl_path, "r", encoding="utf-8") as f:
+            self.dsl = json.load(f)
 
-    def extract_keywords(self, query: str) -> List[Dict[str, float]]:
+    def extract_keywords(self, query: str) -> Dict[str, Any]:
         query = (query or "").strip()
         if not query:
-            return []
+            return {"keywords": [], "target": "any", "filters": [], "exclude": [], "raw_query": query}
 
         raw_text = self._call_llm(query)
         parsed = self._parse_json(raw_text)
         validated = self._validate_and_normalize(query, parsed)
-        # return validated[: self.config.top_n]
-        return {
-            "keywords": validated["keywords"][: self.config.top_n],
-            "constraints": validated["constraints"][:8],
-        }
+        return validated
 
     def _call_llm(self, query: str) -> str:
         if self.client is None:
@@ -95,63 +95,36 @@ class LLMKeywordExtractor:
 # {query}
 # """.strip()
     def _build_prompt(self, query: str) -> str:
+        dsl_schema = json.dumps(self.dsl, indent=2, ensure_ascii=False)
         return f"""
     Task:
-    Given a user query for code search, extract two outputs:
+    You are given a DSL (Domain Specific Language) format for structuring code search queries.
+    Your job is to parse the user's natural language query and produce a JSON object that conforms to this DSL.
 
-    A) keywords: core retrieval terms (with score)
-    B) constraints: retrieval constraints that narrow search scope/context
+    DSL schema definition (with an example):
+    {dsl_schema}
+
+    Field descriptions:
+    - "keywords": core search terms extracted from the query. Each keyword has:
+      - "term": the exact contiguous span from the original query that represents the main retrieval target
+      - "synonyms": alternative forms of the term commonly seen in code (e.g., snake_case, camelCase, abbreviations)
+    - "target": the type of code element to search for. One of: function, class, method, variable, constant, interface, struct, module, file, any
+    - "filters": contextual constraints that narrow the search scope. Each filter has:
+      - "concept": the exact span or semantic concept from the query
+      - "relation": how the concept relates to the keywords. One of: related_to, uses, implements, extends, calls, is_called_by, contains, returns, handles, modifies, optimizes
+    - "exclude": keywords or path patterns to exclude from results
+    - "raw_query": the original query string, copied verbatim
 
     Hard constraints:
-    1) Every extracted text span MUST be an exact contiguous substring from the original query.
-    2) Do NOT rewrite terms not present in query
-       (e.g., query has "readahead" -> do not output "read ahead").
-    3) Do NOT output skip-gram phrases that skip middle words
-       (e.g., query "function that performs" -> do not output "function performs").
-    4) Prefer concrete semantic action/entity phrases as keywords.
-    5) Generic context words (e.g., function/module/class/file/path/language/location-like hints)
-       should be treated as constraints unless they are clearly core retrieval targets.
-    6) Keep keywords concise and useful for retrieval ranking.
-    7) Scores must be in [0.0, 1.0].
+    1) "term" in keywords MUST be an exact contiguous substring from the original query.
+    2) Do NOT rewrite terms not present in query (e.g., query has "readahead" -> do not output "read ahead" as term).
+    3) Do NOT output skip-gram phrases that skip middle words.
+    4) "synonyms" SHOULD include common code variants (snake_case, camelCase, abbreviations) of the term.
+    5) "target" should be inferred from the query; default to "any" if unclear.
+    6) "filters" capture contextual/scope info that is NOT the main search target but helps refine results.
+    7) "raw_query" must be the exact original query string.
 
-    How to separate keywords vs constraints:
-    - keywords:
-      - represent the main intent/action/entity to retrieve
-      - if removed, the query intent would be significantly lost
-      - usually verbs+nouns or key domain terms
-    - constraints:
-      - represent scope/filter conditions (module, layer, artifact type, location, language, framework, etc.)
-      - refine where/how to search but are not the main target
-      - include relation hints such as "in X", "under Y", "from Z", "as function/method/class"
-
-    Output JSON only (no markdown, no extra text):
-    {{
-      "keywords": [
-        {{"text": "exact span from query", "score": 0.0}}
-      ],
-      "constraints": [
-        {{
-          "text": "exact span from query",
-          "type": "scope | location | artifact | language | framework | relation | other",
-          "score": 0.0
-        }}
-      ]
-    }}
-
-    Additional requirements:
-    - Remove duplicates.
-    - Keep at most 6 keywords and 8 constraints.
-    - Sort each list by score descending.
-    - If uncertain, still output best-effort items with lower score.
-
-    Example:
-    query: "function that performs readahead in disk"
-    valid interpretation:
-    - keywords: "readahead"
-    - constraints: "function", "in disk", "disk"
-    invalid:
-    - keyword "read ahead" (not exact span)
-    - keyword "function performs" (skip-gram)
+    Output JSON only (no markdown, no extra text). The output must conform to the DSL schema above.
 
     Now process this query:
     {query}
@@ -176,19 +149,12 @@ class LLMKeywordExtractor:
     #                 return []
     #     return []
     def _parse_json(self, text: str) -> Dict[str, Any]:
-        """
-        Parse LLM output into object schema:
-        {
-          "keywords": [{"text": "...", "score": ...}, ...],
-          "constraints": [{"text": "...", "type": "...", "score": ...}, ...]
-        }
-        """
+        empty = {"keywords": [], "target": "any", "filters": [], "exclude": [], "raw_query": ""}
         if not text or not text.strip():
-            return {"keywords": [], "constraints": []}
+            return empty
 
         text = text.strip()
 
-        # 1) direct parse
         try:
             obj = json.loads(text)
             if isinstance(obj, dict):
@@ -196,7 +162,6 @@ class LLMKeywordExtractor:
         except json.JSONDecodeError:
             pass
 
-        # 2) extract largest JSON object block if model returned extra text/fences
         m = re.search(r"\{[\s\S]*\}", text)
         if m:
             try:
@@ -206,8 +171,7 @@ class LLMKeywordExtractor:
             except Exception:
                 pass
 
-        # 3) fallback empty
-        return {"keywords": [], "constraints": []}
+        return empty
 
     # def _validate_and_normalize(
     #     self, query: str, items: List[Dict[str, Any]]
@@ -272,104 +236,85 @@ class LLMKeywordExtractor:
     #     return [{"keyword": k, "score": round(v, 4)} for k, v in ranked]
     def _validate_and_normalize(
             self, query: str, payload: Dict[str, Any]
-    ) -> Dict[str, List[Dict[str, Any]]]:
+    ) -> Dict[str, Any]:
         """
-        Validate and normalize LLM payload with two channels: keywords + constraints.
+        对LLM返回的原始DSL结果进行校验和归一化，确保输出符合DSL规范。
 
-        Rules:
-        - text must be contiguous substring of original query (case-insensitive)
-        - score clamped to [0, 1]
-        - mild length penalty for long phrases
-        - deduplicate by text, keep highest score
-        - constraints normalize type into a controlled enum
+        处理逻辑：
+        1) keywords: 校验每个term必须是原始query的连续子串（大小写不敏感），
+           去重，保留synonyms列表，最多保留top_n个。
+        2) target: 校验是否属于允许的代码元素类型枚举，不合法则回退为"any"。
+        3) filters: 校验concept非空且去重，relation归一化到允许的枚举值，
+           不合法则回退为"related_to"，最多保留8个。
+        4) exclude: 清理为非空字符串列表。
+        5) raw_query: 强制使用原始query，不信任LLM的输出。
         """
         q_norm = self._norm_ws(query).lower()
 
-        raw_keywords = payload.get("keywords", [])
-        raw_constraints = payload.get("constraints", [])
-
-        if not isinstance(raw_keywords, list):
-            raw_keywords = []
-        if not isinstance(raw_constraints, list):
-            raw_constraints = []
-
-        keyword_map: Dict[str, float] = {}
-        constraint_map: Dict[str, Dict[str, Any]] = {}
-
-        allowed_types = {
-            "scope", "location", "artifact", "language",
-            "framework", "relation", "other"
+        allowed_targets = {
+            "function", "class", "method", "variable", "constant",
+            "interface", "struct", "module", "file", "any"
+        }
+        allowed_relations = {
+            "related_to", "uses", "implements", "extends", "calls",
+            "is_called_by", "contains", "returns", "handles", "modifies", "optimizes"
         }
 
-        def _normalize_score(v: Any) -> float:
-            try:
-                s = float(v)
-            except Exception:
-                s = 0.0
-            return max(0.0, min(1.0, s))
+        raw_keywords = payload.get("keywords", [])
+        if not isinstance(raw_keywords, list):
+            raw_keywords = []
 
-        def _length_penalty(text: str, score: float) -> float:
-            n_terms = len(text.split())
-            if n_terms >= 4:
-                return score * 0.8
-            if n_terms == 3:
-                return score * 0.9
-            return score
-
-        # keywords
+        keywords = []
+        seen_terms = set()
         for item in raw_keywords:
             if not isinstance(item, dict):
                 continue
-            text = self._norm_ws(str(item.get("text", "")).strip())
-            if not text:
+            term = self._norm_ws(str(item.get("term", "")).strip())
+            if not term or term.lower() in seen_terms:
                 continue
-            if text.lower() not in q_norm:
+            if term.lower() not in q_norm:
                 continue
+            synonyms = item.get("synonyms", [])
+            if not isinstance(synonyms, list):
+                synonyms = []
+            synonyms = [str(s).strip() for s in synonyms if str(s).strip()]
+            keywords.append({"term": term, "synonyms": synonyms})
+            seen_terms.add(term.lower())
 
-            score = _normalize_score(item.get("score", 0.0))
-            score = _length_penalty(text, score)
+        target = str(payload.get("target", "any")).strip().lower()
+        if target not in allowed_targets:
+            target = "any"
 
-            prev = keyword_map.get(text, 0.0)
-            if score > prev:
-                keyword_map[text] = round(score, 4)
+        raw_filters = payload.get("filters", [])
+        if not isinstance(raw_filters, list):
+            raw_filters = []
 
-        # constraints
-        for item in raw_constraints:
+        filters = []
+        seen_concepts = set()
+        for item in raw_filters:
             if not isinstance(item, dict):
                 continue
-            text = self._norm_ws(str(item.get("text", "")).strip())
-            if not text:
+            concept = self._norm_ws(str(item.get("concept", "")).strip())
+            if not concept or concept.lower() in seen_concepts:
                 continue
-            if text.lower() not in q_norm:
-                continue
+            relation = str(item.get("relation", "related_to")).strip().lower()
+            if relation not in allowed_relations:
+                relation = "related_to"
+            filters.append({"concept": concept, "relation": relation})
+            seen_concepts.add(concept.lower())
 
-            c_type = str(item.get("type", "other")).strip().lower()
-            if c_type not in allowed_types:
-                c_type = "other"
+        exclude = payload.get("exclude", [])
+        if not isinstance(exclude, list):
+            exclude = []
+        exclude = [str(e).strip() for e in exclude if str(e).strip()]
 
-            score = _normalize_score(item.get("score", 0.0))
-            score = _length_penalty(text, score)
-
-            prev = constraint_map.get(text)
-            if prev is None or score > float(prev["score"]):
-                constraint_map[text] = {
-                    "text": text,
-                    "type": c_type,
-                    "score": round(score, 4),
-                }
-
-        keywords = [
-                       {"text": k, "score": s}
-                       for k, s in sorted(keyword_map.items(), key=lambda x: x[1], reverse=True)
-                   ][:6]
-
-        constraints = sorted(
-            constraint_map.values(),
-            key=lambda x: x["score"],
-            reverse=True
-        )[:8]
-
-        return {"keywords": keywords, "constraints": constraints}
+        return {
+            "keywords": keywords[:self.config.top_n],
+            "target": target,
+            "filters": filters[:8],
+            "exclude": exclude,
+            "raw_query": query,
+        }
 
     @staticmethod
     def _norm_ws(text: str) -> str:
