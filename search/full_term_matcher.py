@@ -3,7 +3,7 @@ import json
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Set
 
-from expansion.abbreviate import abbreviate
+from expansion.abbreviate import abbreviate,normalize_entity
 from definition import OUTPUT_DIR
 
 
@@ -36,46 +36,45 @@ class FullTermMatcher:
     @staticmethod
     def _to_keyword_list(keyword_payload: Any) -> List[str]:
         """
-        Accept flexible inputs:
-        - list[str]
-        - list[{"keyword": ...}] from keyword_extractor
-        - dict with keys "keywords"/"expanded_keywords" from expansion output
+        Parse query DSL payload and extract keywords from:
+        - keywords[].term
+        - keywords[].synonyms[]
+        Returns a deduplicated list while preserving order.
         """
-        if keyword_payload is None:
+        if not isinstance(keyword_payload, dict):
+            return []
+
+        keywords = keyword_payload.get("keywords", [])
+        if not isinstance(keywords, list):
             return []
 
         out: List[str] = []
+        seen: Set[str] = set()
 
-        if isinstance(keyword_payload, list):
-            for item in keyword_payload:
-                if isinstance(item, str):
-                    out.append(item)
-                elif isinstance(item, dict):
-                    if "keyword" in item:
-                        out.append(str(item.get("keyword", "")))
-                    elif "text" in item:
-                        out.append(str(item.get("text", "")))
-            return [x for x in out if str(x).strip()]
+        for item in keywords:
+            if not isinstance(item, dict):
+                continue
 
-        if isinstance(keyword_payload, dict):
-            for key in ("keywords", "expanded_keywords"):
-                value = keyword_payload.get(key, [])
-                if isinstance(value, list):
-                    for item in value:
-                        if isinstance(item, str):
-                            out.append(item)
-                        elif isinstance(item, dict):
-                            if "keyword" in item:
-                                out.append(str(item.get("keyword", "")))
-                            elif "text" in item:
-                                out.append(str(item.get("text", "")))
-            return [x for x in out if str(x).strip()]
+            # 1) term
+            term = str(item.get("term", "")).strip()
+            if term and term not in seen:
+                seen.add(term)
+                out.append(term)
 
-        return []
+            # 2) synonyms
+            synonyms = item.get("synonyms", [])
+            if isinstance(synonyms, list):
+                for syn in synonyms:
+                    syn_s = str(syn).strip()
+                    if syn_s and syn_s not in seen:
+                        seen.add(syn_s)
+                        out.append(syn_s)
+
+        return out
 
     def _keyword_subsequences(self, keyword: str) -> Set[str]:
         """Generate abbreviation subsequences for one keyword."""
-        key = self._normalize(keyword)
+        key =keyword
         if not key:
             return set()
 
@@ -137,12 +136,7 @@ class FullTermMatcher:
                 if not isinstance(symbol, dict):
                     continue
 
-                name = str(symbol.get("name", "")).strip()
-                file_path = str(symbol.get("file", "")).strip()
-                rng = symbol.get("range", {}) or {}
-                start_line = rng.get("start_line", "")
-                end_line = rng.get("end_line", "")
-                unique_id = f"{name}|{file_path}|{start_line}|{end_line}"
+                unique_id= symbol.get("symbol_id")
 
                 if unique_id in seen:
                     continue
@@ -195,6 +189,55 @@ class FullTermMatcher:
             "detail": detail,
         }
 
+    def match_ngram(self, keyword_payload: Any) -> Dict[str, Any]:
+        """
+        Aggregate subtokens across all keywords:
+        keyword -> subsequences -> invert_index subtokens
+        """
+        keywords = self._to_keyword_list(keyword_payload)
+
+        detail: List[Dict[str, Any]] = []
+        all_subtokens: Set[str] = set()
+
+        for kw in keywords:
+            normalized_kw_list = normalize_entity(kw)
+            if not normalized_kw_list:
+                continue
+
+            subseqs = set()
+            for normalized_kw in normalized_kw_list:
+                if not normalized_kw:
+                    continue
+                subseqs.update(self._keyword_subsequences(normalized_kw))
+
+            # 可选的模型过滤步骤
+            # from expansion.model_filter import AbbreviationModelFilter
+            # self.model_filter = AbbreviationModelFilter()
+            #
+            # if subseqs:
+            #     filtered_subseqs = self.model_filter.filter_candidates(normalized_kw, list(subseqs))
+            #     # 始终保留原关键词本身，避免因模型阈值过滤掉原词
+            #     if normalized_kw not in filtered_subseqs:
+            #         filtered_subseqs.append(normalized_kw)
+            #     subseqs = set(filtered_subseqs)
+
+            subtokens = self._resolve_subtoken_candidates(subseqs)
+
+            all_subtokens.update(subtokens)
+
+            detail.append(
+                {
+                    "keyword": kw,
+                    "normalized_kws": normalized_kw_list,
+                    "subsequences": sorted(subseqs),
+                    "matched_subtokens": sorted(subtokens),
+                }
+            )
+
+        return {
+            "matched_subtokens": sorted(all_subtokens),
+            "detail": detail,
+        }
 
 
 if __name__ == "__main__":
@@ -203,10 +246,34 @@ if __name__ == "__main__":
         ngramed_symbol_path=f"{OUTPUT_DIR}/youlai-boot-master/ngramed_symbol.json",
     )
 
-    payload = {
-        "keywords": [{"text": "read ahead", "score": 0.9}],
-    }
+  #   payload = {
+  #   "keywords": [
+  #     {
+  #       "term": "readahead",
+  #       "synonyms": [
+  #         "read-ahead",
+  #         "read_ahead",
+  #         "prefetch"
+  #       ]
+  #     }
+  #   ],
+  #   "target": "function",
+  #   "filters": [
+  #     {
+  #       "concept": "disk",
+  #       "relation": "related_to"
+  #     }
+  #   ],
+  #   "exclude": [],
+  #   "raw_query": "function that performs readahead in disk"
+  # }
 
-    result = matcher.match_keywords(payload)
-    print(result["matched_symbols"])
-    print(result["detail"])
+    with open(f'{OUTPUT_DIR}/query_dsl_result.json', 'r', encoding='utf-8') as f:
+        payload = json.load(f)
+
+    # result = matcher.match_keywords(payload)
+    result=matcher.match_ngram(payload)
+    with open(f'{OUTPUT_DIR}/full_term_match_result.json', 'w', encoding='utf-8') as f:
+        json.dump(result, f, ensure_ascii=False, indent=2)
+    # print(result["matched_symbols"])
+    # print(result["detail"])

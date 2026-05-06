@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" width="1280" height="720">
+  <rect width="1280" height="720" fill="#F7FAFC" />
+  <rect x="0" y="0" width="1280" height="100" fill="#EAF1F8" />
+  <text x="64" y="66" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="40" font-weight="700" fill="#0B1F3A">Step4.2: Group Reranking</text>
+
+  <path fill="#FFFFFF" stroke="#CBD5E1" d="M76,150 H592 A12,12 0 0 1 604,162 V638 A12,12 0 0 1 592,650 H76 A12,12 0 0 1 64,638 V162 A12,12 0 0 1 76,150 Z" />
+  <text x="94" y="204" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="28" font-weight="700" fill="#1F6FEB">核心思想</text>
+  <text x="94" y="248" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="22" fill="#334155">单元素分数低，不代表组内任务相关性低</text>
+  <text x="94" y="286" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="22" fill="#334155">引入调用链与关系图结构做组级加权</text>
+
+  <path fill="#EAF1F8" d="M104,330 H564 A10,10 0 0 1 574,340 V600 A10,10 0 0 1 564,610 H104 A10,10 0 0 1 94,600 V340 A10,10 0 0 1 104,330 Z" />
+  <circle cx="220" cy="410" r="54" fill="#1F6FEB" />
+  <text x="220" y="418" text-anchor="middle" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="16" fill="#F7FAFC">init_readahead</text>
+  <circle cx="460" cy="520" r="54" fill="#0B1F3A" />
+  <text x="460" y="528" text-anchor="middle" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="16" fill="#F7FAFC">malloc_disk</text>
+  <line x1="266" y1="438" x2="414" y2="492" stroke="#12B5CB" stroke-width="4" />
+  <polygon points="414,492 394,490 404,476" fill="#12B5CB" />
+  <text x="286" y="468" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="20" fill="#334155">calls</text>
+
+  <path fill="#FFFFFF" stroke="#CBD5E1" d="M656,150 H1204 A12,12 0 0 1 1216,162 V638 A12,12 0 0 1 1204,650 H656 A12,12 0 0 1 644,638 V162 A12,12 0 0 1 656,150 Z" />
+  <text x="674" y="204" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="28" font-weight="700" fill="#1F6FEB">案例说明</text>
+  <text x="674" y="248" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="22" fill="#334155">Query: disk 模块下与 readahead 相关函数</text>
+  <text x="674" y="286" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="22" fill="#334155">malloc_disk 单看关键词不匹配，但被关键函数调用</text>
+  <text x="674" y="324" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="22" fill="#334155">在 group 上下文中应提升其相关性权重</text>
+
+  <path fill="#12B5CB" fill-opacity="0.12" stroke="#12B5CB" d="M684,380 H1176 A10,10 0 0 1 1186,390 V520 A10,10 0 0 1 1176,530 H684 A10,10 0 0 1 674,520 V390 A10,10 0 0 1 684,380 Z" />
+  <text x="700" y="438" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="26" font-weight="700" fill="#0B1F3A">结论</text>
+  <text x="700" y="476" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="22" fill="#334155">group rerank 让结构相关代码在最终排序中可见</text>
+
+  <text x="64" y="690" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="16" fill="#64748B">08</text>
+</svg>

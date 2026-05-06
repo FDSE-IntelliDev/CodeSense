@@ -420,6 +420,33 @@ def combine_word_candidates(
 
     return sorted(results, key=lambda x: (len(x), x))
 
+SPECIAL_CHAR = ['-', '/']
+def normalize_entity(item: str):
+    normalize_result = set()
+    if len(item) > 40 and '_' in item:
+        return list(normalize_result)
+
+    item = re.sub(r'[(\[{][^(){}[\]]*[)\]}]', '', item).strip()  # 去除所有括号及括号中内容
+    item = re.sub(r'[.,\\!@#$%^*=+`~\"\';:<>?]', ' ', item).strip()  # 去除除/ - _ &外的特殊字符
+    normalized = re.sub(r'[/]', ' ', item)  # 把/换为空格
+    # normalized = re.split(r'[\[\(<{]', normalized)[0].strip()
+    normalized = re.sub(r'-', ' ', normalized).lower()  # 把连字符-换为空格
+    normalized = normalized.strip(".,/\\!@#$%^&*()-_=+`~\"';:<>?") # 去除字符串首尾的标点符号和特殊字符
+    normalized = re.sub(r'\s+', ' ', normalized)
+    normalize_result.add(normalized.strip())
+
+    if any(special_symbol in item for special_symbol in SPECIAL_CHAR):
+        normalized = item
+        for special_symbol in SPECIAL_CHAR:
+            if special_symbol in normalized:
+                normalized = normalized.replace(special_symbol, '')
+        normalized = normalized.strip(".,/\\!@#$%^&*()-_=+`~\"';:<>?")
+        normalized = re.sub(r'\s+', ' ', normalized)
+        normalize_result.add(normalized.strip())
+
+    normalize_result.add(item.replace('_',' '))
+
+    return list(normalize_result)
 
 # =========================
 # 7. Main abbreviation function
@@ -484,8 +511,149 @@ def abbreviate(
     return abbreviations
 
 
-# abbreviate("out of data band")
+def abbreviate_new(
+        phrase: str,
+        max_part_len: int = 8,
+        max_abbr_len: int = 8
+) -> Set[str]:
+    """
+    New abbreviation generator for CodeSearch:
+    keep high recall from original abbreviate() while adding pragmatic constraints
+    to reduce low-quality/noisy candidates.
 
+    Input/Output format is the same as abbreviate():
+      - input: phrase, max_part_len, max_abbr_len
+      - output: Set[str]
+    """
+    phrase_stripped = phrase.strip()
+    if not phrase_stripped:
+        return set()
+
+    # Keep old behavior contract for very short phrase.
+    if len(phrase_stripped) <= 3:
+        return set(phrase_stripped)
+
+    phrase_lower = phrase_stripped.lower()
+    phrase_compact = re.sub(r"\s+", "", phrase_lower)
+
+    # Code-search oriented soft constraints
+    MIN_ABBR_LEN = 2
+    # Upper bound is adaptive: allow a bit longer than max_abbr_len for multi-word full/partial forms.
+    ABS_MAX_LEN = max(max_abbr_len + 2, int(len(phrase_compact) * 0.9))
+    # Require abbreviation to be sufficiently shorter than full phrase in compact form.
+    # (except very short phrases)
+    MAX_RELATIVE_RATIO = 0.9
+    # Non-alnum too high => noisy candidate
+    MIN_ALNUM_RATIO = 0.6
+
+    def _tokenize_variants(p: str) -> List[Tuple[str, ...]]:
+        variants: List[Tuple[str, ...]] = []
+        t0 = tuple(tokenize(p, split_type=False))
+        if t0:
+            variants.append(t0)
+
+        t1 = tuple(tokenize(p, split_type="camel"))
+        if t1 and t1 != t0:
+            variants.append(t1)
+
+        t2 = tuple(tokenize(p, split_type="tokenizer"))
+        if t2 and t2 != t0 and t2 != t1:
+            variants.append(t2)
+
+        return variants
+
+    def _is_noise_candidate(abbr: str, tokens: Tuple[str, ...]) -> bool:
+        a = abbr.strip()
+        if not a:
+            return True
+
+        compact = re.sub(r"[^a-zA-Z0-9]", "", a.lower())
+        if not compact:
+            return True
+
+        # length constraints
+        if len(compact) < MIN_ABBR_LEN:
+            return True
+        if len(compact) > ABS_MAX_LEN:
+            return True
+
+        # symbol ratio constraint
+        if len(compact) < len(a) * MIN_ALNUM_RATIO:
+            return True
+
+        # Should usually be shorter than full phrase
+        if len(phrase_compact) >= 6 and len(compact) >= int(len(phrase_compact) * MAX_RELATIVE_RATIO):
+            return True
+
+        # Exclude identical full forms
+        if compact == phrase_compact:
+            return True
+
+        # Remove obvious stop-word dominated artifacts for multi-word phrases:
+        # if all alphabetic chars come from stop-words and abbreviation length is short.
+        if len(tokens) > 1:
+            content_tokens = [t for t in tokens if t and t not in STOP_WORDS]
+            if not content_tokens and len(compact) <= 3:
+                return True
+
+        # Very weak patterns: repeated same char like "aaa", "__", etc.
+        alpha_num = re.sub(r"[^a-zA-Z0-9]", "", a)
+        if len(alpha_num) >= 3 and len(set(alpha_num.lower())) == 1:
+            return True
+
+        return False
+
+    def _collect_from_tokens(tokens: Tuple[str, ...]) -> Set[str]:
+        if not tokens:
+            return set()
+
+        if len(tokens) == 1:
+            raw_candidates = word_candidates(tokens[0], max_part_len)
+        else:
+            candidate_groups = [
+                (word, word_candidates(word, max_part_len))
+                for word in tokens
+            ]
+            raw_candidates = combine_word_candidates(candidate_groups, max_abbr_len, max_part_len)
+
+        cleaned: Set[str] = set()
+        for abbr in raw_candidates:
+            if _is_noise_candidate(abbr, tokens):
+                continue
+
+            # Final validity check reused from current pipeline
+            if handler.check_abbr_simple(phrase_lower, abbr, True):
+                cleaned.add(abbr)
+
+        # Add first-letter acronym for multi-word phrases (high value in code-search)
+        if len(tokens) >= 2:
+            initials = "".join(t[0] for t in tokens if t)
+            if initials and not _is_noise_candidate(initials, tokens):
+                if handler.check_abbr_simple(phrase_lower, initials, True):
+                    cleaned.add(initials)
+
+        return cleaned
+
+    result: Set[str] = set()
+    for tv in _tokenize_variants(phrase_stripped):
+        result.update(_collect_from_tokens(tv))
+
+    # Safety post-filter: keep deterministic stable outputs.
+    # 1) Remove overly long surface forms.
+    # 2) Keep only meaningful alnum ratio.
+    final_set = {
+        x for x in result
+        if x
+        and len(re.sub(r"[^a-zA-Z0-9]", "", x)) >= MIN_ABBR_LEN
+        and len(re.sub(r"[^a-zA-Z0-9]", "", x)) <= ABS_MAX_LEN
+        and len(re.sub(r"[^a-zA-Z0-9]", "", x)) >= len(x) * MIN_ALNUM_RATIO
+    }
+
+    return final_set
+
+# a=abbreviate_new("auth_check")
+# b=abbreviate("auth_check")
+# c=1
 # def build_corpus_maps(corpus):
 #     normalized_to_original = {}
 #     for item in corpus:
@@ -584,29 +752,6 @@ def gen_special_char_combinations():
     return results
 
 
-def normalize_entity(item: str):
-    normalize_result = set()
-    if len(item) > 40 and '_' in item:
-        return list(normalize_result)
-
-    item = re.sub(r'[(\[{][^(){}[\]]*[)\]}]', '', item).strip()  # 去除所有括号及括号中内容
-    item = re.sub(r'[.,\\!@#$%^*=+`~\"\';:<>?]', ' ', item).strip()  # 去除除/ - _ &外的特殊字符
-    normalized = re.sub(r'[/]', ' ', item)  # 把/换为空格
-    # normalized = re.split(r'[\[\(<{]', normalized)[0].strip()
-    normalized = re.sub(r'-', ' ', normalized).lower()  # 把连字符-换为空格
-    normalized = normalized.strip(".,/\\!@#$%^&*()-_=+`~\"';:<>?")
-    normalized = re.sub(r'\s+', ' ', normalized)
-    normalize_result.add(normalized.strip())
-
-    if any(special_symbol in item for special_symbol in SPECIAL_CHAR):
-        normalized = item
-        for special_symbol in SPECIAL_CHAR:
-            if special_symbol in normalized:
-                normalized = normalized.replace(special_symbol, '')
-        normalized = normalized.strip(".,/\\!@#$%^&*()-_=+`~\"';:<>?")
-        normalized = re.sub(r'\s+', ' ', normalized)
-        normalize_result.add(normalized.strip())
-    return list(normalize_result)
 
 
 # 给用于生成子序列的实体normalize（这里不需要compact，因为对于短语来说进行compact会导致多个词变为一个词，生成子序列可能会生成很多无效子序列）

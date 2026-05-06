@@ -139,7 +139,10 @@ def run(project_path: str, output_dir: str):
 
     with open(os.path.join(output_dir, "symbols_index.json"), "w", encoding="utf-8") as f:
         json.dump(
-            [{**asdict(s), "range": asdict(s.range)} for s in all_symbols],
+            [
+                {"symbol_id": idx, **asdict(s), "range": asdict(s.range)}
+                for idx, s in enumerate(all_symbols, start=1)
+            ],
             f,
             ensure_ascii=False,
             indent=2,
@@ -160,8 +163,8 @@ def main():
     parser.add_argument("--project_path", help="项目根目录路径")
     parser.add_argument("--output", default=".", help="输出目录，默认当前目录")
     args = parser.parse_args([
-        "--project_path","/Users/huangzhuochen/IdeaProjects/youlai-boot-master",
-        "--output","./output/youlai-boot-master"
+        "--project_path","/Users/huangzhuochen/IdeaProjects/youlai-boot-master-gt",
+        "--output","./output/youlai-boot-master-gt"
     ])
 
 

@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" width="1280" height="720">
+  <rect width="1280" height="720" fill="#F7FAFC"/>
+  <rect x="0" y="0" width="1280" height="100" fill="#EAF1F8"/>
+  <text x="64" y="66" font-family='"Microsoft YaHei", "PingFang SC", Arial, sans-serif' font-size="40" font-weight="700" fill="#0B1F3A">Step1: DSL-Driven Keyword Extraction</text>
+
+  <rect x="64" y="140" width="530" height="500" rx="12" fill="#FFFFFF" stroke="#CBD5E1"/>
+  <text x="94" y="186" font-family='"Microsoft YaHei", "PingFang SC", Arial, sans-serif' font-size="26" font-weight="700" fill="#1F6FEB">Query → Structured Query</text>
+
+  <rect x="94" y="220" width="470" height="390" rx="10" fill="#0B1F3A"/>
+  <text x="116" y="260" font-family='"Microsoft YaHei", "PingFang SC", Arial, sans-serif' font-size="18" fill="#EAF1F8">{"keywords":[{"term":"readahead",</text>
+  <text x="116" y="292" font-family='"Microsoft YaHei", "PingFang SC", Arial, sans-serif' font-size="18" fill="#EAF1F8">"synonyms":["read_ahead","prefetch"]}],</text>
+  <text x="116" y="324" font-family='"Microsoft YaHei", "PingFang SC", Arial, sans-serif' font-size="18" fill="#EAF1F8">"target":"function",</text>
+  <text x="116" y="356" font-family='"Microsoft YaHei", "PingFang SC", Arial, sans-serif' font-size="18" fill="#EAF1F8">"filters":[{"concept":"disk"},</text>
+  <text x="116" y="388" font-family='"Microsoft YaHei", "PingFang SC", Arial, sans-serif' font-size="18" fill="#EAF1F8">{"concept":"performance"}]}</text>
+
+  <rect x="640" y="140" width="576" height="150" rx="12" fill="#FFFFFF" stroke="#CBD5E1"/>
+  <text x="670" y="196" font-family='"Microsoft YaHei", "PingFang SC", Arial, sans-serif' font-size="26" font-weight="700" fill="#1F6FEB">统一语义接口</text>
+  <text x="670" y="234" font-family='"Microsoft YaHei", "PingFang SC", Arial, sans-serif' font-size="21" fill="#334155">将自然语言 query 映射为可执行检索意图</text>
+
+  <rect x="640" y="315" width="576" height="150" rx="12" fill="#FFFFFF" stroke="#CBD5E1"/>
+  <text x="670" y="371" font-family='"Microsoft YaHei", "PingFang SC", Arial, sans-serif' font-size="26" font-weight="700" fill="#1F6FEB">结构化字段</text>
+  <text x="670" y="409" font-family='"Microsoft YaHei", "PingFang SC", Arial, sans-serif' font-size="21" fill="#334155">keywords / target / filters / exclude</text>
+
+  <rect x="640" y="490" width="576" height="150" rx="12" fill="#12B5CB" fill-opacity="0.12" stroke="#12B5CB"/>
+  <text x="670" y="546" font-family='"Microsoft YaHei", "PingFang SC", Arial, sans-serif' font-size="26" font-weight="700" fill="#0B1F3A">工程价值</text>
+  <text x="670" y="584" font-family='"Microsoft YaHei", "PingFang SC", Arial, sans-serif' font-size="21" fill="#334155">为检索、过滤、重排提供一致输入协议</text>
+
+  <text x="64" y="690" font-family='"Microsoft YaHei", "PingFang SC", Arial, sans-serif' font-size="16" fill="#64748B">04</text>
+</svg>

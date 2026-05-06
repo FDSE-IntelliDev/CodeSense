@@ -1,0 +1,24 @@
+{
+  "intent": {
+    "action": {
+      "term": "add",
+      "synonyms": ["create", "insert", "register", "append"]
+    },
+    "object": {
+      "term": "user",
+      "synonyms": ["account", "member", "profile"]
+    }
+  },
+  "keywords": [
+    {
+      "term": "add user",
+      "synonyms": ["create user", "register user"]
+    }
+  ],
+  "target": "function",
+  "filters": [
+    { "concept": "authentication", "relation": "related_to" }
+  ],
+  "exclude": [],
+  "raw_query": "functions that add user accounts"
+}

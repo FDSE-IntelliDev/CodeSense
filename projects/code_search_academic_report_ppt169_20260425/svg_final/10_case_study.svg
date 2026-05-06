@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" width="1280" height="720">
+  <rect width="1280" height="720" fill="#F7FAFC" />
+  <rect x="0" y="0" width="1280" height="100" fill="#EAF1F8" />
+  <text x="64" y="66" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="40" font-weight="700" fill="#0B1F3A">Case Study: disk + readahead 查询链路</text>
+
+  <text x="64" y="170" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="24" fill="#0F172A">raw_query: search functions that enhance readahead performance in disk</text>
+
+  <line x1="64" y1="240" x2="1216" y2="240" stroke="#CBD5E1" stroke-width="2" />
+
+  <text x="64" y="310" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="30" font-weight="700" fill="#1F6FEB">候选集收敛轨迹</text>
+  <text x="64" y="356" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="24" fill="#334155">高召回候选：N = 1200+</text>
+  <text x="64" y="394" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="24" fill="#334155">Rule + Semantic 过滤后：N = 180</text>
+  <text x="64" y="432" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="24" fill="#334155">Single + Group rerank 后：Top-K = 20</text>
+
+  <path fill="#0B1F3A" d="M692,286 H1204 A12,12 0 0 1 1216,298 V594 A12,12 0 0 1 1204,606 H692 A12,12 0 0 1 680,594 V298 A12,12 0 0 1 692,286 Z" />
+  <text x="710" y="340" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="28" font-weight="700" fill="#F7FAFC">Top 结果示例</text>
+  <text x="710" y="386" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="21" fill="#EAF1F8">1) init_readahead()</text>
+  <text x="710" y="422" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="21" fill="#EAF1F8">2) malloc_disk()</text>
+  <text x="710" y="458" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="21" fill="#EAF1F8">3) adjust_readahead_window()</text>
+  <text x="710" y="504" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="22" fill="#12B5CB">其中 malloc_disk 因组关系获得加权提升</text>
+
+  <text x="64" y="690" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="16" fill="#64748B">10</text>
+</svg>

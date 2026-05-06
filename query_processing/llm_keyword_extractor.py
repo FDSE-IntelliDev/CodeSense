@@ -97,34 +97,72 @@ class LLMKeywordExtractor:
     def _build_prompt(self, query: str) -> str:
         dsl_schema = json.dumps(self.dsl, indent=2, ensure_ascii=False)
         return f"""
-    Task:
-    You are given a DSL (Domain Specific Language) format for structuring code search queries.
-    Your job is to parse the user's natural language query and produce a JSON object that conforms to this DSL.
+   You are an expert code search query parser.
 
-    DSL schema definition (with an example):
-    {dsl_schema}
+Your task is to transform a natural language query about code search into a structured DSL in JSON format.
 
-    Field descriptions:
-    - "keywords": core search terms extracted from the query. Each keyword has:
-      - "term": the exact contiguous span from the original query that represents the main retrieval target
-      - "synonyms": alternative forms of the term commonly seen in code (e.g., snake_case, camelCase, abbreviations)
-    - "target": the type of code element to search for. One of: function, class, method, variable, constant, interface, struct, module, file, any
-    - "filters": contextual constraints that narrow the search scope. Each filter has:
-      - "concept": the exact span or semantic concept from the query
-      - "relation": how the concept relates to the keywords. One of: related_to, uses, implements, extends, calls, is_called_by, contains, returns, handles, modifies, optimizes
-    - "exclude": keywords or path patterns to exclude from results
-    - "raw_query": the original query string, copied verbatim
+## DSL schema
+The output must strictly follow this JSON structure:
 
-    Hard constraints:
-    1) "term" in keywords MUST be an exact contiguous substring from the original query.
-    2) Do NOT rewrite terms not present in query (e.g., query has "readahead" -> do not output "read ahead" as term).
-    3) Do NOT output skip-gram phrases that skip middle words.
-    4) "synonyms" SHOULD include common code variants (snake_case, camelCase, abbreviations) of the term.
-    5) "target" should be inferred from the query; default to "any" if unclear.
-    6) "filters" capture contextual/scope info that is NOT the main search target but helps refine results.
-    7) "raw_query" must be the exact original query string.
+{dsl_schema}
 
-    Output JSON only (no markdown, no extra text). The output must conform to the DSL schema above.
+## Instructions
+
+1. Keywords Extraction
+- Identify the most important technical terms in the query.
+- Normalize them to a canonical form.
+- Add common variations (e.g., hyphenation, underscore, abbreviations).
+- Avoid overly generic words (e.g., "code", "functionality").
+
+2. Target Identification
+- Infer the target code element type:
+  - "function"
+  - "class"
+  - "method"
+  - "variable"
+  - "file"
+  - "module"
+- Default to "function" if unclear.
+
+3. Filters Extraction
+- Extract contextual constraints such as:
+  - domain (e.g., disk, network, memory)
+  - purpose (e.g., performance, security, caching)
+- Represent each as:
+  {{ "concept": "...", "relation": "related_to" }}
+
+4. Exclusion Extraction
+- Identify negative constraints (e.g., "not using cache", "exclude deprecated").
+- Put them into the "exclude" list.
+- If none, return an empty list.
+
+5. Output Rules
+- Output MUST be valid JSON.
+- Do NOT include any explanation.
+- Do NOT hallucinate fields outside the schema.
+- Keep the output concise and precise.
+
+## Example
+
+Input:
+"search functions that enhance readahead performance in disk"
+
+Output:
+{{
+  "keywords": [
+    {{
+      "term": "readahead",
+      "synonyms": ["read-ahead", "read_ahead", "prefetch"]
+    }}
+  ],
+  "target": "function",
+  "filters": [
+    {{"concept": "disk", "relation": "related_to" }},
+    {{"concept": "performance", "relation": "related_to" }}
+  ],
+  "exclude": [],
+  "raw_query": "search functions that enhance readahead performance in disk"
+}}
 
     Now process this query:
     {query}

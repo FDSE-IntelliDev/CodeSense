@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" width="1280" height="720">
+  <rect width="1280" height="720" fill="#F7FAFC"/>
+  <rect x="0" y="0" width="1280" height="100" fill="#EAF1F8"/>
+  <text x="64" y="66" font-family='"Microsoft YaHei", "PingFang SC", Arial, sans-serif' font-size="40" font-weight="700" fill="#0B1F3A">Single + Group 融合排序</text>
+
+  <rect x="64" y="140" width="360" height="500" rx="12" fill="#FFFFFF" stroke="#CBD5E1"/>
+  <text x="94" y="192" font-family='"Microsoft YaHei", "PingFang SC", Arial, sans-serif' font-size="28" font-weight="700" fill="#1F6FEB">输入分数</text>
+  <text x="94" y="236" font-family='"Microsoft YaHei", "PingFang SC", Arial, sans-serif' font-size="22" fill="#334155">• LLM relevance</text>
+  <text x="94" y="270" font-family='"Microsoft YaHei", "PingFang SC", Arial, sans-serif' font-size="22" fill="#334155">• Token overlap</text>
+  <text x="94" y="304" font-family='"Microsoft YaHei", "PingFang SC", Arial, sans-serif' font-size="22" fill="#334155">• Code weight</text>
+  <text x="94" y="338" font-family='"Microsoft YaHei", "PingFang SC", Arial, sans-serif' font-size="22" fill="#334155">• Group boost</text>
+
+  <rect x="460" y="140" width="360" height="500" rx="12" fill="#FFFFFF" stroke="#CBD5E1"/>
+  <text x="490" y="192" font-family='"Microsoft YaHei", "PingFang SC", Arial, sans-serif' font-size="28" font-weight="700" fill="#1F6FEB">融合策略</text>
+  <text x="490" y="236" font-family='"Microsoft YaHei", "PingFang SC", Arial, sans-serif' font-size="18" fill="#0F172A">score_final =</text>
+  <text x="490" y="268" font-family='"Microsoft YaHei", "PingFang SC", Arial, sans-serif' font-size="18" fill="#0F172A">w1*s_llm + w2*s_tok +</text>
+  <text x="490" y="300" font-family='"Microsoft YaHei", "PingFang SC", Arial, sans-serif' font-size="18" fill="#0F172A">w3*s_weight + w4*s_group</text>
+  <text x="490" y="344" font-family='"Microsoft YaHei", "PingFang SC", Arial, sans-serif' font-size="22" fill="#334155">按 query 类型动态调节权重</text>
+
+  <rect x="856" y="140" width="360" height="500" rx="12" fill="#FFFFFF" stroke="#CBD5E1"/>
+  <text x="886" y="192" font-family='"Microsoft YaHei", "PingFang SC", Arial, sans-serif' font-size="28" font-weight="700" fill="#1F6FEB">输出结果</text>
+  <rect x="886" y="230" width="300" height="62" rx="8" fill="#0B1F3A"/>
+  <text x="906" y="270" font-family='"Microsoft YaHei", "PingFang SC", Arial, sans-serif' font-size="20" fill="#F7FAFC">1. init_readahead</text>
+  <rect x="886" y="306" width="300" height="62" rx="8" fill="#1F6FEB"/>
+  <text x="906" y="346" font-family='"Microsoft YaHei", "PingFang SC", Arial, sans-serif' font-size="20" fill="#F7FAFC">2. malloc_disk</text>
+  <rect x="886" y="382" width="300" height="62" rx="8" fill="#12B5CB"/>
+  <text x="906" y="422" font-family='"Microsoft YaHei", "PingFang SC", Arial, sans-serif' font-size="20" fill="#0B1F3A">3. readahead_buffer</text>
+
+  <text x="64" y="690" font-family='"Microsoft YaHei", "PingFang SC", Arial, sans-serif' font-size="16" fill="#64748B">09</text>
+</svg>

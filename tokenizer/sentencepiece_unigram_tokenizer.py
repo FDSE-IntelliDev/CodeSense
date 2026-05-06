@@ -50,7 +50,7 @@ def build_corpus(symbols_json_path=f"{OUTPUT_DIR}/symbols_index.json", output_fi
         "count": len(names),
     }
 
-# build_corpus('../output/youlai-boot-master/symbols_index.json', corpus_file)
+# build_corpus('../output/youlai-boot-master-gt/symbols_index.json', corpus_file)
 
 
 def train_kernel_unigram(corpus_file,

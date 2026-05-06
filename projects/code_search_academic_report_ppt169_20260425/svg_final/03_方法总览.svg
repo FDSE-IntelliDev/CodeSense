@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" width="1280" height="720">
+  <rect width="1280" height="720" fill="#F7FAFC" />
+  <rect x="0" y="0" width="1280" height="100" fill="#EAF1F8" />
+  <text x="64" y="66" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="40" font-weight="700" fill="#0B1F3A">End-to-End Pipeline</text>
+
+  <path fill="#0B1F3A" d="M76,140 H232 A12,12 0 0 1 244,152 V248 A12,12 0 0 1 232,260 H76 A12,12 0 0 1 64,248 V152 A12,12 0 0 1 76,140 Z" />
+  <text x="154" y="204" text-anchor="middle" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="24" fill="#F7FAFC">Query 输入</text>
+
+  <polygon points="270,200 320,200 320,186 350,220 320,254 320,240 270,240" fill="#1F6FEB" />
+
+  <path fill="#FFFFFF" stroke="#1F6FEB" stroke-width="3" d="M382,140 H578 A12,12 0 0 1 590,152 V248 A12,12 0 0 1 578,260 H382 A12,12 0 0 1 370,248 V152 A12,12 0 0 1 382,140 Z" />
+  <text x="480" y="192" text-anchor="middle" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="24" font-weight="700" fill="#1F6FEB">DSL 解析</text>
+  <text x="480" y="226" text-anchor="middle" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="16" fill="#334155">structured query</text>
+
+  <polygon points="620,200 670,200 670,186 700,220 670,254 670,240 620,240" fill="#1F6FEB" />
+
+  <path fill="#FFFFFF" stroke="#CBD5E1" d="M732,140 H1204 A12,12 0 0 1 1216,152 V248 A12,12 0 0 1 1204,260 H732 A12,12 0 0 1 720,248 V152 A12,12 0 0 1 732,140 Z" />
+  <text x="748" y="192" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="24" font-weight="700" fill="#0F172A">多路高召回搜索</text>
+  <text x="748" y="226" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="20" fill="#334155">grep 正则 / 倒排索引 / embedding 语义检索</text>
+
+  <path fill="#12B5CB" fill-opacity="0.12" stroke="#12B5CB" d="M142,330 H1138 A12,12 0 0 1 1150,342 V408 A12,12 0 0 1 1138,420 H142 A12,12 0 0 1 130,408 V342 A12,12 0 0 1 142,330 Z" />
+  <text x="640" y="386" text-anchor="middle" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="28" font-weight="700" fill="#0B1F3A">得到高 Recall 候选代码元素集合</text>
+
+  <path fill="#FFFFFF" stroke="#CBD5E1" d="M132,470 H428 A12,12 0 0 1 440,482 V608 A12,12 0 0 1 428,620 H132 A12,12 0 0 1 120,608 V482 A12,12 0 0 1 132,470 Z" />
+  <text x="150" y="525" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="26" font-weight="700" fill="#1F6FEB">Filtering</text>
+  <text x="150" y="562" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="20" fill="#334155">Rule + Semantic</text>
+
+  <path fill="#FFFFFF" stroke="#CBD5E1" d="M492,470 H788 A12,12 0 0 1 800,482 V608 A12,12 0 0 1 788,620 H492 A12,12 0 0 1 480,608 V482 A12,12 0 0 1 492,470 Z" />
+  <text x="510" y="525" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="26" font-weight="700" fill="#1F6FEB">Reranking</text>
+  <text x="510" y="562" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="20" fill="#334155">Single + Group</text>
+
+  <path fill="#0B1F3A" d="M852,470 H1148 A12,12 0 0 1 1160,482 V608 A12,12 0 0 1 1148,620 H852 A12,12 0 0 1 840,608 V482 A12,12 0 0 1 852,470 Z" />
+  <text x="1000" y="535" text-anchor="middle" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="26" font-weight="700" fill="#F7FAFC">Final Result</text>
+  <text x="1000" y="570" text-anchor="middle" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="20" fill="#EAF1F8">高质量代码检索输出</text>
+
+  <text x="64" y="690" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="16" fill="#64748B">03</text>
+</svg>

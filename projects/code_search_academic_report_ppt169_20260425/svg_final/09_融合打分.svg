@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" width="1280" height="720">
+  <rect width="1280" height="720" fill="#F7FAFC" />
+  <rect x="0" y="0" width="1280" height="100" fill="#EAF1F8" />
+  <text x="64" y="66" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="40" font-weight="700" fill="#0B1F3A">Single + Group 融合排序</text>
+
+  <path fill="#FFFFFF" stroke="#CBD5E1" d="M76,140 H412 A12,12 0 0 1 424,152 V628 A12,12 0 0 1 412,640 H76 A12,12 0 0 1 64,628 V152 A12,12 0 0 1 76,140 Z" />
+  <text x="94" y="192" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="28" font-weight="700" fill="#1F6FEB">输入分数</text>
+  <text x="94" y="236" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="22" fill="#334155">• LLM relevance</text>
+  <text x="94" y="270" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="22" fill="#334155">• Token overlap</text>
+  <text x="94" y="304" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="22" fill="#334155">• Code weight</text>
+  <text x="94" y="338" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="22" fill="#334155">• Group boost</text>
+
+  <path fill="#FFFFFF" stroke="#CBD5E1" d="M472,140 H808 A12,12 0 0 1 820,152 V628 A12,12 0 0 1 808,640 H472 A12,12 0 0 1 460,628 V152 A12,12 0 0 1 472,140 Z" />
+  <text x="490" y="192" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="28" font-weight="700" fill="#1F6FEB">融合策略</text>
+  <text x="490" y="236" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="18" fill="#0F172A">score_final =</text>
+  <text x="490" y="268" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="18" fill="#0F172A">w1*s_llm + w2*s_tok +</text>
+  <text x="490" y="300" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="18" fill="#0F172A">w3*s_weight + w4*s_group</text>
+  <text x="490" y="344" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="22" fill="#334155">按 query 类型动态调节权重</text>
+
+  <path fill="#FFFFFF" stroke="#CBD5E1" d="M868,140 H1204 A12,12 0 0 1 1216,152 V628 A12,12 0 0 1 1204,640 H868 A12,12 0 0 1 856,628 V152 A12,12 0 0 1 868,140 Z" />
+  <text x="886" y="192" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="28" font-weight="700" fill="#1F6FEB">输出结果</text>
+  <path fill="#0B1F3A" d="M894,230 H1178 A8,8 0 0 1 1186,238 V284 A8,8 0 0 1 1178,292 H894 A8,8 0 0 1 886,284 V238 A8,8 0 0 1 894,230 Z" />
+  <text x="906" y="270" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="20" fill="#F7FAFC">1. init_readahead</text>
+  <path fill="#1F6FEB" d="M894,306 H1178 A8,8 0 0 1 1186,314 V360 A8,8 0 0 1 1178,368 H894 A8,8 0 0 1 886,360 V314 A8,8 0 0 1 894,306 Z" />
+  <text x="906" y="346" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="20" fill="#F7FAFC">2. malloc_disk</text>
+  <path fill="#12B5CB" d="M894,382 H1178 A8,8 0 0 1 1186,390 V436 A8,8 0 0 1 1178,444 H894 A8,8 0 0 1 886,436 V390 A8,8 0 0 1 894,382 Z" />
+  <text x="906" y="422" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="20" fill="#0B1F3A">3. readahead_buffer</text>
+
+  <text x="64" y="690" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="16" fill="#64748B">09</text>
+</svg>

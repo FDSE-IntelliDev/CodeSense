@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" width="1280" height="720">
+  <rect width="1280" height="720" fill="#F7FAFC"/>
+  <rect x="0" y="0" width="1280" height="100" fill="#EAF1F8"/>
+  <text x="64" y="66" font-family='"Microsoft YaHei", "PingFang SC", Arial, sans-serif' font-size="40" font-weight="700" fill="#0B1F3A">为什么传统代码检索难以满足 Agent Query</text>
+
+  <rect x="64" y="140" width="330" height="490" rx="14" fill="#0B1F3A"/>
+  <text x="96" y="214" font-family='"Microsoft YaHei", "PingFang SC", Arial, sans-serif' font-size="30" font-weight="700" fill="#F7FAFC">问题定义</text>
+  <text x="96" y="268" font-family='"Microsoft YaHei", "PingFang SC", Arial, sans-serif' font-size="24" fill="#EAF1F8">
+    <tspan x="96" dy="0">Agent Query 不仅有关键词，</tspan>
+    <tspan x="96" dy="36">还包含隐式类型约束、</tspan>
+    <tspan x="96" dy="36">语义关系与上下文偏好。</tspan>
+  </text>
+
+  <rect x="430" y="140" width="786" height="140" rx="14" fill="#FFFFFF" stroke="#CBD5E1"/>
+  <text x="460" y="200" font-family='"Microsoft YaHei", "PingFang SC", Arial, sans-serif' font-size="30" font-weight="700" fill="#1F6FEB">挑战 1：语义复杂，关键词直搜召回不足</text>
+  <text x="460" y="236" font-family='"Microsoft YaHei", "PingFang SC", Arial, sans-serif' font-size="20" fill="#334155">自然语言表达的目标对象、模块范围、关系条件难以一次命中</text>
+
+  <rect x="430" y="315" width="786" height="140" rx="14" fill="#FFFFFF" stroke="#CBD5E1"/>
+  <text x="460" y="375" font-family='"Microsoft YaHei", "PingFang SC", Arial, sans-serif' font-size="30" font-weight="700" fill="#1F6FEB">挑战 2：候选噪声高，精度与可解释性不足</text>
+  <text x="460" y="411" font-family='"Microsoft YaHei", "PingFang SC", Arial, sans-serif' font-size="20" fill="#334155">缺少结构化过滤与语义验证会引入大量“看似相关”结果</text>
+
+  <rect x="430" y="490" width="786" height="140" rx="14" fill="#FFFFFF" stroke="#CBD5E1"/>
+  <text x="460" y="550" font-family='"Microsoft YaHei", "PingFang SC", Arial, sans-serif' font-size="30" font-weight="700" fill="#1F6FEB">挑战 3：仅看单点相关，忽略调用链组关系</text>
+  <text x="460" y="586" font-family='"Microsoft YaHei", "PingFang SC", Arial, sans-serif' font-size="20" fill="#334155">单元素得分高不等于任务相关高，关系上下文必须纳入排序</text>
+
+  <text x="64" y="690" font-family='"Microsoft YaHei", "PingFang SC", Arial, sans-serif' font-size="16" fill="#64748B">02</text>
+</svg>

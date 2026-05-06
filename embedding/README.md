@@ -62,9 +62,9 @@ Each line is a JSON object:
 ```bash
 python -m embedding.build_dataset \
   --project-root /Users/huangzhuochen/PycharmProjects/CodeSearch \
-  --symbols output/youlai-boot-master/symbols_index.json \
-  --calls output/youlai-boot-master/call_graph.json \
-  --deps output/youlai-boot-master/dependency_graph.json \
+  --symbols output/youlai-boot-master-gt/symbols_index.json \
+  --calls output/youlai-boot-master-gt/call_graph.json \
+  --deps output/youlai-boot-master-gt/dependency_graph.json \
   --out-dir embedding/data
 ```
 

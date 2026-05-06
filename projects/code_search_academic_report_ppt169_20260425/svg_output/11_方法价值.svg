@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" width="1280" height="720">
+  <rect width="1280" height="720" fill="#F7FAFC"/>
+  <rect x="0" y="0" width="1280" height="100" fill="#EAF1F8"/>
+  <text x="64" y="66" font-family='"Microsoft YaHei", "PingFang SC", Arial, sans-serif' font-size="40" font-weight="700" fill="#0B1F3A">方法价值与可扩展性</text>
+
+  <rect x="64" y="140" width="556" height="230" rx="12" fill="#FFFFFF" stroke="#CBD5E1"/>
+  <text x="94" y="198" font-family='"Microsoft YaHei", "PingFang SC", Arial, sans-serif' font-size="30" font-weight="700" fill="#1F6FEB">Recall 提升</text>
+  <text x="94" y="240" font-family='"Microsoft YaHei", "PingFang SC", Arial, sans-serif' font-size="22" fill="#334155">多路检索互补，减少 query 表达差异导致的漏检</text>
+
+  <rect x="660" y="140" width="556" height="230" rx="12" fill="#FFFFFF" stroke="#CBD5E1"/>
+  <text x="690" y="198" font-family='"Microsoft YaHei", "PingFang SC", Arial, sans-serif' font-size="30" font-weight="700" fill="#1F6FEB">Precision 提升</text>
+  <text x="690" y="240" font-family='"Microsoft YaHei", "PingFang SC", Arial, sans-serif' font-size="22" fill="#334155">规则约束 + 语义过滤压缩噪声候选</text>
+
+  <rect x="64" y="400" width="556" height="230" rx="12" fill="#FFFFFF" stroke="#CBD5E1"/>
+  <text x="94" y="458" font-family='"Microsoft YaHei", "PingFang SC", Arial, sans-serif' font-size="30" font-weight="700" fill="#1F6FEB">可解释性增强</text>
+  <text x="94" y="500" font-family='"Microsoft YaHei", "PingFang SC", Arial, sans-serif' font-size="22" fill="#334155">DSL 字段、过滤规则、排序信号可追踪可分析</text>
+
+  <rect x="660" y="400" width="556" height="230" rx="12" fill="#FFFFFF" stroke="#CBD5E1"/>
+  <text x="690" y="458" font-family='"Microsoft YaHei", "PingFang SC", Arial, sans-serif' font-size="30" font-weight="700" fill="#1F6FEB">工程扩展性</text>
+  <text x="690" y="500" font-family='"Microsoft YaHei", "PingFang SC", Arial, sans-serif' font-size="22" fill="#334155">可插拔新增 filter、ranker 与关系图特征</text>
+
+  <text x="64" y="690" font-family='"Microsoft YaHei", "PingFang SC", Arial, sans-serif' font-size="16" fill="#64748B">11</text>
+</svg>

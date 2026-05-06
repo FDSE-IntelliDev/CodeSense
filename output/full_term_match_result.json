@@ -1,0 +1,277 @@
+{
+  "matched_subtokens": [
+    "auth",
+    "authenticate",
+    "authenticated",
+    "authentication",
+    "author",
+    "authorities",
+    "check",
+    "valid",
+    "validate",
+    "validation"
+  ],
+  "detail": [
+    {
+      "keyword": "security",
+      "normalized_kws": [
+        "security"
+      ],
+      "subsequences": [
+        "s",
+        "sc",
+        "scr",
+        "scrt",
+        "scrty",
+        "scry",
+        "sct",
+        "scty",
+        "scy",
+        "se",
+        "sec",
+        "secu",
+        "secur",
+        "securi",
+        "security",
+        "sr",
+        "srt",
+        "srty",
+        "sry",
+        "st",
+        "sty",
+        "sy"
+      ],
+      "matched_subtokens": []
+    },
+    {
+      "keyword": "auth",
+      "normalized_kws": [
+        "auth"
+      ],
+      "subsequences": [
+        "auth"
+      ],
+      "matched_subtokens": [
+        "auth",
+        "authenticate",
+        "authenticated",
+        "authentication",
+        "author",
+        "authorities"
+      ]
+    },
+    {
+      "keyword": "authentication",
+      "normalized_kws": [
+        "authentication"
+      ],
+      "subsequences": [
+        "a",
+        "ac",
+        "acn",
+        "act",
+        "actn",
+        "ah",
+        "ahc",
+        "ahcn",
+        "ahct",
+        "ahctn",
+        "ahn",
+        "ahnc",
+        "ahncn",
+        "ahnct",
+        "ahnctn",
+        "ahnn",
+        "ahnt",
+        "ahntc",
+        "ahntcn",
+        "ahntct",
+        "ahntctn",
+        "ahntn",
+        "ahntt",
+        "ahnttn",
+        "aht",
+        "ahtc",
+        "ahtcn",
+        "ahtct",
+        "ahtctn",
+        "ahtn",
+        "ahtt",
+        "ahttn",
+        "an",
+        "anc",
+        "ancn",
+        "anct",
+        "anctn",
+        "ann",
+        "ant",
+        "antc",
+        "antcn",
+        "antct",
+        "antctn",
+        "antn",
+        "antt",
+        "anttn",
+        "at",
+        "atc",
+        "atcn",
+        "atct",
+        "atctn",
+        "atn",
+        "att",
+        "attn",
+        "au",
+        "aut",
+        "auth",
+        "authe",
+        "authen",
+        "authent",
+        "authenti",
+        "authentication",
+        "thntctn"
+      ],
+      "matched_subtokens": [
+        "auth",
+        "authenticate",
+        "authenticated",
+        "authentication",
+        "author",
+        "authorities"
+      ]
+    },
+    {
+      "keyword": "authorization",
+      "normalized_kws": [
+        "authorization"
+      ],
+      "subsequences": [
+        "a",
+        "ah",
+        "ahn",
+        "ahr",
+        "ahrn",
+        "ahrt",
+        "ahrtn",
+        "ahrz",
+        "ahrzn",
+        "ahrzt",
+        "ahrztn",
+        "aht",
+        "ahtn",
+        "ahz",
+        "ahzn",
+        "ahzt",
+        "ahztn",
+        "an",
+        "ar",
+        "arn",
+        "art",
+        "artn",
+        "arz",
+        "arzn",
+        "arzt",
+        "arztn",
+        "at",
+        "atn",
+        "au",
+        "aut",
+        "auth",
+        "autho",
+        "author",
+        "authori",
+        "authoriz",
+        "authorization",
+        "az",
+        "azn",
+        "azt",
+        "aztn",
+        "thrztn"
+      ],
+      "matched_subtokens": [
+        "auth",
+        "authenticate",
+        "authenticated",
+        "authentication",
+        "author",
+        "authorities"
+      ]
+    },
+    {
+      "keyword": "sanity",
+      "normalized_kws": [
+        "sanity"
+      ],
+      "subsequences": [
+        "s",
+        "sa",
+        "san",
+        "sani",
+        "sanity",
+        "sn",
+        "snt",
+        "snty",
+        "sny",
+        "st",
+        "sty",
+        "sy"
+      ],
+      "matched_subtokens": []
+    },
+    {
+      "keyword": "validation",
+      "normalized_kws": [
+        "validation"
+      ],
+      "subsequences": [
+        "v",
+        "va",
+        "val",
+        "vali",
+        "valid",
+        "valida",
+        "validat",
+        "validation",
+        "vd",
+        "vdn",
+        "vdt",
+        "vdtn",
+        "vl",
+        "vld",
+        "vldn",
+        "vldt",
+        "vldtn",
+        "vln",
+        "vlt",
+        "vltn",
+        "vn",
+        "vt",
+        "vtn"
+      ],
+      "matched_subtokens": [
+        "valid",
+        "validate",
+        "validation"
+      ]
+    },
+    {
+      "keyword": "check",
+      "normalized_kws": [
+        "check"
+      ],
+      "subsequences": [
+        "c",
+        "cc",
+        "cck",
+        "ch",
+        "chc",
+        "che",
+        "check",
+        "chk",
+        "ck"
+      ],
+      "matched_subtokens": [
+        "check"
+      ]
+    }
+  ]
+}

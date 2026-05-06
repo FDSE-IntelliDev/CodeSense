@@ -195,10 +195,16 @@ class NameHandler:
             long_name = long_term
             short_name = short_term
 
-        # 二者一方含数字另一方不含数字 则不构成缩写
-        if long_name.replace(' ', '').isalnum() != short_name.replace(' ', '').isalnum():
+        # 检查是否一方包含数字而另一方不包含
+        long_has_digit = any(c.isdigit() for c in long_name)
+        short_has_digit = any(c.isdigit() for c in short_name)
+        if long_has_digit != short_has_digit:
             return False
-        if long_name.replace(' ', '').isalpha() != short_name.replace(' ', '').isalpha():
+
+        # 检查是否一方包含字母而另一方不包含
+        long_has_alpha = any(c.isalpha() for c in long_name)
+        short_has_alpha = any(c.isalpha() for c in short_name)
+        if long_has_alpha != short_has_alpha:
             return False
 
         # 如果二者的数字部分也不相同则也不可能时缩写
@@ -243,10 +249,16 @@ class NameHandler:
             long_name = long_term
             short_name = short_term
 
-        # 二者一方含数字另一方不含数字 则不构成缩写
-        if long_name.replace(' ', '').isalnum() != short_name.replace(' ', '').isalnum():
+        # 检查是否一方包含数字而另一方不包含
+        long_has_digit = any(c.isdigit() for c in long_name)
+        short_has_digit = any(c.isdigit() for c in short_name)
+        if long_has_digit != short_has_digit:
             return False
-        if long_name.replace(' ', '').isalpha() != short_name.replace(' ', '').isalpha():
+
+        # 检查是否一方包含字母而另一方不包含
+        long_has_alpha = any(c.isalpha() for c in long_name)
+        short_has_alpha = any(c.isalpha() for c in short_name)
+        if long_has_alpha != short_has_alpha:
             return False
 
         # 如果二者的数字部分也不相同则也不可能时缩写
