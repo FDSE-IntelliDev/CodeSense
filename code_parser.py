@@ -5,6 +5,7 @@ import argparse
 import json
 import os
 import pathlib
+import sys
 from dataclasses import asdict
 from typing import Dict, List, Optional, Tuple
 
@@ -17,6 +18,8 @@ from parsers import (
     parse_file_with_registry,
 )
 from parsers.registry import LANG_EXT
+
+sys.setrecursionlimit(10000)
 
 TEXT_FILE_SIZE_LIMIT = 2 * 1024 * 1024
 BATCH_SIZE = 50
@@ -162,9 +165,13 @@ def main():
     parser = argparse.ArgumentParser(description="LSP-first code indexer with AST fallback")
     parser.add_argument("--project_path", help="项目根目录路径")
     parser.add_argument("--output", default=".", help="输出目录，默认当前目录")
+    # args = parser.parse_args([
+    #     "--project_path","/Users/huangzhuochen/IdeaProjects/youlai-boot-master-gt",
+    #     "--output","./output/youlai-boot-master-gt"
+    # ])
     args = parser.parse_args([
-        "--project_path","/Users/huangzhuochen/IdeaProjects/youlai-boot-master-gt",
-        "--output","./output/youlai-boot-master-gt"
+        "--project_path", "/Users/huangzhuochen/linux-6.14",
+        "--output", "./output/linux-6.14-ctags"
     ])
 
 

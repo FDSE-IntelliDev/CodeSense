@@ -56,7 +56,7 @@ def process_online(query: str):
 
     print("\n--- Extracted Query DSL ---")
     print(json.dumps(dsl_result, indent=2, ensure_ascii=False))
-    save_res("./output/query_dsl_result.json",dsl_result)
+    save_res("./output/youlai-boot-master/query_dsl_result.json",dsl_result)
     print("---------------------------\n")
     return dsl_result
 
@@ -67,8 +67,8 @@ def main():
     parser.add_argument("--query", type=str, help="A natural language search query for the online phase")
 
     args = parser.parse_args([
-        "--project_path", "/Users/huangzhuochen/IdeaProjects/youlai-boot-master",
-        "--output", "./output/youlai-boot-master",
+        # "--project_path", "/Users/huangzhuochen/IdeaProjects/youlai-boot-master",
+        # "--output", "./output/youlai-boot-master",
         "--query", "function that performs security check"
     ])
 

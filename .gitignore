@@ -8,3 +8,5 @@ __pycache__/
 # Local history
 .history
 models/
+
+output/
