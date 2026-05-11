@@ -97,75 +97,117 @@ class LLMKeywordExtractor:
     def _build_prompt(self, query: str) -> str:
         dsl_schema = json.dumps(self.dsl, indent=2, ensure_ascii=False)
         return f"""
-   You are an expert code search query parser.
+You are an expert code search query parser.
 
-Your task is to transform a natural language query about code search into a structured DSL in JSON format.
+Your task is to convert a natural language query into a structured DSL JSON.
 
 ## DSL schema
-The output must strictly follow this JSON structure:
 
-{dsl_schema}
+{
+  "intent": {
+    "action": {
+      "term": "<verb>",
+      "synonyms": []
+    },
+    "object": {
+      "term": "<object>",
+      "synonyms": []
+    }
+  },
+  "keywords": [
+    {
+      "term": "<keyword phrase>",
+      "synonyms": []
+    }
+  ],
+  "target": "<code element type>",
+  "filters": [
+    { "concept": "<concept>", "relation": "related_to" }
+  ],
+  "exclude": [],
+  "raw_query": "<original query>"
+}
 
 ## Instructions
 
-1. Keywords Extraction
-- Identify the most important technical terms in the query.
-- Normalize them to a canonical form.
-- Add common variations (e.g., hyphenation, underscore, abbreviations).
-- Avoid overly generic words (e.g., "code", "functionality").
+### 1. Intent Extraction (VERY IMPORTANT)
 
-2. Target Identification
-- Infer the target code element type:
-  - "function"
-  - "class"
-  - "method"
-  - "variable"
-  - "file"
-  - "module"
-- Default to "function" if unclear.
+- If the query clearly expresses an action-object relationship (e.g., "add user", "delete file"):
+  - Extract:
+    - action = verb
+    - object = noun
+  - Generate synonyms for BOTH.
 
-3. Filters Extraction
-- Extract contextual constraints such as:
-  - domain (e.g., disk, network, memory)
-  - purpose (e.g., performance, security, caching)
-- Represent each as:
-  {{ "concept": "...", "relation": "related_to" }}
+- If NO clear action-object structure:
+  - Set "intent" to null
 
-4. Exclusion Extraction
-- Identify negative constraints (e.g., "not using cache", "exclude deprecated").
-- Put them into the "exclude" list.
-- If none, return an empty list.
+### 2. Keywords Extraction
 
-5. Output Rules
-- Output MUST be valid JSON.
-- Do NOT include any explanation.
-- Do NOT hallucinate fields outside the schema.
-- Keep the output concise and precise.
+- Always extract at least one keyword phrase.
+- Prefer meaningful technical phrases.
+- Include combined phrases (e.g., "add user", "memory mapping").
 
-## Example
+### 3. Synonyms
+
+- For action:
+  - Include verbs with similar semantics (e.g., add → create, insert).
+- For object:
+  - Include domain-related equivalents (user → account, member).
+- For keyword:
+  - Include natural variations.
+
+### 4. Target
+
+- Infer from query:
+  function, class, method, variable, file, module
+- Default: "function"
+
+### 5. Filters
+
+- Extract domain or intent constraints:
+  e.g., disk, network, performance, security
+
+### 6. Exclude
+
+- Extract negative constraints if present.
+
+### 7. Output rules
+
+- Output valid JSON ONLY.
+- No explanation.
+- If no intent → "intent": null
+
+## Example 1
 
 Input:
-"search functions that enhance readahead performance in disk"
+"functions that add user accounts"
 
 Output:
-{{
+{
+  "intent": {
+    "action": {
+      "term": "add",
+      "synonyms": ["create", "insert", "register"]
+    },
+    "object": {
+      "term": "user",
+      "synonyms": ["account", "member"]
+    }
+  },
   "keywords": [
-    {{
-      "term": "readahead",
-      "synonyms": ["read-ahead", "read_ahead", "prefetch"]
-    }}
+    {
+      "term": "add user",
+      "synonyms": ["create user", "register user"]
+    }
   ],
   "target": "function",
-  "filters": [
-    {{"concept": "disk", "relation": "related_to" }},
-    {{"concept": "performance", "relation": "related_to" }}
-  ],
+  "filters": [],
   "exclude": [],
-  "raw_query": "search functions that enhance readahead performance in disk"
-}}
+  "raw_query": "functions that add user accounts"
+}
 
-    Now process this query:
-    {query}
+## Now process:
+{query}
     """.strip()
 
     # def _parse_json(self, text: str) -> List[Dict[str, Any]]:

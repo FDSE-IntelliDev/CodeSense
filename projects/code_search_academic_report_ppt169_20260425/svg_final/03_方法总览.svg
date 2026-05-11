@@ -1,37 +1,75 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" width="1280" height="720">
   <rect width="1280" height="720" fill="#F7FAFC" />
   <rect x="0" y="0" width="1280" height="100" fill="#EAF1F8" />
-  <text x="64" y="66" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="40" font-weight="700" fill="#0B1F3A">End-to-End Pipeline</text>
+  <text x="64" y="58" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="40" font-weight="700" fill="#0B1F3A">SemQL as Pipeline Contract</text>
+  <text x="64" y="86" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="16" fill="#64748B">把自然语言整理成结构化、高信息量 schema；后续检索、过滤、重排按字段消费同一份 QL</text>
 
-  <path fill="#0B1F3A" d="M76,140 H232 A12,12 0 0 1 244,152 V248 A12,12 0 0 1 232,260 H76 A12,12 0 0 1 64,248 V152 A12,12 0 0 1 76,140 Z" />
-  <text x="154" y="204" text-anchor="middle" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="24" fill="#F7FAFC">Query 输入</text>
+  <path fill="#0B1F3A" d="M76,136 H248 A12,12 0 0 1 260,148 V234 A12,12 0 0 1 248,246 H76 A12,12 0 0 1 64,234 V148 A12,12 0 0 1 76,136 Z" />
+  <text x="162" y="178" text-anchor="middle" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="24" font-weight="700" fill="#FFFFFF">自然语言 Query</text>
+  <text x="162" y="213" text-anchor="middle" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="16" fill="#EAF1F8">functions that add</text>
+  <text x="162" y="236" text-anchor="middle" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="16" fill="#EAF1F8">user accounts</text>
 
-  <polygon points="270,200 320,200 320,186 350,220 320,254 320,240 270,240" fill="#1F6FEB" />
+  <polygon points="286,183 336,183 336,170 366,200 336,230 336,217 286,217" fill="#1F6FEB" />
 
-  <path fill="#FFFFFF" stroke="#1F6FEB" stroke-width="3" d="M382,140 H578 A12,12 0 0 1 590,152 V248 A12,12 0 0 1 578,260 H382 A12,12 0 0 1 370,248 V152 A12,12 0 0 1 382,140 Z" />
-  <text x="480" y="192" text-anchor="middle" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="24" font-weight="700" fill="#1F6FEB">DSL 解析</text>
-  <text x="480" y="226" text-anchor="middle" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="16" fill="#334155">structured query</text>
+  <path fill="#FFFFFF" stroke="#1F6FEB" stroke-width="3" d="M404,122 H800 A12,12 0 0 1 812,134 V316 A12,12 0 0 1 800,328 H404 A12,12 0 0 1 392,316 V134 A12,12 0 0 1 404,122 Z" />
+  <path fill="#1F6FEB" d="M404,122 H800 A12,12 0 0 1 812,134 V164 A12,12 0 0 1 800,176 H404 A12,12 0 0 1 392,164 V134 A12,12 0 0 1 404,122 Z" />
+  <rect x="392" y="160" width="420" height="18" fill="#1F6FEB" />
+  <text x="420" y="157" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="30" font-weight="700" fill="#FFFFFF">SemQL / Query DSL</text>
+  <text x="764" y="156" text-anchor="end" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="16" fill="#EAF1F8">query_dsl_new.json</text>
 
-  <polygon points="620,200 670,200 670,186 700,220 670,254 670,240 620,240" fill="#1F6FEB" />
+  <text x="420" y="209" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="18" font-weight="700" fill="#0F172A">intent.action/object</text>
+  <text x="626" y="209" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="18" fill="#334155">理解用户要找什么</text>
+  <text x="420" y="241" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="18" font-weight="700" fill="#1F6FEB">keywords[]</text>
+  <text x="626" y="241" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="18" fill="#334155">主检索词与同义词扩展</text>
+  <text x="420" y="273" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="18" font-weight="700" fill="#12B5CB">filters[] / exclude[]</text>
+  <text x="626" y="273" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="18" fill="#334155">保留/排除条件</text>
+  <text x="420" y="305" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="18" font-weight="700" fill="#0B1F3A">target / raw_query</text>
+  <text x="626" y="305" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="18" fill="#334155">代码元素类型与原始语义</text>
 
-  <path fill="#FFFFFF" stroke="#CBD5E1" d="M732,140 H1204 A12,12 0 0 1 1216,152 V248 A12,12 0 0 1 1204,260 H732 A12,12 0 0 1 720,248 V152 A12,12 0 0 1 732,140 Z" />
-  <text x="748" y="192" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="24" font-weight="700" fill="#0F172A">多路高召回搜索</text>
-  <text x="748" y="226" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="20" fill="#334155">grep 正则 / 倒排索引 / embedding 语义检索</text>
+  <polygon points="838,202 888,202 888,190 916,220 888,250 888,238 838,238" fill="#1F6FEB" />
 
-  <path fill="#12B5CB" fill-opacity="0.12" stroke="#12B5CB" d="M142,330 H1138 A12,12 0 0 1 1150,342 V408 A12,12 0 0 1 1138,420 H142 A12,12 0 0 1 130,408 V342 A12,12 0 0 1 142,330 Z" />
-  <text x="640" y="386" text-anchor="middle" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="28" font-weight="700" fill="#0B1F3A">得到高 Recall 候选代码元素集合</text>
+  <path fill="#FFFFFF" stroke="#CBD5E1" d="M956,126 H1206 A10,10 0 0 1 1216,136 V230 A10,10 0 0 1 1206,240 H956 A10,10 0 0 1 946,230 V136 A10,10 0 0 1 956,126 Z" />
+  <rect x="946" y="126" width="6" height="114" fill="#1F6FEB" />
+  <text x="972" y="164" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="24" font-weight="700" fill="#0F172A">多路召回检索</text>
+  <text x="972" y="197" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="16" font-weight="700" fill="#1F6FEB">keywords, intent, target</text>
+  <text x="972" y="224" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="16" fill="#64748B">grep / index / embedding 共同扩展召回</text>
 
-  <path fill="#FFFFFF" stroke="#CBD5E1" d="M132,470 H428 A12,12 0 0 1 440,482 V608 A12,12 0 0 1 428,620 H132 A12,12 0 0 1 120,608 V482 A12,12 0 0 1 132,470 Z" />
-  <text x="150" y="525" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="26" font-weight="700" fill="#1F6FEB">Filtering</text>
-  <text x="150" y="562" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="20" fill="#334155">Rule + Semantic</text>
+  <line x1="602" y1="328" x2="602" y2="376" stroke="#1F6FEB" stroke-width="4" />
+  <polygon points="602,398 585,376 619,376" fill="#1F6FEB" />
 
-  <path fill="#FFFFFF" stroke="#CBD5E1" d="M492,470 H788 A12,12 0 0 1 800,482 V608 A12,12 0 0 1 788,620 H492 A12,12 0 0 1 480,608 V482 A12,12 0 0 1 492,470 Z" />
-  <text x="510" y="525" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="26" font-weight="700" fill="#1F6FEB">Reranking</text>
-  <text x="510" y="562" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="20" fill="#334155">Single + Group</text>
+  <path fill="#12B5CB" fill-opacity="0.12" stroke="#12B5CB" d="M108,392 H1172 A12,12 0 0 1 1184,404 V450 A12,12 0 0 1 1172,462 H108 A12,12 0 0 1 96,450 V404 A12,12 0 0 1 108,392 Z" />
+  <text x="640" y="435" text-anchor="middle" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="28" font-weight="700" fill="#0B1F3A">SemQL 不只是解析结果，而是后续各阶段共享的字段契约</text>
 
-  <path fill="#0B1F3A" d="M852,470 H1148 A12,12 0 0 1 1160,482 V608 A12,12 0 0 1 1148,620 H852 A12,12 0 0 1 840,608 V482 A12,12 0 0 1 852,470 Z" />
-  <text x="1000" y="535" text-anchor="middle" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="26" font-weight="700" fill="#F7FAFC">Final Result</text>
-  <text x="1000" y="570" text-anchor="middle" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="20" fill="#EAF1F8">高质量代码检索输出</text>
+  <path fill="#FFFFFF" stroke="#CBD5E1" d="M100,504 H340 A10,10 0 0 1 350,514 V610 A10,10 0 0 1 340,620 H100 A10,10 0 0 1 90,610 V514 A10,10 0 0 1 100,504 Z" />
+  <path fill="#EAF1F8" d="M100,504 H340 A10,10 0 0 1 350,514 V528 A10,10 0 0 1 340,538 H100 A10,10 0 0 1 90,528 V514 A10,10 0 0 1 100,504 Z" />
+  <text x="116" y="529" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="20" font-weight="700" fill="#0B1F3A">Filtering</text>
+  <text x="116" y="565" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="16" font-weight="700" fill="#12B5CB">filters[] + exclude[]</text>
+  <text x="116" y="592" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="16" fill="#64748B">按概念关系保留相关代码，剔除噪声</text>
+
+  <path fill="#FFFFFF" stroke="#CBD5E1" d="M396,504 H636 A10,10 0 0 1 646,514 V610 A10,10 0 0 1 636,620 H396 A10,10 0 0 1 386,610 V514 A10,10 0 0 1 396,504 Z" />
+  <path fill="#EAF1F8" d="M396,504 H636 A10,10 0 0 1 646,514 V528 A10,10 0 0 1 636,538 H396 A10,10 0 0 1 386,528 V514 A10,10 0 0 1 396,504 Z" />
+  <text x="412" y="529" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="20" font-weight="700" fill="#0B1F3A">Single Rerank</text>
+  <text x="412" y="565" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="16" font-weight="700" fill="#1F6FEB">raw_query + intent</text>
+  <text x="412" y="592" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="16" fill="#64748B">评估候选与原始需求、动作对象的一致性</text>
+
+  <path fill="#FFFFFF" stroke="#CBD5E1" d="M692,504 H932 A10,10 0 0 1 942,514 V610 A10,10 0 0 1 932,620 H692 A10,10 0 0 1 682,610 V514 A10,10 0 0 1 692,504 Z" />
+  <path fill="#EAF1F8" d="M692,504 H932 A10,10 0 0 1 942,514 V528 A10,10 0 0 1 932,538 H692 A10,10 0 0 1 682,528 V514 A10,10 0 0 1 692,504 Z" />
+  <text x="708" y="529" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="20" font-weight="700" fill="#0B1F3A">Group Rerank</text>
+  <text x="708" y="565" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="16" font-weight="700" fill="#0B1F3A">target + filters</text>
+  <text x="708" y="592" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="16" fill="#64748B">从代码元素类型和约束出发组织结果组</text>
+
+  <path fill="#0B1F3A" d="M988,504 H1178 A10,10 0 0 1 1188,514 V610 A10,10 0 0 1 1178,620 H988 A10,10 0 0 1 978,610 V514 A10,10 0 0 1 988,504 Z" />
+  <text x="1083" y="548" text-anchor="middle" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="22" font-weight="700" fill="#FFFFFF">Final Result</text>
+  <text x="1083" y="581" text-anchor="middle" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="16" fill="#EAF1F8">高质量代码检索输出</text>
+
+  <line x1="220" y1="462" x2="220" y2="492" stroke="#CBD5E1" stroke-width="3" />
+  <polygon points="220,504 210,490 230,490" fill="#CBD5E1" />
+  <line x1="516" y1="462" x2="516" y2="492" stroke="#CBD5E1" stroke-width="3" />
+  <polygon points="516,504 506,490 526,490" fill="#CBD5E1" />
+  <line x1="812" y1="462" x2="812" y2="492" stroke="#CBD5E1" stroke-width="3" />
+  <polygon points="812,504 802,490 822,490" fill="#CBD5E1" />
+  <line x1="942" y1="562" x2="966" y2="562" stroke="#CBD5E1" stroke-width="3" />
+  <polygon points="978,562 964,552 964,572" fill="#CBD5E1" />
 
   <text x="64" y="690" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="16" fill="#64748B">03</text>
 </svg>

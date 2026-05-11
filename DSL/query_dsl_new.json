@@ -1,24 +1,35 @@
 {
   "intent": {
     "action": {
-      "term": "add",
-      "synonyms": ["create", "insert", "register", "append"]
+      "term": "<operation or behavior applied to the object>",
+      "synonyms": [
+        "<semantically similar operations or behaviors>"
+      ]
     },
     "object": {
-      "term": "user",
-      "synonyms": ["account", "member", "profile"]
+      "term": "<core entity or resource involved in the query>",
+      "synonyms": [
+        "<semantically related entities>"
+      ]
     }
   },
   "keywords": [
     {
-      "term": "add user",
-      "synonyms": ["create user", "register user"]
+      "term": "<important keyword or semantic phrase from the query>",
+      "synonyms": [
+        "<natural language or code-level variations>"
+      ]
     }
   ],
-  "target": "function",
+  "target": "<expected code element type such as function/class/file/module>",
   "filters": [
-    { "concept": "authentication", "relation": "related_to" }
+    {
+      "concept": "<contextual constraint or domain concept>",
+      "relation": "<relationship between the concept and the searching target>"
+    }
   ],
-  "exclude": [],
-  "raw_query": "functions that add user accounts"
+  "exclude": [
+    "<terms or concepts that should be excluded from retrieval>"
+  ],
+  "raw_query": "<original natural language query>"
 }
