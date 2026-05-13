@@ -13,4 +13,8 @@ BASE_URL="https://dashscope.aliyuncs.com/compatible-mode/v1"
 API_KEY="sk-e2a20472cac148bdb711c663110c4d6f"
 BASE_MODEL="qwen-plus"
 
+# BASE_URL="https://openkey.cloud"
+# API_KEY="sk-qJN0l8K8tFDtobxlDc083e5c4d684062B49b02A5C6F3Be6a"
+# BASE_MODEL="gpt-4o-mini"
+
 JDTLS_PATH="/opt/homebrew/bin/jdtls"

@@ -6,6 +6,30 @@ from typing import Any, Dict, Iterable, List, Set
 from expansion.abbreviate import abbreviate,normalize_entity
 from definition import OUTPUT_DIR
 
+import itertools
+
+
+def generate_ordered_subterms(keyword: str) -> List[str]:
+    """
+    Split the keyword by space and generate all possible combinations of the parts
+    while preserving their original order.
+    """
+    parts = keyword.strip().split()
+    if not parts:
+        return []
+
+    subterms: Set[str] = set()
+
+    # Generate combinations from length 1 to len(parts)
+    for length in range(1, len(parts) + 1):
+        for combo in itertools.combinations(parts, length):
+            subterms.add(" ".join(combo))
+
+    return sorted(list(subterms))
+
+# res=generate_ordered_subterms("user login authentication")
+# print(res)
+
 
 class FullTermMatcher:
     """Resolve query keywords into candidate code symbols using index files."""
@@ -194,7 +218,16 @@ class FullTermMatcher:
         Aggregate subtokens across all keywords:
         keyword -> subsequences -> invert_index subtokens
         """
-        keywords = self._to_keyword_list(keyword_payload)
+        initial_keywords = self._to_keyword_list(keyword_payload)
+
+        # 扩展 keywords
+        keywords: List[str] = []
+        seen_kw: Set[str] = set()
+        for kw in initial_keywords:
+            for subkw in generate_ordered_subterms(kw):
+                if subkw not in seen_kw:
+                    seen_kw.add(subkw)
+                    keywords.append(subkw)
 
         detail: List[Dict[str, Any]] = []
         all_subtokens: Set[str] = set()
@@ -208,7 +241,9 @@ class FullTermMatcher:
             for normalized_kw in normalized_kw_list:
                 if not normalized_kw:
                     continue
-                subseqs.update(self._keyword_subsequences(normalized_kw))
+                sub_result = self._keyword_subsequences(normalized_kw)
+                #todo: 这里可以增加一个embedding model过滤步骤，训练该模型判断生成的子序列是否和原词语义相关，过滤掉一些不相关的子序列，提升后续匹配的准确性
+                subseqs.update(sub_result)
 
             # 可选的模型过滤步骤
             # from expansion.model_filter import AbbreviationModelFilter
@@ -268,8 +303,11 @@ if __name__ == "__main__":
   #   "raw_query": "function that performs readahead in disk"
   # }
 
-    with open(f'{OUTPUT_DIR}/query_dsl_result.json', 'r', encoding='utf-8') as f:
-        payload = json.load(f)
+    # with open(f'{OUTPUT_DIR}/query_dsl_result.json', 'r', encoding='utf-8') as f:
+    #     payload = json.load(f)
+
+    with open(f'/Users/huangzhuochen/PycharmProjects/CodeSearch/DSL/extracted_results.json', 'r', encoding='utf-8') as f:
+        payload = json.load(f)[-1]  # 取最后一次提取的结果作为输入
 
     # result = matcher.match_keywords(payload)
     result=matcher.match_ngram(payload)

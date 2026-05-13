@@ -33,7 +33,7 @@ class LLMKeywordExtractor:
     ) -> None:
         self.config = config or LLMKeywordExtractorConfig()
         self.client = client
-        dsl_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "DSL", "query_dsl.json")
+        dsl_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "DSL", "query_dsl_new.json")
         with open(dsl_path, "r", encoding="utf-8") as f:
             self.dsl = json.load(f)
 
@@ -44,8 +44,8 @@ class LLMKeywordExtractor:
 
         raw_text = self._call_llm(query)
         parsed = self._parse_json(raw_text)
-        validated = self._validate_and_normalize(query, parsed)
-        return validated
+        # validated = self._validate_and_normalize(query, parsed)
+        return parsed
 
     def _call_llm(self, query: str) -> str:
         if self.client is None:
@@ -102,31 +102,7 @@ You are an expert code search query parser.
 Your task is to convert a natural language query into a structured DSL JSON.
 
 ## DSL schema
-
-{
-  "intent": {
-    "action": {
-      "term": "<verb>",
-      "synonyms": []
-    },
-    "object": {
-      "term": "<object>",
-      "synonyms": []
-    }
-  },
-  "keywords": [
-    {
-      "term": "<keyword phrase>",
-      "synonyms": []
-    }
-  ],
-  "target": "<code element type>",
-  "filters": [
-    { "concept": "<concept>", "relation": "related_to" }
-  ],
-  "exclude": [],
-  "raw_query": "<original query>"
-}
+{dsl_schema}
 
 ## Instructions
 
@@ -177,34 +153,34 @@ Your task is to convert a natural language query into a structured DSL JSON.
 - No explanation.
 - If no intent → "intent": null
 
-## Example 1
+## Example
 
 Input:
 "functions that add user accounts"
 
 Output:
-{
-  "intent": {
-    "action": {
+{{
+  "intent": {{
+    "action": {{
       "term": "add",
       "synonyms": ["create", "insert", "register"]
-    },
-    "object": {
+    }},
+    "object": {{
       "term": "user",
       "synonyms": ["account", "member"]
-    }
-  },
+    }}
+  }},
   "keywords": [
-    {
+    {{
       "term": "add user",
       "synonyms": ["create user", "register user"]
-    }
+    }}
   ],
   "target": "function",
   "filters": [],
   "exclude": [],
   "raw_query": "functions that add user accounts"
-}
+}}
 
 ## Now process:
 {query}

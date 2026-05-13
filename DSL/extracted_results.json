@@ -1,0 +1,60 @@
+[
+    {
+        "intent": {
+            "action": {
+                "term": "handle",
+                "synonyms": [
+                    "process",
+                    "manage",
+                    "authenticate",
+                    "verify"
+                ]
+            },
+            "object": {
+                "term": "user login authentication",
+                "synonyms": [
+                    "login",
+                    "user auth",
+                    "authentication flow",
+                    "sign-in"
+                ]
+            }
+        },
+        "keywords": [
+            {
+                "term": "entry function",
+                "synonyms": [
+                    "main entry point",
+                    "startup function",
+                    "initial handler",
+                    "bootstrap function"
+                ]
+            },
+            {
+                "term": "user login authentication",
+                "synonyms": [
+                    "login authentication",
+                    "user auth",
+                    "sign-in verification"
+                ]
+            }
+        ],
+        "target": "function",
+        "filters": [
+            {
+                "concept": "authentication",
+                "relation": "core security domain"
+            },
+            {
+                "concept": "entry point",
+                "relation": "initial execution location"
+            }
+        ],
+        "exclude": [
+            "registration",
+            "password reset",
+            "logout"
+        ],
+        "raw_query": "Find the entry function that handles user login authentication."
+    }
+]
