@@ -220,7 +220,7 @@ class FullTermMatcher:
         """
         initial_keywords = self._to_keyword_list(keyword_payload)
 
-        # 扩展 keywords
+        # keywords按照空格拆分有序子词进行扩展
         keywords: List[str] = []
         seen_kw: Set[str] = set()
         for kw in initial_keywords:
