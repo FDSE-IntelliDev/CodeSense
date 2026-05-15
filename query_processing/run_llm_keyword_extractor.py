@@ -12,7 +12,7 @@ from definition import BASE_MODEL
 
 def main() -> None:
     with open('/Users/huangzhuochen/PycharmProjects/CodeSearch/DSL/query.json','r') as f:
-        query = json.load(f)['queries']["feature_localization"][0]
+        query = json.load(f)['queries']["feature_localization"][4]
 
     extractor = LLMKeywordExtractor(
         config=LLMKeywordExtractorConfig(

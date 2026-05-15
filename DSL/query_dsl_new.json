@@ -21,7 +21,9 @@
       ]
     }
   ],
-  "target": "<expected code element type such as function/class/file/module>",
+  "target": [
+    "<expected code element type such as function/class/file/module>"
+  ],
   "filters": [
     {
       "concept": "<contextual constraint or domain concept>",

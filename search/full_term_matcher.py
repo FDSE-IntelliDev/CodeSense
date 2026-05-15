@@ -281,33 +281,9 @@ if __name__ == "__main__":
         ngramed_symbol_path=f"{OUTPUT_DIR}/youlai-boot-master/ngramed_symbol.json",
     )
 
-  #   payload = {
-  #   "keywords": [
-  #     {
-  #       "term": "readahead",
-  #       "synonyms": [
-  #         "read-ahead",
-  #         "read_ahead",
-  #         "prefetch"
-  #       ]
-  #     }
-  #   ],
-  #   "target": "function",
-  #   "filters": [
-  #     {
-  #       "concept": "disk",
-  #       "relation": "related_to"
-  #     }
-  #   ],
-  #   "exclude": [],
-  #   "raw_query": "function that performs readahead in disk"
-  # }
-
-    # with open(f'{OUTPUT_DIR}/query_dsl_result.json', 'r', encoding='utf-8') as f:
-    #     payload = json.load(f)
 
     with open(f'/Users/huangzhuochen/PycharmProjects/CodeSearch/DSL/extracted_results.json', 'r', encoding='utf-8') as f:
-        payload = json.load(f)[-1]  # 取最后一次提取的结果作为输入
+        payload = json.load(f)[0]  # 取最后一次提取的结果作为输入
 
     # result = matcher.match_keywords(payload)
     result=matcher.match_ngram(payload)
