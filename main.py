@@ -10,6 +10,11 @@ from invert_index import InvertedIndexBuilder
 
 # Online query processing imports
 from query_processing.llm_keyword_extractor import LLMKeywordExtractor
+from search.invert_index_search import invert_index_search4symbol
+
+from definition import OUTPUT_DIR
+from utils.file_utils import save_res
+
 
 def process_offline(project_path: str, output_dir: str):
     print(f"=== [Offline] Starting parsing for project: {project_path} ===")
@@ -41,11 +46,13 @@ def process_offline(project_path: str, output_dir: str):
     print("invert_index finished.")
     print("=== [Offline] Indexing completed successfully ===\n")
 
-def save_res(save_path,data):
-    with open(save_path, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
 
 def process_online(query: str):
+    invert_index_path=f'{OUTPUT_DIR}/youlai-boot-master/invert_index.json'
+    ngramed_symbol_path=f'{OUTPUT_DIR}/youlai-boot-master/ngramed_symbol.json'
+    semQL_path=f'{OUTPUT_DIR}/youlai-boot-master/semQL.json'
+    invert_index_search_result_path=f'{OUTPUT_DIR}/youlai-boot-master/invert_index_search_result.json'
+
     print(f"=== [Online] Processing Search Query ===")
     print(f"User Query: '{query}'")
 
@@ -53,10 +60,14 @@ def process_online(query: str):
     print("Extracting query DSL using LLM...")
     extractor = LLMKeywordExtractor()
     dsl_result = extractor.extract_keywords(query)
-
     print("\n--- Extracted Query DSL ---")
     print(json.dumps(dsl_result, indent=2, ensure_ascii=False))
-    save_res("./output/youlai-boot-master/query_dsl_result.json",dsl_result)
+    save_res(semQL_path,dsl_result)
+
+    print("\n--- Inverted Index Search ---")
+    search_results = invert_index_search4symbol(invert_index_path=invert_index_path,ngramed_symbol_path=ngramed_symbol_path,query_dsl_result_path=semQL_path)
+    save_res(invert_index_search_result_path,search_results)
+    print(f"Search Results: {len(search_results)} matched elements found.")
     print("---------------------------\n")
     return dsl_result
 
@@ -69,7 +80,7 @@ def main():
     args = parser.parse_args([
         # "--project_path", "/Users/huangzhuochen/IdeaProjects/youlai-boot-master",
         # "--output", "./output/youlai-boot-master",
-        "--query", "function that performs security check"
+        "--query", "Find the entry function that handles user login authentication"
     ])
 
     if args.project_path and args.output_dir:

@@ -10,3 +10,7 @@ __pycache__/
 models/
 
 output/
+
+# JetBrains IDE
+.idea/
+*.iml
