@@ -8,13 +8,10 @@ This module intentionally stops before second retrieval/reranking.
 """
 
 import json
-import os
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
-from definition import BASE_URL,BASE_MODEL,API_KEY
-from openai import OpenAI
-from parsers.read_tools import get_code_by_line_range
+from typing import Any, Dict, List, Tuple
+from utils.llm_api import call_response_llm
 
 
 
@@ -120,13 +117,7 @@ class KeywordExpander:
         Ask LLM to produce expansion candidates + constraints.
         """
         prompt = self._build_expansion_prompt(query, base_keywords, seed_hits)
-
-        if self.client is None:
-            self.client = OpenAI(api_key=API_KEY,base_url=BASE_URL)
-
-        resp = self.client.responses.create(
-            model=self.config.model,
-            temperature=self.config.temperature,
+        raw = call_response_llm(
             input=[
                 {
                     "role": "system",
@@ -134,8 +125,10 @@ class KeywordExpander:
                 },
                 {"role": "user", "content": prompt},
             ],
+            model=self.config.model,
+            temperature=self.config.temperature,
+            client=self.client,
         )
-        raw = getattr(resp, "output_text", "") or ""
         parsed = self._parse_expansion_json(raw)
         validated = self._validate_expansion_payload(query, parsed)
         return validated

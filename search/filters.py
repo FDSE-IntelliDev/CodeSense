@@ -1,8 +1,9 @@
 import json
-from definition import OUTPUT_DIR, BASE_URL, API_KEY, BASE_MODEL
+from definition import OUTPUT_DIR, BASE_MODEL
 from utils.file_utils import load_res,save_res
+from utils.llm_api import call_chat_llm
 import re
-from openai import OpenAI
+from typing import Any
 from parsers.read_tools import get_symbol_code
 
 def filter_symbols_by_type(search_result_path: str, semQL_path: str) -> list:
@@ -45,8 +46,8 @@ def filter_symbols_by_type(search_result_path: str, semQL_path: str) -> list:
         else:
             exclude_results.append(symbol)
 
-        save_res(f'{OUTPUT_DIR}/youlai-boot-master/filtered_by_type.json', filtered_results)
-        save_res(f'{OUTPUT_DIR}/youlai-boot-master/exclude_by_type.json', exclude_results)
+    save_res(f'{OUTPUT_DIR}/youlai-boot-master/filtered_by_type.json', filtered_results)
+    save_res(f'{OUTPUT_DIR}/youlai-boot-master/exclude_by_type.json', exclude_results)
 
     return filtered_results
 
@@ -57,8 +58,6 @@ def filter_symbols_semantically(search_result_path: str, semQL_path: str) -> lis
     """
     search_results = load_res(search_result_path)
     semql_query = load_res(semQL_path)
-
-    client = OpenAI(base_url=BASE_URL, api_key=API_KEY)
 
     # 提取有用的约束信息给 LLM，防止提示词过长
     constraints = {
@@ -121,18 +120,18 @@ Output Format Example:
 """
 
         try:
-            resp = client.chat.completions.create(
+            messages: Any = [
+                {"role": "system", "content": "You are a precise code analysis assistant. Output only a valid JSON array."},
+                {"role": "user", "content": prompt}
+            ]
+            raw_text = call_chat_llm(
                 model=BASE_MODEL,
-                messages=[
-                    {"role": "system", "content": "You are a precise code analysis assistant. Output only a valid JSON array."},
-                    {"role": "user", "content": prompt}
-                ],
-                temperature=0.0
+                messages=messages,
+                temperature=0.0,
             )
-            raw_text = getattr(resp.choices[0].message, "content", "")
 
             # 匹配 JSON 数组
-            m = re.search(r"\[[\s\S]*\]", raw_text)
+            m = re.search(r"\[[\s\S]*]", raw_text)
             if m:
                 payload = json.loads(m.group(0))
                 # 将结果转为以 id 为 key 的字典以便快速查找

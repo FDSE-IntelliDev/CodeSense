@@ -12,9 +12,8 @@ import json
 import os
 import re
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional
-from openai import OpenAI
-from definition import BASE_URL,BASE_MODEL,API_KEY
+from typing import Any, Dict, Optional
+from utils.llm_api import call_response_llm
 
 @dataclass
 class LLMKeywordExtractorConfig:
@@ -48,52 +47,23 @@ class LLMKeywordExtractor:
         return parsed
 
     def _call_llm(self, query: str) -> str:
-        if self.client is None:
-            # self.client = OpenAI(base_url="https://api.poixe.com/v1",api_key="sk-wxSYiJvqK8bUVQPY3p4HRP1oePt6qFrhe4vQtrQZDLBWPCpf")
-            # self.client = OpenAI(base_url="https://openkey.cloud/v1",
-            #                  api_key="sk-qJN0l8K8tFDtobxlDc083e5c4d684062B49b02A5C6F3Be6a")
-            self.client=OpenAI(base_url=BASE_URL,api_key=API_KEY)
-
         prompt = self._build_prompt(query)
-        # OpenAI Responses API style
-        resp = self.client.responses.create(
+        prompt_messages: Any = [
+            {
+                "role": "system",
+                "content": (
+                    "You extract search keywords for code retrieval. "
+                    "Return strict JSON only."
+                ),
+            },
+            {"role": "user", "content": prompt},
+        ]
+        return call_response_llm(
+            input=prompt_messages,
             model=self.config.model,
             temperature=self.config.temperature,
-            input=[
-                {
-                    "role": "system",
-                    "content": (
-                        "You extract search keywords for code retrieval. "
-                        "Return strict JSON only."
-                    ),
-                },
-                {"role": "user", "content": prompt},
-            ],
+            client=self.client,
         )
-        return getattr(resp, "output_text", "") or ""
-
-#     def _build_prompt(self, query: str) -> str:
-#         return f"""
-# Task: Extract ranked search keywords from the query for code search.
-#
-# Hard constraints:
-# 1) Every keyword MUST be an exact contiguous span from the original query string.
-# 2) Do NOT generate rewritten forms not present in query
-#    (e.g., query has "readahead" -> do not output "read ahead").
-# 3) Do NOT output skip-gram phrases that skip middle words
-#    (e.g., query "function that performs" -> do not output "function performs").
-# 4) Prefer concrete semantic terms/phrases (domain entities/actions) over generic words.
-# 5) Keep keywords concise. Prefer single terms or short phrases.
-#
-# Output format (JSON only):
-# [
-#   {{"keyword": "string_from_query", "score": 0.0 to 1.0}},
-#   ...
-# ]
-#
-# Query:
-# {query}
-# """.strip()
     def _build_prompt(self, query: str) -> str:
         dsl_schema = json.dumps(self.dsl, indent=2, ensure_ascii=False)
         return f"""
@@ -218,7 +188,7 @@ Output:
         except json.JSONDecodeError:
             pass
 
-        m = re.search(r"\{[\s\S]*\}", text)
+        m = re.search(r"\{[\s\S]*}", text)
         if m:
             try:
                 obj = json.loads(m.group(0))
