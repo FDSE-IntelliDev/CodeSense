@@ -1,5 +1,5 @@
 import json
-from definition import OUTPUT_DIR, BASE_MODEL
+from definition import OUTPUT_DIR, BASE_MODEL,PROJECT_PATH
 from utils.file_utils import load_res,save_res
 from utils.llm_api import call_chat_llm
 import re
@@ -78,7 +78,7 @@ def filter_symbols_semantically(search_result_path: str, semQL_path: str) -> lis
 
         for idx, symbol in enumerate(batch):
             symbol_file = symbol.get("file", "")
-            code_content = get_symbol_code("", symbol)
+            code_content = get_symbol_code(PROJECT_PATH, symbol)
             batch_context.append({
                 "id": str(idx),
                 "name": symbol.get("name"),
@@ -160,5 +160,5 @@ Output Format Example:
     return filtered_results
 
 
-# filtered_res=filter_symbols_by_type(f'{OUTPUT_DIR}/youlai-boot-master/invert_index_search_result.json',f'{OUTPUT_DIR}/youlai-boot-master/semQL.json')
-filtered_res=filter_symbols_semantically(f'{OUTPUT_DIR}/youlai-boot-master/filtered_by_type.json',f'{OUTPUT_DIR}/youlai-boot-master/semQL.json')
+filtered_res=filter_symbols_by_type(f'{OUTPUT_DIR}/youlai-boot-master/invert_index_search_result.json',f'{OUTPUT_DIR}/youlai-boot-master/semQL.json')
+# filtered_res=filter_symbols_semantically(f'{OUTPUT_DIR}/youlai-boot-master/filtered_by_type.json',f'{OUTPUT_DIR}/youlai-boot-master/semQL.json')
