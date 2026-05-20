@@ -1,0 +1,1724 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>代码元素聚类过滤方案 - CodeSearch Pipeline</title>
+    <script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/styles/atom-one-dark.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/highlight.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/languages/python.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Microsoft YaHei", sans-serif;
+            line-height: 1.8;
+            color: #333;
+            background: #f0f2f5;
+        }
+        
+        .layout {
+            display: flex;
+            min-height: 100vh;
+        }
+        
+        /* 侧边栏 */
+        .sidebar {
+            width: 300px;
+            background: linear-gradient(180deg, #1a1a2e 0%, #16213e 100%);
+            color: #ecf0f1;
+            position: fixed;
+            height: 100vh;
+            overflow-y: auto;
+            padding: 20px 0;
+            flex-shrink: 0;
+            box-shadow: 2px 0 10px rgba(0,0,0,0.2);
+        }
+        
+        .sidebar::-webkit-scrollbar { width: 6px; }
+        .sidebar::-webkit-scrollbar-thumb { background: #34495e; border-radius: 3px; }
+        
+        .sidebar-header {
+            padding: 20px 25px 30px 25px;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+            margin-bottom: 20px;
+        }
+        
+        .sidebar-title {
+            font-size: 20px;
+            font-weight: bold;
+            background: linear-gradient(90deg, #e94560, #ff6b6b);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        
+        .sidebar-subtitle {
+            font-size: 12px;
+            color: #7f8c8d;
+            margin-top: 10px;
+            line-height: 1.6;
+        }
+        
+        .toc-section {
+            margin-bottom: 10px;
+        }
+        
+        .toc-section-title {
+            padding: 12px 25px;
+            font-size: 13px;
+            font-weight: bold;
+            color: #e94560;
+            background: rgba(233, 69, 96, 0.1);
+            border-left: 3px solid #e94560;
+        }
+        
+        .toc-list {
+            list-style: none;
+        }
+        
+        .toc-item {
+            display: block;
+            padding: 8px 25px 8px 35px;
+            color: #bdc3c7;
+            text-decoration: none;
+            font-size: 13px;
+            transition: all 0.2s;
+            border-left: 3px solid transparent;
+        }
+        
+        .toc-item:hover {
+            color: #e94560;
+            background: rgba(233, 69, 96, 0.1);
+            border-left-color: #e94560;
+        }
+        
+        .toc-item.active {
+            color: #fff;
+            background: rgba(233, 69, 96, 0.2);
+            border-left-color: #e94560;
+        }
+        
+        /* 主内容区 */
+        .main-content {
+            flex: 1;
+            margin-left: 300px;
+            padding: 40px 50px;
+            max-width: 1300px;
+            background: #fff;
+            min-height: 100vh;
+        }
+        
+        .page-header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 50px;
+            border-radius: 16px;
+            margin-bottom: 40px;
+            box-shadow: 0 10px 40px rgba(102, 126, 234, 0.3);
+        }
+        
+        .page-title {
+            font-size: 36px;
+            font-weight: bold;
+            margin-bottom: 15px;
+        }
+        
+        .page-desc {
+            font-size: 16px;
+            opacity: 0.9;
+            max-width: 800px;
+        }
+        
+        .section {
+            margin-bottom: 50px;
+        }
+        
+        .section-title {
+            font-size: 26px;
+            color: #2c3e50;
+            margin-bottom: 25px;
+            padding-bottom: 12px;
+            border-bottom: 3px solid #e94560;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        
+        .section-title .icon {
+            width: 32px;
+            height: 32px;
+            background: linear-gradient(135deg, #e94560, #ff6b6b);
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 16px;
+        }
+        
+        .subsection {
+            margin-bottom: 30px;
+        }
+        
+        .subsection-title {
+            font-size: 20px;
+            color: #34495e;
+            margin-bottom: 15px;
+            padding-left: 15px;
+            border-left: 4px solid #3498db;
+        }
+        
+        p {
+            margin-bottom: 15px;
+            color: #555;
+        }
+        
+        /* 信息卡片 */
+        .info-card {
+            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+            border-radius: 12px;
+            padding: 25px;
+            margin: 20px 0;
+            border-left: 4px solid #3498db;
+        }
+        
+        .info-card.warning {
+            border-left-color: #f39c12;
+            background: linear-gradient(135deg, #fff8e1 0%, #ffecb3 100%);
+        }
+        
+        .info-card.success {
+            border-left-color: #27ae60;
+            background: linear-gradient(135deg, #e8f5e9 0%, #c8e6c9 100%);
+        }
+        
+        .info-card.danger {
+            border-left-color: #e74c3c;
+            background: linear-gradient(135deg, #ffebee 0%, #ffcdd2 100%);
+        }
+        
+        .info-card-title {
+            font-weight: bold;
+            margin-bottom: 10px;
+            color: #2c3e50;
+        }
+        
+        /* 代码块 */
+        pre {
+            background: #282c34;
+            border-radius: 10px;
+            padding: 20px;
+            overflow-x: auto;
+            margin: 20px 0;
+            position: relative;
+        }
+        
+        pre::before {
+            content: attr(data-lang);
+            position: absolute;
+            top: 10px;
+            right: 15px;
+            font-size: 12px;
+            color: #61dafb;
+            text-transform: uppercase;
+        }
+        
+        code {
+            font-family: "SF Mono", "Consolas", "Monaco", monospace;
+            font-size: 14px;
+            line-height: 1.6;
+        }
+        
+        .code-inline {
+            background: #e8e8e8;
+            padding: 3px 8px;
+            border-radius: 4px;
+            font-family: "SF Mono", "Consolas", monospace;
+            font-size: 13px;
+            color: #c7254e;
+        }
+        
+        /* 表格 */
+        .table-wrapper {
+            overflow-x: auto;
+            margin: 20px 0;
+            border-radius: 12px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            background: white;
+        }
+        
+        th {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 15px;
+            text-align: left;
+            font-weight: 600;
+        }
+        
+        td {
+            padding: 15px;
+            border-bottom: 1px solid #eee;
+            color: #555;
+        }
+        
+        tr:hover {
+            background: #f8f9fa;
+        }
+        
+        tr:last-child td {
+            border-bottom: none;
+        }
+        
+        /* Mermaid 图表容器 */
+        .mermaid-container {
+            background: white;
+            border-radius: 12px;
+            padding: 30px;
+            margin: 30px 0;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+            overflow-x: auto;
+        }
+        
+        .mermaid {
+            display: flex;
+            justify-content: center;
+        }
+        
+        /* 列表样式 */
+        ul, ol {
+            margin: 15px 0 15px 25px;
+        }
+        
+        li {
+            margin-bottom: 10px;
+            color: #555;
+        }
+        
+        li::marker {
+            color: #e94560;
+        }
+        
+        /* 对比卡片 */
+        .comparison-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 25px;
+            margin: 25px 0;
+        }
+        
+        .comparison-card {
+            background: white;
+            border-radius: 12px;
+            padding: 25px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.08);
+            transition: transform 0.3s, box-shadow 0.3s;
+        }
+        
+        .comparison-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 8px 25px rgba(0,0,0,0.12);
+        }
+        
+        .comparison-card.pro {
+            border-top: 4px solid #27ae60;
+        }
+        
+        .comparison-card.con {
+            border-top: 4px solid #e74c3c;
+        }
+        
+        .comparison-card.neutral {
+            border-top: 4px solid #3498db;
+        }
+        
+        .comparison-card h4 {
+            font-size: 18px;
+            margin-bottom: 15px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .comparison-card.pro h4 { color: #27ae60; }
+        .comparison-card.con h4 { color: #e74c3c; }
+        .comparison-card.neutral h4 { color: #3498db; }
+        
+        .comparison-card ul {
+            margin-left: 20px;
+        }
+        
+        /* 步骤流程 */
+        .step-list {
+            counter-reset: step-counter;
+            list-style: none;
+            margin-left: 0;
+        }
+        
+        .step-item {
+            counter-increment: step-counter;
+            position: relative;
+            padding: 20px 20px 20px 70px;
+            background: white;
+            border-radius: 10px;
+            margin-bottom: 15px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.06);
+        }
+        
+        .step-item::before {
+            content: counter(step-counter);
+            position: absolute;
+            left: 20px;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 35px;
+            height: 35px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 16px;
+        }
+        
+        .step-item strong {
+            color: #2c3e50;
+            display: block;
+            margin-bottom: 5px;
+        }
+        
+        /* 特性标签 */
+        .tag {
+            display: inline-block;
+            padding: 4px 12px;
+            background: #e8f4fd;
+            color: #2980b9;
+            border-radius: 15px;
+            font-size: 12px;
+            margin-right: 8px;
+            margin-bottom: 8px;
+        }
+        
+        .tag.success { background: #d4edda; color: #155724; }
+        .tag.warning { background: #fff3cd; color: #856404; }
+        .tag.danger { background: #f8d7da; color: #721c24; }
+        
+        /* 底部 */
+        .footer {
+            text-align: center;
+            padding: 30px;
+            color: #7f8c8d;
+            border-top: 1px solid #eee;
+            margin-top: 50px;
+        }
+
+        /* 数学公式 */
+        .math {
+            background: #f5f5f5;
+            padding: 15px 20px;
+            border-radius: 8px;
+            font-family: "Times New Roman", serif;
+            font-style: italic;
+            text-align: center;
+            margin: 15px 0;
+            font-size: 18px;
+        }
+
+        /* 提示框 */
+        .tip-box {
+            background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%);
+            border-radius: 10px;
+            padding: 20px;
+            margin: 20px 0;
+            display: flex;
+            gap: 15px;
+        }
+
+        .tip-box .icon {
+            font-size: 24px;
+        }
+
+        .tip-box .content {
+            flex: 1;
+        }
+
+        .tip-box .title {
+            font-weight: bold;
+            color: #1565c0;
+            margin-bottom: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div class="layout">
+        <!-- 侧边栏 -->
+        <nav class="sidebar">
+            <div class="sidebar-header">
+                <div class="sidebar-title">CodeSearch Pipeline</div>
+                <div class="sidebar-subtitle">
+                    代码元素聚类过滤方案<br>
+                    v1.0 | 2026-05
+                </div>
+            </div>
+            
+            <div class="toc-section">
+                <div class="toc-section-title">📋 目录导航</div>
+                <ul class="toc-list">
+                    <li><a href="#overview" class="toc-item">1. 方案概述</a></li>
+                    <li><a href="#flowchart" class="toc-item">2. 聚类过滤流程图</a></li>
+                    <li><a href="#feasibility" class="toc-item">3. 可行性分析</a></li>
+                    <li><a href="#algorithm" class="toc-item">4. 详细算法设计</a></li>
+                    <li><a href="#implementation" class="toc-item">5. 实现建议</a></li>
+                    <li><a href="#integration" class="toc-item">6. 与现有系统集成</a></li>
+                </ul>
+            </div>
+            
+            <div class="toc-section">
+                <div class="toc-section-title">📊 核心算法</div>
+                <ul class="toc-list">
+                    <li><a href="#feature-extraction" class="toc-item">特征提取方法</a></li>
+                    <li><a href="#clustering" class="toc-item">聚类算法对比</a></li>
+                    <li><a href="#relevance" class="toc-item">簇相关性计算</a></li>
+                    <li><a href="#filter-strategy" class="toc-item">过滤策略设计</a></li>
+                </ul>
+            </div>
+            
+            <div class="toc-section">
+                <div class="toc-section-title">💻 实践指南</div>
+                <ul class="toc-list">
+                    <li><a href="#pseudocode" class="toc-item">伪代码实现</a></li>
+                    <li><a href="#integration-code" class="toc-item">集成代码示例</a></li>
+                    <li><a href="#evaluation" class="toc-item">效果评估方法</a></li>
+                </ul>
+            </div>
+        </nav>
+        
+        <!-- 主内容 -->
+        <main class="main-content">
+            <header class="page-header">
+                <h1 class="page-title">🧩 代码元素聚类过滤方案</h1>
+                <p class="page-desc">
+                    基于聚类算法的代码搜索结果优化方案，通过语义聚类发现代码元素间的隐式关联，
+                    实现更精准的离线过滤，提升搜索精度并降低LLM调用成本。
+                </p>
+            </header>
+
+            <!-- 1. 方案概述 -->
+            <section id="overview" class="section">
+                <h2 class="section-title">
+                    <span class="icon">1</span>
+                    方案概述
+                </h2>
+                
+                <div class="subsection">
+                    <h3 class="subsection-title">项目背景</h3>
+                    <p>
+                        <strong>CodeSearch</strong> 是一个智能代码搜索系统，旨在帮助开发者在大型代码库中快速定位目标代码元素。
+                        当前系统已实现了完整的搜索流程：
+                    </p>
+                    
+                    <div class="info-card">
+                        <div class="info-card-title">🏗️ 现有系统架构</div>
+                        <ul>
+                            <li><strong>倒排索引搜索</strong>：基于关键词和子词（sub-token）的高效召回</li>
+                            <li><strong>类型过滤</strong>：根据 <code class="code-inline">target</code> 字段过滤代码元素类型（function/class/module）</li>
+                            <li><strong>语义过滤</strong>：利用LLM对候选代码进行深度语义分析</li>
+                            <li><strong>重排序</strong>：综合多维度得分对结果进行排序</li>
+                        </ul>
+                    </div>
+                </div>
+                
+                <div class="subsection">
+                    <h3 class="subsection-title">当前问题</h3>
+                    <p>虽然现有系统能够有效过滤大部分无关结果，但仍存在以下挑战：</p>
+                    
+                    <div class="comparison-grid">
+                        <div class="comparison-card con">
+                            <h4>⚠️ 召回率过高问题</h4>
+                            <ul>
+                                <li>倒排索引召回大量候选，单个元素过滤效率低</li>
+                                <li>同义词扩展可能导致语义偏移</li>
+                                <li>类型过滤粒度较粗，难以精确匹配</li>
+                            </ul>
+                        </div>
+                        
+                        <div class="comparison-card con">
+                            <h4>💰 LLM成本问题</h4>
+                            <ul>
+                                <li>语义过滤依赖LLM逐个分析代码元素</li>
+                                <li>候选集过大时API调用成本高</li>
+                                <li>实时性受限于LLM响应速度</li>
+                            </ul>
+                        </div>
+                        
+                        <div class="comparison-card con">
+                            <h4>🔍 隐式关联缺失</h4>
+                            <ul>
+                                <li>当前方案逐个评估元素，忽略元素间关系</li>
+                                <li>功能相似的代码未被充分利用</li>
+                                <li>缺乏全局视角的过滤策略</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="subsection">
+                    <h3 class="subsection-title">解决方案</h3>
+                    <p>
+                        <strong>聚类过滤方案</strong> 通过对搜索结果进行聚类分析，从"组"的角度评估相关性，
+                        实现更高效的过滤策略：
+                    </p>
+                    
+                    <div class="info-card success">
+                        <div class="info-card-title">💡 核心思想</div>
+                        <p>
+                            <strong>相似功能的代码元素倾向于聚集在同一个簇中</strong>。
+                            通过评估整个簇与查询的相关性，可以：
+                        </p>
+                        <ul>
+                            <li>批量过滤低相关性的簇，减少待评估元素数量</li>
+                            <li>发现代码元素间的隐式语义关联</li>
+                            <li>降低对LLM的依赖，节省成本</li>
+                            <li>提供更可解释的过滤结果</li>
+                        </ul>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 2. 聚类过滤流程图 -->
+            <section id="flowchart" class="section">
+                <h2 class="section-title">
+                    <span class="icon">2</span>
+                    聚类过滤流程图
+                </h2>
+                
+                <p>完整的聚类过滤流程如下所示：</p>
+                
+                <div class="mermaid-container">
+                    <div class="mermaid">
+flowchart TB
+    subgraph Input["📥 输入阶段"]
+        A[搜索结果代码元素<br/>Search Results]
+        B[用户查询<br/>SemQL Query]
+    end
+    
+    subgraph Feature["🔍 特征提取"]
+        C[代码Embedding向量]
+        D[结构特征<br/>AST/命名/类型]
+        E[上下文特征<br/>调用关系/依赖]
+    end
+    
+    subgraph Cluster["📊 聚类分析"]
+        F[特征融合]
+        G[聚类算法<br/>K-Means/DBSCAN]
+        H[生成代码簇<br/>Code Clusters]
+    end
+    
+    subgraph Relevance["🎯 相关性评估"]
+        I[计算簇中心向量]
+        J[Query Embedding]
+        K[簇-Query相似度<br/>Cluster Relevance]
+    end
+    
+    subgraph Filter["⚙️ 分层过滤"]
+        L[高相关性簇<br/>直接保留]
+        M[中相关性簇<br/>LLM精筛]
+        N[低相关性簇<br/>批量过滤]
+    end
+    
+    subgraph Output["📤 输出结果"]
+        O[过滤后代码元素]
+        P[过滤报告与解释]
+    end
+    
+    A --> C
+    A --> D
+    A --> E
+    B --> J
+    
+    C --> F
+    D --> F
+    E --> F
+    F --> G
+    G --> H
+    
+    H --> I
+    I --> K
+    J --> K
+    
+    K --> L
+    K --> M
+    K --> N
+    
+    L --> O
+    M --> O
+    O --> P
+    
+    style A fill:#e3f2fd,stroke:#1565c0
+    style B fill:#e3f2fd,stroke:#1565c0
+    style G fill:#fff3e0,stroke:#ef6c00
+    style K fill:#e8f5e9,stroke:#2e7d32
+    style N fill:#ffebee,stroke:#c62828
+                    </div>
+                </div>
+                
+                <h3 class="subsection-title">流程步骤详解</h3>
+                
+                <ol class="step-list">
+                    <li class="step-item">
+                        <strong>获取搜索结果代码元素</strong>
+                        从倒排索引搜索获取候选代码元素集合，每个元素包含：
+                        名称、类型、文件路径、代码内容等基本信息
+                    </li>
+                    <li class="step-item">
+                        <strong>提取代码内容特征</strong>
+                        对每个代码元素提取多维特征：语义向量、结构特征、命名特征等
+                    </li>
+                    <li class="step-item">
+                        <strong>执行聚类算法生成簇</strong>
+                        应用聚类算法（K-Means/DBSCAN等）将相似代码元素分组
+                    </li>
+                    <li class="step-item">
+                        <strong>计算簇与Query的相关性</strong>
+                        计算每个簇的中心向量与Query Embedding的相似度
+                    </li>
+                    <li class="step-item">
+                        <strong>根据相关性排序簇</strong>
+                        按相似度得分对簇进行降序排列
+                    </li>
+                    <li class="step-item">
+                        <strong>分层过滤策略</strong>
+                        高相关性簇直接保留，中相关性簇LLM精筛，低相关性簇批量过滤
+                    </li>
+                    <li class="step-item">
+                        <strong>返回过滤后的结果</strong>
+                        合并各层过滤结果，输出最终候选集及过滤解释
+                    </li>
+                </ol>
+            </section>
+
+            <!-- 3. 可行性分析 -->
+            <section id="feasibility" class="section">
+                <h2 class="section-title">
+                    <span class="icon">3</span>
+                    可行性分析
+                </h2>
+                
+                <div class="comparison-grid">
+                    <div class="comparison-card pro">
+                        <h4>✅ 优点</h4>
+                        <ul>
+                            <li><strong>发现隐式语义关联</strong>：聚类可以揭示代码元素间的深层语义关系，超越字面匹配</li>
+                            <li><strong>相似功能聚集</strong>：功能相近的代码自然聚集，便于整体评估</li>
+                            <li><strong>全局视角过滤</strong>：从簇层面判断相关性，比逐元素评估更高效</li>
+                            <li><strong>降低LLM成本</strong>：批量过滤低相关性簇，减少API调用次数</li>
+                            <li><strong>可解释性强</strong>：簇的语义标签和相关性得分提供清晰的过滤依据</li>
+                            <li><strong>并行化友好</strong>：簇间评估可并行处理，提升效率</li>
+                        </ul>
+                    </div>
+                    
+                    <div class="comparison-card con">
+                        <h4>⚠️ 挑战</h4>
+                        <ul>
+                            <li><strong>聚类算法选择</strong>：K-Means需预设簇数，DBSCAN参数敏感</li>
+                            <li><strong>特征质量依赖</strong>：Embedding质量直接影响聚类效果</li>
+                            <li><strong>计算开销</strong>：实时场景下聚类可能增加延迟</li>
+                            <li><strong>相关性计算准确性</strong>：簇中心可能不能完全代表簇内元素</li>
+                            <li><strong>边界情况处理</strong>：小簇和噪声点的过滤策略需特殊处理</li>
+                            <li><strong>参数调优复杂</strong>：不同查询场景可能需要不同参数</li>
+                        </ul>
+                    </div>
+                </div>
+                
+                <h3 class="subsection-title">建议方案</h3>
+                
+                <div class="table-wrapper">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>技术环节</th>
+                                <th>推荐方案</th>
+                                <th>替代方案</th>
+                                <th>说明</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><strong>聚类算法</strong></td>
+                                <td>K-Means（候选数/3~5）</td>
+                                <td>DBSCAN、层次聚类</td>
+                                <td>K-Means简单高效，适合中等规模候选集</td>
+                            </tr>
+                            <tr>
+                                <td><strong>特征提取</strong></td>
+                                <td>代码Embedding + 命名特征</td>
+                                <td>AST特征、调用图特征</td>
+                                <td>Embedding捕捉语义，命名特征补充结构信息</td>
+                            </tr>
+                            <tr>
+                                <td><strong>簇相关性计算</strong></td>
+                                <td>簇中心与Query余弦相似度</td>
+                                <td>簇内所有元素相似度均值</td>
+                                <td>簇中心计算高效，适合快速评估</td>
+                            </tr>
+                            <tr>
+                                <td><strong>部署模式</strong></td>
+                                <td>在线过滤补充</td>
+                                <td>离线预处理</td>
+                                <td>作为现有流程的补充，不替代原有过滤</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                
+                <div class="tip-box">
+                    <div class="icon">💡</div>
+                    <div class="content">
+                        <div class="title">实施建议</div>
+                        <p>
+                            建议采用<strong>"渐进式集成"</strong>策略：初期作为实验性功能，对部分查询应用聚类过滤，
+                            逐步积累数据和经验后再全面推广。同时保留原有过滤流程作为兜底方案。
+                        </p>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 4. 详细算法设计 -->
+            <section id="algorithm" class="section">
+                <h2 class="section-title">
+                    <span class="icon">4</span>
+                    详细算法设计
+                </h2>
+                
+                <!-- 4.1 特征提取方法 -->
+                <div id="feature-extraction" class="subsection">
+                    <h3 class="subsection-title">4.1 特征提取方法</h3>
+                    
+                    <p>特征提取是聚类质量的关键，我们设计多维度特征融合方案：</p>
+                    
+                    <div class="comparison-grid">
+                        <div class="comparison-card neutral">
+                            <h4>🔤 语义特征 (Semantic Features)</h4>
+                            <ul>
+                                <li><strong>代码Embedding向量</strong>：使用预训练模型（如CodeBERT）对代码内容编码</li>
+                                <li><strong>维度</strong>：768维（可降维至128-256维）</li>
+                                <li><strong>捕获信息</strong>：代码语义、功能意图、API使用模式</li>
+                            </ul>
+                        </div>
+                        
+                        <div class="comparison-card neutral">
+                            <h4>📋 结构特征 (Structural Features)</h4>
+                            <ul>
+                                <li><strong>AST特征</strong>：语法树深度、节点类型分布</li>
+                                <li><strong>代码行数</strong>：代码规模指标</li>
+                                <li><strong>复杂度指标</strong>：圈复杂度、嵌套深度</li>
+                            </ul>
+                        </div>
+                        
+                        <div class="comparison-card neutral">
+                            <h4>🏷️ 命名特征 (Naming Features)</h4>
+                            <ul>
+                                <li><strong>标识符Token</strong>：函数名、变量名的子词序列</li>
+                                <li><strong>命名模式</strong>：camelCase/snake_case检测</li>
+                                <li><strong>关键词匹配</strong>：常见动词/名词统计</li>
+                            </ul>
+                        </div>
+                        
+                        <div class="comparison-card neutral">
+                            <h4>🔗 上下文特征 (Context Features)</h4>
+                            <ul>
+                                <li><strong>调用关系</strong>：调用/被调用函数信息</li>
+                                <li><strong>所属类/模块</strong>：包名、类名路径</li>
+                                <li><strong>依赖信息</strong>：import语句、依赖库</li>
+                            </ul>
+                        </div>
+                    </div>
+                    
+                    <div class="math">
+                        Feature Vector = [Embedding; Structure; Naming; Context] ∈ ℝ<sup>d</sup>
+                    </div>
+                </div>
+
+                <!-- 4.2 聚类算法选择 -->
+                <div id="clustering" class="subsection">
+                    <h3 class="subsection-title">4.2 聚类算法选择</h3>
+                    
+                    <div class="mermaid-container">
+                        <div class="mermaid">
+graph LR
+    subgraph Algorithms["聚类算法"]
+        K[K-Means]
+        D[DBSCAN]
+        H[层次聚类]
+        G[GMM]
+    end
+    
+    subgraph Criteria["评估维度"]
+        C1[可扩展性]
+        C2[参数敏感度]
+        C3[簇形状适应性]
+        C4[噪声处理]
+    end
+    
+    K --> C1
+    K --> C2
+    D --> C3
+    D --> C4
+    H --> C2
+    G --> C1
+    
+    style K fill:#e8f5e9,stroke:#2e7d32
+    style D fill:#fff3e0,stroke:#ef6c00
+                        </div>
+                    </div>
+                    
+                    <div class="table-wrapper">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>算法</th>
+                                    <th>优点</th>
+                                    <th>缺点</th>
+                                    <th>适用场景</th>
+                                    <th>推荐度</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td><strong>K-Means</strong></td>
+                                    <td>
+                                        <span class="tag success">简单高效</span>
+                                        <span class="tag success">可扩展性强</span>
+                                        <span class="tag success">结果稳定</span>
+                                    </td>
+                                    <td>
+                                        <span class="tag danger">需预设K值</span>
+                                        <span class="tag warning">对噪声敏感</span>
+                                    </td>
+                                    <td>中等规模候选集，簇分布较均匀</td>
+                                    <td>⭐⭐⭐⭐⭐</td>
+                                </tr>
+                                <tr>
+                                    <td><strong>DBSCAN</strong></td>
+                                    <td>
+                                        <span class="tag success">无需预设簇数</span>
+                                        <span class="tag success">可发现任意形状簇</span>
+                                        <span class="tag success">自动识别噪声</span>
+                                    </td>
+                                    <td>
+                                        <span class="tag danger">参数敏感</span>
+                                        <span class="tag warning">高维数据效果差</span>
+                                    </td>
+                                    <td>密度不均匀的数据，噪声较多场景</td>
+                                    <td>⭐⭐⭐⭐</td>
+                                </tr>
+                                <tr>
+                                    <td><strong>层次聚类</strong></td>
+                                    <td>
+                                        <span class="tag success">簇层次结构清晰</span>
+                                        <span class="tag success">无需预设参数</span>
+                                    </td>
+                                    <td>
+                                        <span class="tag danger">计算复杂度高</span>
+                                        <span class="tag warning">不适合大规模</span>
+                                    </td>
+                                    <td>小规模候选集，需要层次解释</td>
+                                    <td>⭐⭐⭐</td>
+                                </tr>
+                                <tr>
+                                    <td><strong>GMM</strong></td>
+                                    <td>
+                                        <span class="tag success">概率模型</span>
+                                        <span class="tag success">软聚类</span>
+                                    </td>
+                                    <td>
+                                        <span class="tag warning">假设高斯分布</span>
+                                        <span class="tag warning">可能收敛到局部最优</span>
+                                    </td>
+                                    <td>需要概率输出的场景</td>
+                                    <td>⭐⭐⭐</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    
+                    <div class="info-card">
+                        <div class="info-card-title">🎯 推荐配置</div>
+                        <p><strong>首选：K-Means</strong></p>
+                        <ul>
+                            <li><strong>K值设定</strong>：K = max(2, len(candidates) // 5)，通常3-10簇</li>
+                            <li><strong>初始化</strong>：k-means++ 初始化，避免局部最优</li>
+                            <li><strong>距离度量</strong>：余弦相似度（适合文本/代码向量）</li>
+                            <li><strong>迭代次数</strong>：最大100次，提前收敛则停止</li>
+                        </ul>
+                    </div>
+                </div>
+                
+                <!-- 4.3 簇相关性计算 -->
+                <div id="relevance" class="subsection">
+                    <h3 class="subsection-title">4.3 簇相关性计算方法</h3>
+                    
+                    <p>计算每个簇与查询的相关性是过滤策略的核心依据：</p>
+                    
+                    <div class="mermaid-container">
+                        <div class="mermaid">
+flowchart TB
+    Q[Query<br/>用户查询]
+    E1[Query Embedding<br/>查询向量]
+    
+    C1[Cluster 1]
+    C2[Cluster 2]
+    C3[Cluster 3]
+    
+    CC1[簇中心向量 1]
+    CC2[簇中心向量 2]
+    CC3[簇中心向量 3]
+    
+    S1[相似度: 0.85<br/>高相关]
+    S2[相似度: 0.62<br/>中相关]
+    S3[相似度: 0.31<br/>低相关]
+    
+    Q --> E1
+    
+    C1 --> CC1
+    C2 --> CC2
+    C3 --> CC3
+    
+    E1 -.->|余弦相似度| CC1
+    E1 -.->|余弦相似度| CC2
+    E1 -.->|余弦相似度| CC3
+    
+    CC1 --> S1
+    CC2 --> S2
+    CC3 --> S3
+    
+    style S1 fill:#e8f5e9,stroke:#2e7d32
+    style S2 fill:#fff3e0,stroke:#ef6c00
+    style S3 fill:#ffebee,stroke:#c62828
+                        </div>
+                    </div>
+                    
+                    <h4>计算方法</h4>
+                    
+                    <div class="math">
+                        Similarity(C, Q) = cosine(μ<sub>C</sub>, v<sub>Q</sub>) = <sup>μ<sub>C</sub> · v<sub>Q</sub></sup>/<sub>‖μ<sub>C</sub>‖ × ‖v<sub>Q</sub>‖</sub>
+                    </div>
+                    
+                    <p>其中：</p>
+                    <ul>
+                        <li><strong>μ<sub>C</sub></strong>：簇C的中心向量，即簇内所有元素向量的均值</li>
+                        <li><strong>v<sub>Q</sub></strong>：查询Q的Embedding向量</li>
+                    </ul>
+                    
+                    <div class="info-card warning">
+                        <div class="info-card-title">⚠️ 注意事项</div>
+                        <ul>
+                            <li>簇中心计算使用<strong>加权平均</strong>，可考虑元素质量权重</li>
+                            <li>对于小簇（元素数 < 3），建议结合簇内元素与查询的最小相似度</li>
+                            <li>可引入<strong>簇紧密度</strong>作为置信度调整因子</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- 4.4 过滤策略设计 -->
+                <div id="filter-strategy" class="subsection">
+                    <h3 class="subsection-title">4.4 过滤策略设计</h3>
+                    
+                    <p>根据簇相关性得分，实施分层过滤策略：</p>
+                    
+                    <div class="mermaid-container">
+                        <div class="mermaid">
+flowchart TB
+    Input[簇相关性得分排序]
+    
+    subgraph Strategy["分层过滤策略"]
+        High[高相关性簇<br/>score >= 0.7]
+        Mid[中相关性簇<br/>0.4 <= score < 0.7]
+        Low[低相关性簇<br/>score < 0.4]
+    end
+    
+    subgraph Action["处理动作"]
+        A1[✅ 直接保留<br/>无需额外评估]
+        A2[🔍 LLM精筛<br/>逐元素评估]
+        A3[❌ 批量过滤<br/>可选抽样验证]
+    end
+    
+    High --> A1
+    Mid --> A2
+    Low --> A3
+    
+    A1 --> Result[最终结果集]
+    A2 --> Result
+    
+    style High fill:#e8f5e9,stroke:#2e7d32
+    style Mid fill:#fff3e0,stroke:#ef6c00
+    style Low fill:#ffebee,stroke:#c62828
+    style A1 fill:#c8e6c9,stroke:#43a047
+    style A2 fill:#ffe0b2,stroke:#fb8c00
+    style A3 fill:#ffcdd2,stroke:#e53935
+                        </div>
+                    </div>
+                    
+                    <div class="table-wrapper">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>相关性等级</th>
+                                    <th>阈值范围</th>
+                                    <th>处理策略</th>
+                                    <th>预估比例</th>
+                                    <th>成本影响</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td><span class="tag success">高相关</span></td>
+                                    <td>score ≥ 0.7</td>
+                                    <td>直接保留全部元素</td>
+                                    <td>20-30%</td>
+                                    <td>无LLM调用</td>
+                                </tr>
+                                <tr>
+                                    <td><span class="tag warning">中相关</span></td>
+                                    <td>0.4 ≤ score < 0.7</td>
+                                    <td>LLM逐元素语义评估</td>
+                                    <td>30-40%</td>
+                                    <td>部分LLM调用</td>
+                                </tr>
+                                <tr>
+                                    <td><span class="tag danger">低相关</span></td>
+                                    <td>score < 0.4</td>
+                                    <td>批量过滤（可选抽样验证）</td>
+                                    <td>30-50%</td>
+                                    <td>极少LLM调用</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    
+                    <div class="info-card success">
+                        <div class="info-card-title">💡 成本优化效果</div>
+                        <p>假设原始候选集100个元素：</p>
+                        <ul>
+                            <li><strong>传统方案</strong>：100次LLM调用（逐元素评估）</li>
+                            <li><strong>聚类方案</strong>：约30-40次LLM调用（仅对中相关性簇）</li>
+                            <li><strong>节省比例</strong>：约60-70%的LLM调用成本</li>
+                        </ul>
+                    </div>
+                    
+                    <h4>阈值设定建议</h4>
+                    <pre data-lang="Python"><code class="language-python"># 过滤策略阈值配置
+FILTER_THRESHOLDS = {
+    'high_relevance': 0.7,    # 高相关性阈值
+    'low_relevance': 0.4,     # 低相关性阈值
+    'min_cluster_size': 2,    # 最小簇大小（小簇特殊处理）
+    'sample_ratio': 0.1,      # 低相关性簇抽样验证比例
+}
+
+def determine_filter_strategy(cluster_score, cluster_size):
+    """根据簇得分和大小确定过滤策略"""
+    if cluster_size < FILTER_THRESHOLDS['min_cluster_size']:
+        return 'SINGLE_ELEMENT_EVAL'  # 小簇单独评估
+    
+    if cluster_score >= FILTER_THRESHOLDS['high_relevance']:
+        return 'KEEP_ALL'              # 直接保留
+    
+    elif cluster_score >= FILTER_THRESHOLDS['low_relevance']:
+        return 'LLM_FILTER'            # LLM精筛
+    
+    else:
+        return 'BATCH_FILTER'          # 批量过滤</code></pre>
+                </div>
+            </section>
+
+            <!-- 5. 实现建议 -->
+            <section id="implementation" class="section">
+                <h2 class="section-title">
+                    <span class="icon">5</span>
+                    实现建议
+                </h2>
+                
+                <div id="pseudocode" class="subsection">
+                    <h3 class="subsection-title">5.1 核心伪代码实现</h3>
+                    
+                    <pre data-lang="Python"><code class="language-python">import numpy as np
+from sklearn.cluster import KMeans
+from typing import List, Dict, Tuple
+
+class ClusterBasedFilter:
+    """基于聚类的代码元素过滤器"""
+    
+    def __init__(self, 
+                 embedding_model,
+                 k_ratio: float = 0.2,
+                 high_threshold: float = 0.7,
+                 low_threshold: float = 0.4):
+        self.embedding_model = embedding_model
+        self.k_ratio = k_ratio
+        self.high_threshold = high_threshold
+        self.low_threshold = low_threshold
+    
+    def extract_features(self, symbols: List[Dict]) -> np.ndarray:
+        """提取代码元素特征向量"""
+        features = []
+        for symbol in symbols:
+            # 获取代码内容
+            code_content = symbol.get('content', '')
+            # 生成Embedding向量
+            embedding = self.embedding_model.encode(code_content)
+            # 可选：拼接命名特征等
+            # feature = np.concatenate([embedding, naming_features])
+            features.append(embedding)
+        return np.array(features)
+    
+    def cluster_symbols(self, 
+                       features: np.ndarray, 
+                       n_clusters: int) -> Tuple[np.ndarray, np.ndarray]:
+        """执行K-Means聚类"""
+        kmeans = KMeans(
+            n_clusters=n_clusters,
+            init='k-means++',
+            max_iter=100,
+            random_state=42
+        )
+        labels = kmeans.fit_predict(features)
+        return labels, kmeans.cluster_centers_
+    
+    def compute_cluster_relevance(self,
+                                  query_embedding: np.ndarray,
+                                  cluster_centers: np.ndarray) -> np.ndarray:
+        """计算簇与查询的相关性"""
+        # 余弦相似度
+        similarities = []
+        for center in cluster_centers:
+            sim = np.dot(query_embedding, center) / (
+                np.linalg.norm(query_embedding) * np.linalg.norm(center)
+            )
+            similarities.append(sim)
+        return np.array(similarities)
+    
+    def filter_by_clusters(self,
+                          symbols: List[Dict],
+                          query: str,
+                          semql: Dict) -> List[Dict]:
+        """主过滤函数"""
+        # 1. 特征提取
+        features = self.extract_features(symbols)
+        query_embedding = self.embedding_model.encode(query)
+        
+        # 2. 确定聚类数
+        n_clusters = max(2, len(symbols) // 5)
+        
+        # 3. 执行聚类
+        labels, centers = self.cluster_symbols(features, n_clusters)
+        
+        # 4. 计算簇相关性
+        relevance_scores = self.compute_cluster_relevance(query_embedding, centers)
+        
+        # 5. 分层过滤
+        filtered_symbols = []
+        filter_report = {
+            'kept_by_high_relevance': [],
+            'filtered_by_llm': [],
+            'batch_filtered': []
+        }
+        
+        for cluster_id in range(n_clusters):
+            cluster_mask = labels == cluster_id
+            cluster_symbols = [s for s, m in zip(symbols, cluster_mask) if m]
+            score = relevance_scores[cluster_id]
+            
+            if score >= self.high_threshold:
+                # 高相关性：直接保留
+                filtered_symbols.extend(cluster_symbols)
+                filter_report['kept_by_high_relevance'].append({
+                    'cluster_id': cluster_id,
+                    'score': score,
+                    'count': len(cluster_symbols)
+                })
+            
+            elif score >= self.low_threshold:
+                # 中相关性：LLM精筛
+                llm_filtered = self.llm_filter(cluster_symbols, semql)
+                filtered_symbols.extend(llm_filtered)
+                filter_report['filtered_by_llm'].append({
+                    'cluster_id': cluster_id,
+                    'score': score,
+                    'kept': len(llm_filtered),
+                    'total': len(cluster_symbols)
+                })
+            
+            else:
+                # 低相关性：批量过滤（可选抽样验证）
+                filter_report['batch_filtered'].append({
+                    'cluster_id': cluster_id,
+                    'score': score,
+                    'count': len(cluster_symbols)
+                })
+        
+        return filtered_symbols, filter_report
+    
+    def llm_filter(self, symbols: List[Dict], semql: Dict) -> List[Dict]:
+        """对中相关性簇调用LLM进行精筛"""
+        # 复用现有 filter_symbols_semantically 的逻辑
+        # 但仅对当前簇的元素进行处理
+        pass</code></pre>
+                </div>
+                
+                <div id="evaluation" class="subsection">
+                    <h3 class="subsection-title">5.2 效果评估方法</h3>
+                    
+                    <div class="comparison-grid">
+                        <div class="comparison-card neutral">
+                            <h4>📊 离线评估指标</h4>
+                            <ul>
+                                <li><strong>召回率</strong>：聚类过滤后保留的正确结果占比</li>
+                                <li><strong>精度</strong>：过滤后结果的正确率</li>
+                                <li><strong>F1分数</strong>：召回率和精度的调和平均</li>
+                                <li><strong>成本节省</strong>：LLM调用次数减少比例</li>
+                            </ul>
+                        </div>
+                        
+                        <div class="comparison-card neutral">
+                            <h4>⚡ 在线评估指标</h4>
+                            <ul>
+                                <li><strong>延迟影响</strong>：聚类步骤增加的时间</li>
+                                <li><strong>用户满意度</strong>：A/B测试用户反馈</li>
+                                <li><strong>点击率</strong>：搜索结果的点击行为</li>
+                                <li><strong>任务完成率</strong>：用户找到目标代码的成功率</li>
+                            </ul>
+                        </div>
+                    </div>
+                    
+                    <pre data-lang="Python"><code class="language-python"># 评估函数示例
+def evaluate_clustering_filter(
+    test_queries: List[Dict],
+    ground_truth: Dict[str, List[str]]
+) -> Dict:
+    """评估聚类过滤效果"""
+    
+    total_recall = 0
+    total_precision = 0
+    total_cost_saved = 0
+    
+    for query in test_queries:
+        # 执行聚类过滤
+        filtered, report = cluster_filter.filter_by_clusters(
+            query['candidates'],
+            query['text'],
+            query['semql']
+        )
+        
+        # 计算召回率
+        truth_set = set(ground_truth[query['id']])
+        filtered_set = {s['id'] for s in filtered}
+        
+        recall = len(truth_set & filtered_set) / len(truth_set)
+        precision = len(truth_set & filtered_set) / len(filtered_set)
+        
+        # 计算成本节省
+        original_llm_calls = len(query['candidates'])
+        actual_llm_calls = sum(
+            r['total'] for r in report['filtered_by_llm']
+        )
+        cost_saved = 1 - (actual_llm_calls / original_llm_calls)
+        
+        total_recall += recall
+        total_precision += precision
+        total_cost_saved += cost_saved
+    
+    n = len(test_queries)
+    return {
+        'avg_recall': total_recall / n,
+        'avg_precision': total_precision / n,
+        'avg_cost_saved': total_cost_saved / n
+    }</code></pre>
+                </div>
+            </section>
+
+            <!-- 6. 与现有filters.py的集成 -->
+            <section id="integration" class="section">
+                <h2 class="section-title">
+                    <span class="icon">6</span>
+                    与现有filters.py的集成方式
+                </h2>
+                
+                <div class="subsection">
+                    <h3 class="subsection-title">6.1 现有过滤流程</h3>
+                    
+                    <p>当前 <code class="code-inline">filters.py</code> 提供两个主要过滤函数：</p>
+                    
+                    <div class="mermaid-container">
+                        <div class="mermaid">
+flowchart LR
+    Input[搜索结果<br/>invert_index_search_result.json]
+    
+    F1[filter_symbols_by_type<br/>类型过滤]
+    
+    F2[filter_symbols_semantically<br/>语义过滤]
+    
+    Output[过滤结果<br/>filtered_by_semantics.json]
+    
+    Input --> F1
+    F1 --> F2
+    F2 --> Output
+    
+    style F1 fill:#e3f2fd,stroke:#1565c0
+    style F2 fill:#fff3e0,stroke:#ef6c00
+                        </div>
+                    </div>
+                    
+                    <pre data-lang="Python"><code class="language-python"># 现有调用流程
+from search.filters import filter_symbols_by_type, filter_symbols_semantically
+
+# Step 1: 类型过滤
+filtered_res = filter_symbols_by_type(
+    f'{OUTPUT_DIR}/youlai-boot-master/invert_index_search_result.json',
+    f'{OUTPUT_DIR}/youlai-boot-master/semQL.json'
+)
+
+# Step 2: 语义过滤
+filtered_res = filter_symbols_semantically(
+    f'{OUTPUT_DIR}/youlai-boot-master/filtered_by_type.json',
+    f'{OUTPUT_DIR}/youlai-boot-master/semQL.json'
+)</code></pre>
+                </div>
+                
+                <div id="integration-code" class="subsection">
+                    <h3 class="subsection-title">6.2 集成聚类过滤</h3>
+                    
+                    <p>建议在类型过滤和语义过滤之间插入聚类过滤步骤：</p>
+                    
+                    <div class="mermaid-container">
+                        <div class="mermaid">
+flowchart TB
+    Input[搜索结果]
+    
+    F1[filter_symbols_by_type<br/>类型过滤]
+    
+    C1[filter_symbols_by_clustering<br/>聚类过滤<br/>🆕 新增]
+    
+    F2[filter_symbols_semantically<br/>语义过滤<br/>仅处理中相关性簇]
+    
+    Output[最终结果]
+    
+    Input --> F1
+    F1 --> C1
+    C1 --> F2
+    F2 --> Output
+    
+    subgraph Legend["图例"]
+        L1[原有流程]
+        L2[新增流程]
+    end
+    
+    style F1 fill:#e3f2fd,stroke:#1565c0
+    style C1 fill:#e8f5e9,stroke:#2e7d32
+    style F2 fill:#fff3e0,stroke:#ef6c00
+    style C1 stroke:#2e7d32,stroke-width:3px
+                        </div>
+                    </div>
+                    
+                    <pre data-lang="Python"><code class="language-python"># filters.py 新增函数
+from embedding.code_encoder import CodeEncoder
+from sklearn.cluster import KMeans
+import numpy as np
+
+# 初始化编码器（可复用现有embedding模块）
+_encoder = CodeEncoder(model_name=BASE_MODEL)
+
+def filter_symbols_by_clustering(
+    search_result_path: str, 
+    semQL_path: str,
+    high_threshold: float = 0.7,
+    low_threshold: float = 0.4
+) -> dict:
+    """
+    基于聚类的代码元素过滤方法。
+    返回分层的过滤结果，供后续流程使用。
+    """
+    search_results = load_res(search_result_path)
+    semql_query = load_res(semQL_path)
+    
+    if len(search_results) < 5:
+        # 候选太少，跳过聚类
+        return {
+            'high_relevance': search_results,
+            'mid_relevance': [],
+            'low_relevance': [],
+            'report': {'skipped': True, 'reason': 'few_candidates'}
+        }
+    
+    # 1. 提取特征
+    features = []
+    for symbol in search_results:
+        code_content = get_symbol_code(PROJECT_PATH, symbol)
+        embedding = _encoder.encode(code_content)
+        features.append(embedding)
+    features = np.array(features)
+    
+    # 2. 查询向量
+    query_text = semql_query.get('raw_query', '')
+    query_embedding = _encoder.encode(query_text)
+    
+    # 3. 聚类
+    n_clusters = max(2, len(search_results) // 5)
+    kmeans = KMeans(n_clusters=n_clusters, init='k-means++', random_state=42)
+    labels = kmeans.fit_predict(features)
+    
+    # 4. 计算簇相关性
+    cluster_scores = compute_relevance(query_embedding, kmeans.cluster_centers_)
+    
+    # 5. 分层结果
+    result = {
+        'high_relevance': [],
+        'mid_relevance': [],
+        'low_relevance': [],
+        'report': {
+            'n_clusters': n_clusters,
+            'cluster_scores': cluster_scores.tolist(),
+            'skipped': False
+        }
+    }
+    
+    for i, symbol in enumerate(search_results):
+        cluster_id = labels[i]
+        score = cluster_scores[cluster_id]
+        symbol['cluster_id'] = int(cluster_id)
+        symbol['cluster_score'] = float(score)
+        
+        if score >= high_threshold:
+            result['high_relevance'].append(symbol)
+        elif score >= low_threshold:
+            result['mid_relevance'].append(symbol)
+        else:
+            result['low_relevance'].append(symbol)
+    
+    # 保存报告
+    save_res(f'{OUTPUT_DIR}/youlai-boot-master/clustering_report.json', result['report'])
+    
+    return result
+
+
+def compute_relevance(query_vec: np.ndarray, centers: np.ndarray) -> np.ndarray:
+    """计算簇中心与查询的余弦相似度"""
+    query_norm = query_vec / np.linalg.norm(query_vec)
+    centers_norm = centers / np.linalg.norm(centers, axis=1, keepdims=True)
+    return np.dot(centers_norm, query_norm)</code></pre>
+                </div>
+                
+                <div class="subsection">
+                    <h3 class="subsection-title">6.3 修改后的完整流程</h3>
+                    
+                    <pre data-lang="Python"><code class="language-python"># main.py 中的调用流程
+from search.filters import (
+    filter_symbols_by_type,
+    filter_symbols_by_clustering,
+    filter_symbols_semantically
+)
+
+def run_search_pipeline():
+    # Step 1: 类型过滤
+    type_filtered = filter_symbols_by_type(
+        f'{OUTPUT_DIR}/youlai-boot-master/invert_index_search_result.json',
+        f'{OUTPUT_DIR}/youlai-boot-master/semQL.json'
+    )
+    save_res(f'{OUTPUT_DIR}/youlai-boot-master/filtered_by_type.json', type_filtered)
+    
+    # Step 2: 聚类过滤（新增）
+    cluster_result = filter_symbols_by_clustering(
+        f'{OUTPUT_DIR}/youlai-boot-master/filtered_by_type.json',
+        f'{OUTPUT_DIR}/youlai-boot-master/semQL.json'
+    )
+    
+    # 高相关性结果直接保留
+    high_relevance_symbols = cluster_result['high_relevance']
+    
+    # 中相关性结果进入语义过滤
+    mid_relevance_symbols = cluster_result['mid_relevance']
+    if mid_relevance_symbols:
+        # 临时保存用于语义过滤
+        temp_path = f'{OUTPUT_DIR}/youlai-boot-master/mid_relevance_temp.json'
+        save_res(temp_path, mid_relevance_symbols)
+        
+        # 调用语义过滤
+        semantically_filtered = filter_symbols_semantically(
+            temp_path,
+            f'{OUTPUT_DIR}/youlai-boot-master/semQL.json'
+        )
+    else:
+        semantically_filtered = []
+    
+    # Step 3: 合并最终结果
+    final_results = high_relevance_symbols + semantically_filtered
+    
+    # 按相关度排序
+    final_results.sort(key=lambda x: x.get('cluster_score', 0), reverse=True)
+    
+    save_res(f'{OUTPUT_DIR}/youlai-boot-master/final_filtered.json', final_results)
+    
+    # 打印统计信息
+    print(f"📊 过滤统计:")
+    print(f"  - 高相关性（直接保留）: {len(high_relevance_symbols)}")
+    print(f"  - 中相关性（语义过滤后）: {len(semantically_filtered)}")
+    print(f"  - 低相关性（已过滤）: {len(cluster_result['low_relevance'])}")
+    print(f"  - 最终结果: {len(final_results)}")
+    
+    return final_results</code></pre>
+                </div>
+                
+                <div class="subsection">
+                    <h3 class="subsection-title">6.4 配置与参数调优</h3>
+                    
+                    <pre data-lang="Python"><code class="language-python"># config/cluster_filter_config.yaml
+
+cluster_filter:
+  # 是否启用聚类过滤
+  enabled: true
+  
+  # 阈值设置
+  thresholds:
+    high_relevance: 0.7    # 高相关性阈值
+    low_relevance: 0.4     # 低相关性阈值
+  
+  # 聚类参数
+  clustering:
+    algorithm: "kmeans"    # kmeans | dbscan
+    k_ratio: 0.2           # K = len(candidates) * k_ratio
+    min_k: 2               # 最小簇数
+    max_k: 10              # 最大簇数
+  
+  # 特征设置
+  features:
+    embedding_dim: 768     # Embedding维度
+    use_structure: false   # 是否使用结构特征
+    use_naming: true       # 是否使用命名特征
+  
+  # 性能设置
+  performance:
+    min_candidates: 5      # 最小候选数（少于此数跳过聚类）
+    batch_size: 100        # 批处理大小
+    cache_embeddings: true # 是否缓存Embedding</code></pre>
+                </div>
+            </section>
+            
+            <!-- 总结 -->
+            <section class="section">
+                <h2 class="section-title">
+                    <span class="icon">📝</span>
+                    总结与展望
+                </h2>
+                
+                <div class="info-card success">
+                    <div class="info-card-title">🎯 方案价值</div>
+                    <ul>
+                        <li><strong>成本优化</strong>：减少60-70%的LLM调用，显著降低API成本</li>
+                        <li><strong>效率提升</strong>：批量过滤低相关性结果，减少处理时间</li>
+                        <li><strong>效果增强</strong>：发现代码间隐式关联，提供更全面的过滤视角</li>
+                        <li><strong>可解释性</strong>：簇语义标签和相关性得分提供清晰的过滤依据</li>
+                    </ul>
+                </div>
+                
+                <div class="info-card warning">
+                    <div class="info-card-title">⚠️ 注意事项</div>
+                    <ul>
+                        <li>聚类效果依赖于Embedding质量，建议选择适合代码的预训练模型</li>
+                        <li>阈值参数需要根据实际数据调优，建议先在小规模测试集上验证</li>
+                        <li>对于特殊场景（如极少候选、极端分布），建议保留兜底策略</li>
+                        <li>建议采用渐进式集成策略，逐步验证效果</li>
+                    </ul>
+                </div>
+                
+                <div class="comparison-grid">
+                    <div class="comparison-card neutral">
+                        <h4>🔮 未来优化方向</h4>
+                        <ul>
+                            <li>引入层次聚类，支持多粒度过滤</li>
+                            <li>结合调用图信息增强聚类效果</li>
+                            <li>自适应阈值学习</li>
+                            <li>增量聚类支持实时更新</li>
+                        </ul>
+                    </div>
+                    
+                    <div class="comparison-card neutral">
+                        <h4>📚 参考资料</h4>
+                        <ul>
+                            <li><a href="#">CodeBERT: Pre-training of Code Representations</a></li>
+                            <li><a href="#">Clustering Algorithms for Code Analysis</a></li>
+                            <li><a href="#">Semantic Code Search Evaluation</a></li>
+                        </ul>
+                    </div>
+                </div>
+            </section>
+            
+            <footer class="footer">
+                <p>CodeSearch Pipeline Documentation</p>
+                <p>© 2026 CodeSearch Team | Version 1.0</p>
+            </footer>
+        </main>
+    </div>
+    
+    <script>
+        // 初始化Mermaid
+        mermaid.initialize({
+            startOnLoad: true,
+            theme: 'neutral',
+            flowchart: {
+                useMaxWidth: true,
+                htmlLabels: true,
+                curve: 'basis'
+            }
+        });
+        
+        // 初始化代码高亮
+        document.addEventListener('DOMContentLoaded', (event) => {
+            document.querySelectorAll('pre code').forEach((block) => {
+                hljs.highlightBlock(block);
+            });
+        });
+        
+        // 平滑滚动
+        document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+            anchor.addEventListener('click', function (e) {
+                e.preventDefault();
+                const target = document.querySelector(this.getAttribute('href'));
+                if (target) {
+                    target.scrollIntoView({
+                        behavior: 'smooth',
+                        block: 'start'
+                    });
+                }
+            });
+        });
+        
+        // 目录高亮
+        const sections = document.querySelectorAll('section[id]');
+        const tocItems = document.querySelectorAll('.toc-item');
+        
+        window.addEventListener('scroll', () => {
+            let current = '';
+            sections.forEach(section => {
+                const sectionTop = section.offsetTop;
+                if (pageYOffset >= sectionTop - 100) {
+                    current = section.getAttribute('id');
+                }
+            });
+            
+            tocItems.forEach(item => {
+                item.classList.remove('active');
+                if (item.getAttribute('href') === '#' + current) {
+                    item.classList.add('active');
+                }
+            });
+        });
+    </script>
+</body>
+</html>

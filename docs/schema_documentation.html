@@ -1,0 +1,1581 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Code Element Schema Documentation</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+    <style>
+        :root {
+            --primary-color: #3b82f6;
+            --secondary-color: #6366f1;
+            --accent-color: #10b981;
+            --bg-color: #0f172a;
+            --bg-secondary: #1e293b;
+            --bg-tertiary: #334155;
+            --text-color: #e2e8f0;
+            --text-muted: #94a3b8;
+            --border-color: #475569;
+            --code-bg: #0d1117;
+        }
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+            background: var(--bg-color);
+            color: var(--text-color);
+            line-height: 1.7;
+        }
+        
+        /* Sidebar Navigation */
+        .sidebar {
+            position: fixed;
+            left: 0;
+            top: 0;
+            width: 280px;
+            height: 100vh;
+            background: var(--bg-secondary);
+            border-right: 1px solid var(--border-color);
+            overflow-y: auto;
+            z-index: 100;
+        }
+        
+        .sidebar-header {
+            padding: 24px 20px;
+            border-bottom: 1px solid var(--border-color);
+        }
+        
+        .sidebar-header h1 {
+            font-size: 1.3rem;
+            font-weight: 700;
+            color: var(--primary-color);
+            margin-bottom: 8px;
+        }
+        
+        .sidebar-header p {
+            font-size: 0.85rem;
+            color: var(--text-muted);
+        }
+        
+        .nav-section {
+            padding: 16px 0;
+        }
+        
+        .nav-section-title {
+            padding: 8px 20px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: var(--text-muted);
+        }
+        
+        .nav-link {
+            display: block;
+            padding: 10px 20px 10px 28px;
+            color: var(--text-color);
+            text-decoration: none;
+            font-size: 0.9rem;
+            transition: all 0.2s ease;
+            border-left: 3px solid transparent;
+        }
+        
+        .nav-link:hover {
+            background: var(--bg-tertiary);
+            color: var(--primary-color);
+            border-left-color: var(--primary-color);
+        }
+        
+        .nav-link.active {
+            background: rgba(59, 130, 246, 0.1);
+            color: var(--primary-color);
+            border-left-color: var(--primary-color);
+        }
+        
+        /* Main Content */
+        .main-content {
+            margin-left: 280px;
+            padding: 40px 60px;
+            max-width: 1200px;
+        }
+        
+        .section {
+            margin-bottom: 80px;
+            scroll-margin-top: 20px;
+        }
+        
+        .section-title {
+            font-size: 2rem;
+            font-weight: 700;
+            margin-bottom: 24px;
+            padding-bottom: 16px;
+            border-bottom: 2px solid var(--primary-color);
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        
+        .section-title .icon {
+            font-size: 1.5rem;
+        }
+        
+        .subsection-title {
+            font-size: 1.4rem;
+            font-weight: 600;
+            margin: 32px 0 16px;
+            color: var(--secondary-color);
+        }
+        
+        .subsubsection-title {
+            font-size: 1.1rem;
+            font-weight: 600;
+            margin: 24px 0 12px;
+            color: var(--accent-color);
+        }
+        
+        p {
+            margin-bottom: 16px;
+            color: var(--text-color);
+        }
+        
+        /* Cards */
+        .card {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 24px;
+            margin: 20px 0;
+        }
+        
+        .card-header {
+            font-size: 1.1rem;
+            font-weight: 600;
+            margin-bottom: 16px;
+            color: var(--primary-color);
+        }
+        
+        .card-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            margin: 24px 0;
+        }
+        
+        .info-card {
+            background: linear-gradient(135deg, var(--bg-secondary) 0%, var(--bg-tertiary) 100%);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 20px;
+        }
+        
+        .info-card h4 {
+            font-size: 1rem;
+            font-weight: 600;
+            margin-bottom: 12px;
+            color: var(--accent-color);
+        }
+        
+        .info-card p {
+            font-size: 0.9rem;
+            color: var(--text-muted);
+        }
+        
+        /* Code Blocks */
+        pre {
+            background: var(--code-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 20px;
+            overflow-x: auto;
+            margin: 16px 0;
+        }
+        
+        code {
+            font-family: 'JetBrains Mono', 'Fira Code', monospace;
+            font-size: 0.9rem;
+        }
+        
+        .inline-code {
+            background: var(--bg-tertiary);
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 0.85rem;
+        }
+        
+        /* Tables */
+        .table-container {
+            overflow-x: auto;
+            margin: 20px 0;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+        }
+        
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.9rem;
+        }
+        
+        th {
+            background: var(--bg-tertiary);
+            padding: 14px 16px;
+            text-align: left;
+            font-weight: 600;
+            color: var(--primary-color);
+            border-bottom: 2px solid var(--border-color);
+        }
+        
+        td {
+            padding: 12px 16px;
+            border-bottom: 1px solid var(--border-color);
+        }
+        
+        tr:hover {
+            background: var(--bg-secondary);
+        }
+        
+        tr:last-child td {
+            border-bottom: none;
+        }
+        
+        /* Badge */
+        .badge {
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: 9999px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            margin-right: 6px;
+        }
+        
+        .badge-required {
+            background: rgba(239, 68, 68, 0.2);
+            color: #f87171;
+        }
+        
+        .badge-optional {
+            background: rgba(59, 130, 246, 0.2);
+            color: #60a5fa;
+        }
+        
+        .badge-type {
+            background: rgba(16, 185, 129, 0.2);
+            color: #34d399;
+        }
+        
+        /* Mermaid Diagrams */
+        .mermaid-container {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 24px;
+            margin: 24px 0;
+            text-align: center;
+        }
+        
+        .mermaid {
+            display: flex;
+            justify-content: center;
+        }
+        
+        /* Lists */
+        ul, ol {
+            margin: 16px 0;
+            padding-left: 24px;
+        }
+        
+        li {
+            margin-bottom: 10px;
+            color: var(--text-color);
+        }
+        
+        li strong {
+            color: var(--accent-color);
+        }
+        
+        /* Feature Grid */
+        .feature-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 16px;
+            margin: 24px 0;
+        }
+        
+        .feature-item {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 16px;
+        }
+        
+        .feature-item .title {
+            font-weight: 600;
+            color: var(--primary-color);
+            margin-bottom: 8px;
+        }
+        
+        .feature-item .desc {
+            font-size: 0.85rem;
+            color: var(--text-muted);
+        }
+        
+        /* Tabs */
+        .tabs {
+            display: flex;
+            gap: 4px;
+            margin-bottom: 0;
+            border-bottom: none;
+        }
+        
+        .tab {
+            padding: 12px 24px;
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-color);
+            border-bottom: none;
+            border-radius: 8px 8px 0 0;
+            cursor: pointer;
+            font-size: 0.9rem;
+            color: var(--text-muted);
+            transition: all 0.2s ease;
+        }
+        
+        .tab.active {
+            background: var(--code-bg);
+            color: var(--text-color);
+            border-bottom: 1px solid var(--code-bg);
+            margin-bottom: -1px;
+        }
+        
+        .tab-content {
+            display: none;
+        }
+        
+        .tab-content.active {
+            display: block;
+        }
+        
+        /* Responsive */
+        @media (max-width: 1024px) {
+            .sidebar {
+                width: 240px;
+            }
+            .main-content {
+                margin-left: 240px;
+                padding: 30px 40px;
+            }
+        }
+        
+        @media (max-width: 768px) {
+            .sidebar {
+                display: none;
+            }
+            .main-content {
+                margin-left: 0;
+                padding: 20px;
+            }
+        }
+        
+        /* Scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        
+        ::-webkit-scrollbar-track {
+            background: var(--bg-color);
+        }
+        
+        ::-webkit-scrollbar-thumb {
+            background: var(--border-color);
+            border-radius: 4px;
+        }
+        
+        ::-webkit-scrollbar-thumb:hover {
+            background: var(--text-muted);
+        }
+        
+        /* Field documentation */
+        .field-doc {
+            background: var(--bg-secondary);
+            border-left: 3px solid var(--primary-color);
+            padding: 16px 20px;
+            margin: 12px 0;
+            border-radius: 0 8px 8px 0;
+        }
+        
+        .field-name {
+            font-family: 'JetBrains Mono', monospace;
+            font-weight: 600;
+            color: var(--accent-color);
+        }
+        
+        .field-type {
+            font-family: 'JetBrains Mono', monospace;
+            color: var(--text-muted);
+            font-size: 0.85rem;
+        }
+        
+        .field-desc {
+            margin-top: 8px;
+            font-size: 0.9rem;
+            color: var(--text-color);
+        }
+        
+        /* Highlight box */
+        .highlight-box {
+            background: linear-gradient(135deg, rgba(59, 130, 246, 0.1) 0%, rgba(99, 102, 241, 0.1) 100%);
+            border: 1px solid var(--primary-color);
+            border-radius: 12px;
+            padding: 20px;
+            margin: 24px 0;
+        }
+        
+        .highlight-box h4 {
+            color: var(--primary-color);
+            margin-bottom: 12px;
+        }
+    </style>
+</head>
+<body>
+    <!-- Sidebar Navigation -->
+    <nav class="sidebar">
+        <div class="sidebar-header">
+            <h1>📋 Schema 文档</h1>
+            <p>Code Element Schema v1.0.0</p>
+        </div>
+        
+        <div class="nav-section">
+            <div class="nav-section-title">概述</div>
+            <a href="#design-motivation" class="nav-link">设计动机</a>
+            <a href="#problems-solved" class="nav-link">解决的问题</a>
+        </div>
+        
+        <div class="nav-section">
+            <div class="nav-section-title">Schema 结构</div>
+            <a href="#schema-structure" class="nav-link">结构详解</a>
+            <a href="#system-meta" class="nav-link">system_meta</a>
+            <a href="#structural-identity" class="nav-link">structural_identity</a>
+            <a href="#semantic-context" class="nav-link">semantic_context</a>
+            <a href="#relations" class="nav-link">relations</a>
+            <a href="#inferred-tags" class="nav-link">inferred_tags</a>
+            <a href="#language-extensions" class="nav-link">language_extensions</a>
+        </div>
+        
+        <div class="nav-section">
+            <div class="nav-section-title">DSL 对应</div>
+            <a href="#dsl-mapping" class="nav-link">与 query_dsl 对应</a>
+        </div>
+        
+        <div class="nav-section">
+            <div class="nav-section-title">语言映射</div>
+            <a href="#language-mappings" class="nav-link">类型映射表</a>
+        </div>
+        
+        <div class="nav-section">
+            <div class="nav-section-title">使用示例</div>
+            <a href="#usage-examples" class="nav-link">转换示例</a>
+            <a href="#feature-extraction" class="nav-link">特征提取</a>
+            <a href="#batch-conversion" class="nav-link">批量转换</a>
+        </div>
+        
+        <div class="nav-section">
+            <div class="nav-section-title">集成</div>
+            <a href="#clustering-integration" class="nav-link">聚类集成</a>
+        </div>
+        
+        <div class="nav-section">
+            <div class="nav-section-title">最佳实践</div>
+            <a href="#best-practices" class="nav-link">字段填充建议</a>
+            <a href="#performance" class="nav-link">性能优化</a>
+        </div>
+    </nav>
+    
+    <!-- Main Content -->
+    <main class="main-content">
+        <!-- Section 1: Design Motivation -->
+        <section id="design-motivation" class="section">
+            <h2 class="section-title">
+                <span class="icon">💡</span>
+                设计动机
+            </h2>
+            
+            <p>
+                在 CodeSearch 引擎中，我们需要处理来自多种编程语言的代码元素。不同语言的解析器产生不同格式的数据结构，
+                这导致了数据异构、特征抖动和序列化不稳定等问题。统一的 Schema 设计旨在解决这些挑战。
+            </p>
+            
+            <div class="card-grid">
+                <div class="info-card">
+                    <h4>🎯 统一表示</h4>
+                    <p>为 Java、Python、C++、JavaScript、Go、Rust 等语言提供一致的代码元素表示格式。</p>
+                </div>
+                <div class="info-card">
+                    <h4>📊 特征稳定</h4>
+                    <p>确保相同语义的代码元素在不同解析中产生一致的特征向量，减少特征抖动。</p>
+                </div>
+                <div class="info-card">
+                    <h4>🔄 可扩展性</h4>
+                    <p>支持语言特定扩展字段，同时保持核心结构的稳定性。</p>
+                </div>
+            </div>
+        </section>
+        
+        <section id="problems-solved" class="section">
+            <h2 class="section-title">
+                <span class="icon">🔧</span>
+                解决的问题
+            </h2>
+            
+            <div class="card">
+                <div class="card-header">数据异构问题</div>
+                <p>不同语言解析器输出的数据结构差异大，难以统一处理。例如：</p>
+                <ul>
+                    <li><strong>Java</strong>：使用 <code class="inline-code">class</code>、<code class="inline-code">method</code>、<code class="inline-code">field</code></li>
+                    <li><strong>Python</strong>：使用 <code class="inline-code">function</code>、<code class="inline-code">class</code>、<code class="inline-code">decorator</code></li>
+                    <li><strong>C++</strong>：使用 <code class="inline-code">function</code>、<code class="inline-code">struct</code>、<code class="inline-code">template</code></li>
+                    <li><strong>Rust</strong>：使用 <code class="inline-code">fn</code>、<code class="inline-code">struct</code>、<code class="inline-code">trait</code></li>
+                </ul>
+                <p>Schema 通过类型映射表将各种语言类型归一化为标准类型。</p>
+            </div>
+            
+            <div class="card">
+                <div class="card-header">特征抖动问题</div>
+                <p>相同语义的代码因格式差异产生不同的特征表示，影响聚类和检索效果。Schema 定义了明确的字段优先级和提取规则。</p>
+            </div>
+            
+            <div class="card">
+                <div class="card-header">序列化不稳定问题</div>
+                <p>JSON 字段顺序不一致导致哈希值变化，影响索引稳定性。Schema 规定了固定的字段顺序和序列化规范。</p>
+            </div>
+        </section>
+        
+        <!-- Section 2: Schema Structure -->
+        <section id="schema-structure" class="section">
+            <h2 class="section-title">
+                <span class="icon">📐</span>
+                Schema 结构详解
+            </h2>
+            
+            <p>SymbolSchema 包含以下核心组件：</p>
+            
+            <div class="mermaid-container">
+                <pre class="mermaid">
+graph TD
+    A[SymbolSchema] --> B[schema_version]
+    A --> C[system_meta]
+    A --> D[structural_identity]
+    A --> E[semantic_context]
+    A --> F[relations]
+    A --> G[inferred_tags]
+    A --> H[language_extensions]
+    
+    C --> C1[symbol_id]
+    C --> C2[filepath]
+    C --> C3[language]
+    C --> C4[line_range]
+    
+    D --> D1[name]
+    D --> D2[symbol_type]
+    D --> D3[container]
+    D --> D4[signature]
+    D --> D5[parameters]
+    
+    E --> E1[docstring]
+    E --> E2[code_snippet]
+    E --> E3[annotations]
+    E --> E4[keywords]
+    
+    F --> F1[calls]
+    F --> F2[called_by]
+    F --> F3[depends_on]
+                </pre>
+            </div>
+        </section>
+        
+        <section id="system-meta" class="section">
+            <h3 class="subsection-title">system_meta - 系统级元信息</h3>
+            
+            <p>记录代码元素的系统级标识和位置信息，用于索引和追踪。</p>
+            
+            <div class="field-doc">
+                <span class="field-name">symbol_id</span>
+                <span class="badge badge-required">required</span>
+                <span class="badge badge-type">int | string</span>
+                <div class="field-desc">代码元素的唯一标识符，用于索引和关联。</div>
+            </div>
+            
+            <div class="field-doc">
+                <span class="field-name">filepath</span>
+                <span class="badge badge-required">required</span>
+                <span class="badge badge-type">string</span>
+                <div class="field-desc">源文件的绝对路径或相对路径。</div>
+            </div>
+            
+            <div class="field-doc">
+                <span class="field-name">language</span>
+                <span class="badge badge-required">required</span>
+                <span class="badge badge-type">enum</span>
+                <div class="field-desc">编程语言类型：java, python, c, cpp, javascript, typescript, go, rust, other</div>
+            </div>
+            
+            <div class="field-doc">
+                <span class="field-name">line_range</span>
+                <span class="badge badge-optional">optional</span>
+                <span class="badge badge-type">object</span>
+                <div class="field-desc">代码在文件中的行号范围，包含 start_line, end_line, start_column, end_column。</div>
+            </div>
+            
+            <div class="field-doc">
+                <span class="field-name">repository</span>
+                <span class="badge badge-optional">optional</span>
+                <span class="badge badge-type">string</span>
+                <div class="field-desc">所属仓库或项目名称。</div>
+            </div>
+            
+            <div class="field-doc">
+                <span class="field-name">commit_hash</span>
+                <span class="badge badge-optional">optional</span>
+                <span class="badge badge-type">string</span>
+                <div class="field-desc">Git commit 哈希值，用于版本追踪。</div>
+            </div>
+            
+            <pre><code class="language-json">{
+  "system_meta": {
+    "symbol_id": 123,
+    "filepath": "/src/main/java/com/example/AuthService.java",
+    "language": "java",
+    "line_range": {
+      "start_line": 45,
+      "end_line": 68,
+      "start_column": 1,
+      "end_column": 2
+    },
+    "repository": "example-project",
+    "commit_hash": "a1b2c3d4"
+  }
+}</code></pre>
+        </section>
+        
+        <section id="structural-identity" class="section">
+            <h3 class="subsection-title">structural_identity - 结构标识</h3>
+            
+            <p>定义代码元素的结构身份，是 Schema 的核心部分。</p>
+            
+            <div class="field-doc">
+                <span class="field-name">name</span>
+                <span class="badge badge-required">required</span>
+                <span class="badge badge-type">string</span>
+                <div class="field-desc">符号名称（函数名、类名、变量名等）。</div>
+            </div>
+            
+            <div class="field-doc">
+                <span class="field-name">symbol_type</span>
+                <span class="badge badge-required">required</span>
+                <span class="badge badge-type">enum</span>
+                <div class="field-desc">归一化的符号类型：function, method, class, interface, struct, enum, variable, constant, field, property, module, namespace, type_alias, macro, other</div>
+            </div>
+            
+            <div class="field-doc">
+                <span class="field-name">container</span>
+                <span class="badge badge-optional">optional</span>
+                <span class="badge badge-type">object</span>
+                <div class="field-desc">容器层级信息，包含 container_name, container_type, full_qualified_name。</div>
+            </div>
+            
+            <div class="field-doc">
+                <span class="field-name">signature</span>
+                <span class="badge badge-optional">optional</span>
+                <span class="badge badge-type">string</span>
+                <div class="field-desc">函数/方法签名，包含参数和返回类型。</div>
+            </div>
+            
+            <div class="field-doc">
+                <span class="field-name">parameters</span>
+                <span class="badge badge-optional">optional</span>
+                <span class="badge badge-type">array</span>
+                <div class="field-desc">函数/方法参数列表，每个参数包含 name, type, default_value, is_optional, is_variadic。</div>
+            </div>
+            
+            <div class="field-doc">
+                <span class="field-name">modifiers</span>
+                <span class="badge badge-optional">optional</span>
+                <span class="badge badge-type">array</span>
+                <div class="field-desc">访问修饰符和关键字（public, private, static, async 等）。</div>
+            </div>
+            
+            <div class="field-doc">
+                <span class="field-name">parent_types</span>
+                <span class="badge badge-optional">optional</span>
+                <span class="badge badge-type">array</span>
+                <div class="field-desc">父类或实现的接口列表。</div>
+            </div>
+            
+            <pre><code class="language-json">{
+  "structural_identity": {
+    "name": "sendSmsLoginCode",
+    "symbol_type": "method",
+    "container": {
+      "container_name": "AuthServiceImpl",
+      "container_type": "class",
+      "full_qualified_name": "com.example.AuthServiceImpl.sendSmsLoginCode"
+    },
+    "signature": "sendSmsLoginCode(String mobile, String code)",
+    "return_type": "void",
+    "parameters": [
+      {"name": "mobile", "type": "String"},
+      {"name": "code", "type": "String"}
+    ],
+    "modifiers": ["public", "async"],
+    "parent_types": ["AuthService"]
+  }
+}</code></pre>
+        </section>
+        
+        <section id="semantic-context" class="section">
+            <h3 class="subsection-title">semantic_context - 语义上下文</h3>
+            
+            <p>包含代码元素的语义信息，用于功能检索和语义匹配。</p>
+            
+            <div class="field-doc">
+                <span class="field-name">docstring</span>
+                <span class="badge badge-optional">optional</span>
+                <span class="badge badge-type">string</span>
+                <div class="field-desc">文档字符串或注释内容。</div>
+            </div>
+            
+            <div class="field-doc">
+                <span class="field-name">code_snippet</span>
+                <span class="badge badge-optional">optional</span>
+                <span class="badge badge-type">string</span>
+                <div class="field-desc">实际源代码内容。</div>
+            </div>
+            
+            <div class="field-doc">
+                <span class="field-name">summary</span>
+                <span class="badge badge-optional">optional</span>
+                <span class="badge badge-type">string</span>
+                <div class="field-desc">AI 生成的代码功能摘要。</div>
+            </div>
+            
+            <div class="field-doc">
+                <span class="field-name">annotations</span>
+                <span class="badge badge-optional">optional</span>
+                <span class="badge badge-type">array</span>
+                <div class="field-desc">注解/装饰器列表（如 @Override, @Transactional, @pytest.fixture）。</div>
+            </div>
+            
+            <div class="field-doc">
+                <span class="field-name">keywords</span>
+                <span class="badge badge-optional">optional</span>
+                <span class="badge badge-type">array</span>
+                <div class="field-desc">从代码中提取的关键词。</div>
+            </div>
+            
+            <div class="field-doc">
+                <span class="field-name">domain_terms</span>
+                <span class="badge badge-optional">optional</span>
+                <span class="badge badge-type">array</span>
+                <div class="field-desc">代码中识别的领域特定术语。</div>
+            </div>
+            
+            <pre><code class="language-json">{
+  "semantic_context": {
+    "docstring": "Sends an SMS verification code for user login authentication",
+    "code_snippet": "public void sendSmsLoginCode(String mobile, String code) {\n    SmsMessage message = new SmsMessage(mobile, code);\n    smsClient.send(message);\n}",
+    "annotations": ["@Override", "@Async", "@Transactional"],
+    "keywords": ["sms", "login", "verification", "authentication"],
+    "domain_terms": ["user authentication", "SMS verification"]
+  }
+}</code></pre>
+        </section>
+        <section id="relations" class="section">
+            <h3 class="subsection-title">relations - 关系信息</h3>
+            
+            <p>记录代码元素与其他元素之间的关系，用于依赖分析和调用图构建。</p>
+            
+            <div class="field-doc">
+                <span class="field-name">calls</span>
+                <span class="badge badge-optional">optional</span>
+                <span class="badge badge-type">array</span>
+                <div class="field-desc">此元素调用的函数/方法列表。</div>
+            </div>
+            
+            <div class="field-doc">
+                <span class="field-name">called_by</span>
+                <span class="badge badge-optional">optional</span>
+                <span class="badge badge-type">array</span>
+                <div class="field-desc">调用此元素的函数/方法列表。</div>
+            </div>
+            
+            <div class="field-doc">
+                <span class="field-name">references</span>
+                <span class="badge badge-optional">optional</span>
+                <span class="badge badge-type">array</span>
+                <div class="field-desc">此元素引用的变量或类型。</div>
+            </div>
+            
+            <div class="field-doc">
+                <span class="field-name">referenced_by</span>
+                <span class="badge badge-optional">optional</span>
+                <span class="badge badge-type">array</span>
+                <div class="field-desc">引用此元素的元素列表。</div>
+            </div>
+            
+            <div class="field-doc">
+                <span class="field-name">depends_on</span>
+                <span class="badge badge-optional">optional</span>
+                <span class="badge badge-type">array</span>
+                <div class="field-desc">此元素依赖的文件或模块。</div>
+            </div>
+            
+            <div class="field-doc">
+                <span class="field-name">tests</span>
+                <span class="badge badge-optional">optional</span>
+                <span class="badge badge-type">array</span>
+                <div class="field-desc">测试此元素的测试函数列表。</div>
+            </div>
+            
+            <pre><code class="language-json">{
+  "relations": {
+    "calls": ["SmsClient.send", "SmsMessage.<init>"],
+    "called_by": ["LoginController.login"],
+    "depends_on": ["com.example.sms.SmsClient", "com.example.model.SmsMessage"]
+  }
+}</code></pre>
+        </section>
+        
+        <section id="inferred-tags" class="section">
+            <h3 class="subsection-title">inferred_tags - 推断标签</h3>
+            
+            <p>AI 推断的语义标签，用于增强检索和分类。</p>
+            
+            <pre><code class="language-json">{
+  "inferred_tags": ["login", "sms", "authentication", "verification"]
+}</code></pre>
+            
+            <p>标签来源包括：</p>
+            <ul>
+                <li><strong>名称推断</strong>：从函数名、类名提取的关键词</li>
+                <li><strong>语义推断</strong>：基于 docstring 和代码内容的语义分析</li>
+                <li><strong>领域推断</strong>：识别的领域特定概念</li>
+            </ul>
+        </section>
+        
+        <section id="language-extensions" class="section">
+            <h3 class="subsection-title">language_extensions - 语言扩展</h3>
+            
+            <p>存储语言特定的扩展字段，保持核心 Schema 简洁的同时支持语言特性。</p>
+            
+            <pre><code class="language-json">{
+  "language_extensions": {
+    "java": {
+      "throws": ["SmsException"],
+      "is_synchronized": false
+    }
+  }
+}</code></pre>
+            
+            <pre><code class="language-json">{
+  "language_extensions": {
+    "python": {
+      "is_coroutine": true,
+      "decorators": ["retry"]
+    }
+  }
+}</code></pre>
+            
+            <pre><code class="language-json">{
+  "language_extensions": {
+    "cpp": {
+      "template_params": [],
+      "is_constexpr": false,
+      "is_noexcept": false
+    }
+  }
+}</code></pre>
+        </section>
+        
+        <!-- Section 3: DSL Mapping -->
+        <section id="dsl-mapping" class="section">
+            <h2 class="section-title">
+                <span class="icon">🔗</span>
+                与 query_dsl 的对应关系
+            </h2>
+            
+            <p>Schema 字段与查询 DSL 条件的映射关系：</p>
+            
+            <div class="table-container">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Schema 字段</th>
+                            <th>DSL 条件类型</th>
+                            <th>说明</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><code class="inline-code">structural_identity.name</code></td>
+                            <td><code class="inline-code">name_matches</code></td>
+                            <td>名称精确匹配或正则匹配</td>
+                        </tr>
+                        <tr>
+                            <td><code class="inline-code">structural_identity.symbol_type</code></td>
+                            <td><code class="inline-code">type_in</code></td>
+                            <td>符号类型过滤</td>
+                        </tr>
+                        <tr>
+                            <td><code class="inline-code">structural_identity.signature</code></td>
+                            <td><code class="inline-code">signature_matches</code></td>
+                            <td>签名模式匹配</td>
+                        </tr>
+                        <tr>
+                            <td><code class="inline-code">structural_identity.container.container_name</code></td>
+                            <td><code class="inline-code">container_matches</code></td>
+                            <td>容器名称匹配</td>
+                        </tr>
+                        <tr>
+                            <td><code class="inline-code">structural_identity.modifiers</code></td>
+                            <td><code class="inline-code">modifiers_contain</code></td>
+                            <td>修饰符包含检查</td>
+                        </tr>
+                        <tr>
+                            <td><code class="inline-code">system_meta.language</code></td>
+                            <td><code class="inline-code">language_in</code></td>
+                            <td>编程语言过滤</td>
+                        </tr>
+                        <tr>
+                            <td><code class="inline-code">semantic_context.annotations</code></td>
+                            <td><code class="inline-code">annotations_contain</code></td>
+                            <td>注解包含检查</td>
+                        </tr>
+                        <tr>
+                            <td><code class="inline-code">relations.calls</code></td>
+                            <td><code class="inline-code">calls_matches</code></td>
+                            <td>调用关系匹配</td>
+                        </tr>
+                        <tr>
+                            <td><code class="inline-code">inferred_tags</code></td>
+                            <td><code class="inline-code">tags_contain</code></td>
+                            <td>标签包含检查</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+            
+            <div class="highlight-box">
+                <h4>查询示例</h4>
+                <pre><code class="language-json">{
+  "conditions": [
+    {"type": "type_in", "values": ["method", "function"]},
+    {"type": "language_in", "values": ["java", "python"]},
+    {"type": "name_matches", "pattern": "send.*Code", "mode": "regex"},
+    {"type": "annotations_contain", "values": ["@Async"]}
+  ]
+}</code></pre>
+            </div>
+        </section>
+        <!-- Section 4: Language Mappings -->
+        <section id="language-mappings" class="section">
+            <h2 class="section-title">
+                <span class="icon">🌐</span>
+                各语言类型映射表
+            </h2>
+            
+            <p>不同编程语言的原始类型到 Schema 标准类型的映射：</p>
+            
+            <div class="table-container">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Java</th>
+                            <th>Python</th>
+                            <th>C++</th>
+                            <th>JavaScript</th>
+                            <th>Go</th>
+                            <th>Rust</th>
+                            <th>标准类型</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>class</td>
+                            <td>class</td>
+                            <td>class</td>
+                            <td>class</td>
+                            <td>struct</td>
+                            <td>struct</td>
+                            <td><code class="inline-code">class</code></td>
+                        </tr>
+                        <tr>
+                            <td>interface</td>
+                            <td>-</td>
+                            <td>-</td>
+                            <td>-</td>
+                            <td>interface</td>
+                            <td>trait</td>
+                            <td><code class="inline-code">interface</code></td>
+                        </tr>
+                        <tr>
+                            <td>method</td>
+                            <td>method</td>
+                            <td>method</td>
+                            <td>method</td>
+                            <td>method</td>
+                            <td>impl</td>
+                            <td><code class="inline-code">method</code></td>
+                        </tr>
+                        <tr>
+                            <td>-</td>
+                            <td>function</td>
+                            <td>function</td>
+                            <td>function</td>
+                            <td>func</td>
+                            <td>fn</td>
+                            <td><code class="inline-code">function</code></td>
+                        </tr>
+                        <tr>
+                            <td>enum</td>
+                            <td>-</td>
+                            <td>enum</td>
+                            <td>-</td>
+                            <td>-</td>
+                            <td>enum</td>
+                            <td><code class="inline-code">enum</code></td>
+                        </tr>
+                        <tr>
+                            <td>field</td>
+                            <td>-</td>
+                            <td>-</td>
+                            <td>-</td>
+                            <td>-</td>
+                            <td>-</td>
+                            <td><code class="inline-code">field</code></td>
+                        </tr>
+                        <tr>
+                            <td>variable</td>
+                            <td>variable</td>
+                            <td>variable</td>
+                            <td>var/let</td>
+                            <td>var</td>
+                            <td>-</td>
+                            <td><code class="inline-code">variable</code></td>
+                        </tr>
+                        <tr>
+                            <td>-</td>
+                            <td>-</td>
+                            <td>-</td>
+                            <td>const</td>
+                            <td>const</td>
+                            <td>const/static</td>
+                            <td><code class="inline-code">constant</code></td>
+                        </tr>
+                        <tr>
+                            <td>-</td>
+                            <td>-</td>
+                            <td>namespace</td>
+                            <td>-</td>
+                            <td>-</td>
+                            <td>mod</td>
+                            <td><code class="inline-code">module</code></td>
+                        </tr>
+                        <tr>
+                            <td>-</td>
+                            <td>-</td>
+                            <td>struct</td>
+                            <td>-</td>
+                            <td>-</td>
+                            <td>-</td>
+                            <td><code class="inline-code">struct</code></td>
+                        </tr>
+                        <tr>
+                            <td>-</td>
+                            <td>-</td>
+                            <td>typedef/template</td>
+                            <td>-</td>
+                            <td>type</td>
+                            <td>type</td>
+                            <td><code class="inline-code">type_alias</code></td>
+                        </tr>
+                        <tr>
+                            <td>-</td>
+                            <td>-</td>
+                            <td>macro</td>
+                            <td>-</td>
+                            <td>-</td>
+                            <td>macro_rules</td>
+                            <td><code class="inline-code">macro</code></td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+            
+            <h3 class="subsubsection-title">类型映射代码</h3>
+            
+            <pre><code class="language-python">def normalize_symbol_type(language: str, raw_type: str) -> str:
+    """Normalize symbol type to standard enum value"""
+    lang_map = LANGUAGE_TYPE_MAP.get(language.lower(), {})
+    normalized = lang_map.get(raw_type.lower())
+    if normalized:
+        return normalized.value
+    return SymbolType.OTHER.value</code></pre>
+        </section>
+        
+        <!-- Section 5: Usage Examples -->
+        <section id="usage-examples" class="section">
+            <h2 class="section-title">
+                <span class="icon">📝</span>
+                使用示例
+            </h2>
+            
+            <h3 class="subsection-title">转换 SymbolItem 为 Schema</h3>
+            
+            <pre><code class="language-python">from parsers.schema_converter import convert_symbol_to_schema, SymbolSchema
+from parsers.base import SymbolItem
+
+# 创建 SymbolItem
+symbol = SymbolItem(
+    name="sendSmsLoginCode",
+    type="method",
+    file="/src/main/java/com/example/AuthService.java",
+    language="java",
+    range=RangeInfo(start_line=45, end_line=68),
+    container="AuthServiceImpl",
+    signature="sendSmsLoginCode(String mobile, String code)",
+    doc="Sends an SMS verification code for user login authentication"
+)
+
+# 转换为 Schema
+schema = convert_symbol_to_schema(
+    symbol=symbol,
+    code_content="public void sendSmsLoginCode(String mobile, String code) {\n    // ...\n}",
+    calls=["SmsClient.send"],
+    called_by=["LoginController.login"],
+    dependencies=["com.example.sms.SmsClient"]
+)
+
+# 序列化为 JSON
+json_str = schema.to_json()
+print(json_str)</code></pre>
+            
+            <h3 class="subsubsection-title">输出结果</h3>
+            
+            <pre><code class="language-json">{
+  "schema_version": "1.0.0",
+  "system_meta": {
+    "symbol_id": 0,
+    "filepath": "/src/main/java/com/example/AuthService.java",
+    "language": "java",
+    "line_range": {
+      "start_line": 45,
+      "end_line": 68
+    }
+  },
+  "structural_identity": {
+    "name": "sendSmsLoginCode",
+    "symbol_type": "method",
+    "container": {
+      "container_name": "AuthServiceImpl",
+      "container_type": "class"
+    },
+    "signature": "sendSmsLoginCode(String mobile, String code)"
+  },
+  "semantic_context": {
+    "docstring": "Sends an SMS verification code for user login authentication",
+    "code_snippet": "public void sendSmsLoginCode(String mobile, String code) {\n    // ...\n}"
+  },
+  "relations": {
+    "calls": ["SmsClient.send"],
+    "called_by": ["LoginController.login"],
+    "depends_on": ["com.example.sms.SmsClient"]
+  }
+}</code></pre>
+        </section>
+        
+        <section id="feature-extraction" class="section">
+            <h3 class="subsection-title">生成特征文本</h3>
+            
+            <p>Schema 支持多种特征提取模式，用于不同场景的嵌入生成：</p>
+            
+            <div class="table-container">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>模式</th>
+                            <th>包含字段</th>
+                            <th>适用场景</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><code class="inline-code">full</code></td>
+                            <td>structural_identity, semantic_context, relations, inferred_tags</td>
+                            <td>综合嵌入，用于语义检索</td>
+                        </tr>
+                        <tr>
+                            <td><code class="inline-code">structural</code></td>
+                            <td>structural_identity</td>
+                            <td>签名匹配，用于精确查找</td>
+                        </tr>
+                        <tr>
+                            <td><code class="inline-code">semantic</code></td>
+                            <td>semantic_context, inferred_tags</td>
+                            <td>功能检索，用于语义搜索</td>
+                        </tr>
+                        <tr>
+                            <td><code class="inline-code">minimal</code></td>
+                            <td>name, signature</td>
+                            <td>快速索引，用于轻量匹配</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+            
+            <pre><code class="language-python">from parsers.schema_converter import schema_to_feature_text
+
+# Full 模式 - 包含所有信息
+feature_full = schema_to_feature_text(schema, mode="full")
+# name: sendSmsLoginCode | type: method | signature: sendSmsLoginCode(String mobile, String code) | container: AuthServiceImpl | doc: Sends an SMS verification code... | calls: SmsClient.send
+
+# Structural 模式 - 仅结构信息
+feature_structural = schema_to_feature_text(schema, mode="structural")
+# name: sendSmsLoginCode | type: method | signature: sendSmsLoginCode(String mobile, String code) | container: AuthServiceImpl
+
+# Semantic 模式 - 仅语义信息
+feature_semantic = schema_to_feature_text(schema, mode="semantic")
+# doc: Sends an SMS verification code for user login authentication | code: public void sendSmsLoginCode...
+
+# Minimal 模式 - 最小表示
+feature_minimal = schema_to_feature_text(schema, mode="minimal")
+# name: sendSmsLoginCode | signature: sendSmsLoginCode(String mobile, String code)</code></pre>
+        </section>
+        
+        <section id="batch-conversion" class="section">
+            <h3 class="subsection-title">批量转换</h3>
+            
+            <pre><code class="language-python">from parsers.schema_converter import convert_symbols_batch
+
+# 批量转换 SymbolItems
+schemas = convert_symbols_batch(
+    symbols=symbol_list,
+    code_fetcher=lambda s: fetch_code_content(s.file, s.range),
+    call_graph=call_graph_edges,
+    dependency_graph=dependency_edges
+)
+
+# 验证 Schema
+from parsers.schema_converter import validate_schema
+
+for schema in schemas:
+    errors = validate_schema(schema)
+    if errors:
+        print(f"Validation errors: {errors}")</code></pre>
+        </section>
+        <!-- Section 6: Clustering Integration -->
+        <section id="clustering-integration" class="section">
+            <h2 class="section-title">
+                <span class="icon">🔄</span>
+                与聚类流程的集成
+            </h2>
+            
+            <div class="mermaid-container">
+                <pre class="mermaid">
+flowchart LR
+    A[源代码] --> B[解析器]
+    B --> C[SymbolItem]
+    C --> D[Schema转换]
+    D --> E[SymbolSchema]
+    E --> F{特征提取模式}
+    F -->|full| G[完整特征]
+    F -->|structural| H[结构特征]
+    F -->|semantic| I[语义特征]
+    G --> J[嵌入模型]
+    H --> J
+    I --> J
+    J --> K[向量索引]
+    K --> L[聚类分析]
+                </pre>
+            </div>
+            
+            <h3 class="subsection-title">聚类中的 Schema 使用</h3>
+            
+            <pre><code class="language-python"># clustering/schema_clusterer.py 中的使用示例
+
+class SchemaClusterer:
+    def __init__(self, embedding_model, feature_mode="full"):
+        self.embedding_model = embedding_model
+        self.feature_mode = feature_mode
+    
+    def prepare_features(self, schemas: List[SymbolSchema]) -> np.ndarray:
+        """将 Schema 转换为特征向量"""
+        features = []
+        for schema in schemas:
+            # 生成特征文本
+            text = schema_to_feature_text(schema, mode=self.feature_mode)
+            # 生成嵌入向量
+            embedding = self.embedding_model.encode(text)
+            features.append(embedding)
+        return np.array(features)
+    
+    def cluster(self, schemas: List[SymbolSchema], n_clusters: int):
+        """执行聚类"""
+        features = self.prepare_features(schemas)
+        # 使用 KMeans 或其他聚类算法
+        from sklearn.cluster import KMeans
+        kmeans = KMeans(n_clusters=n_clusters)
+        labels = kmeans.fit_predict(features)
+        return labels</code></pre>
+            
+            <h3 class="subsection-title">特征提取模式对比</h3>
+            
+            <div class="card-grid">
+                <div class="info-card">
+                    <h4>📊 Full 模式</h4>
+                    <p>包含结构、语义、关系、标签全量信息。适合语义相似性聚类，生成最丰富的嵌入表示。</p>
+                </div>
+                <div class="info-card">
+                    <h4>🏗️ Structural 模式</h4>
+                    <p>仅包含名称、类型、签名、参数等结构信息。适合按 API 签名聚合相似函数。</p>
+                </div>
+                <div class="info-card">
+                    <h4>💬 Semantic 模式</h4>
+                    <p>包含文档、代码、标签等语义信息。适合按功能语义聚合。</p>
+                </div>
+                <div class="info-card">
+                    <h4>⚡ Minimal 模式</h4>
+                    <p>仅包含名称和签名。适合快速索引和轻量匹配。</p>
+                </div>
+            </div>
+        </section>
+        
+        <!-- Section 7: Best Practices -->
+        <section id="best-practices" class="section">
+            <h2 class="section-title">
+                <span class="icon">✨</span>
+                最佳实践 - 字段填充建议
+            </h2>
+            
+            <h3 class="subsection-title">必填字段</h3>
+            
+            <ul>
+                <li><strong>schema_version</strong>：始终使用当前版本 "1.0.0"</li>
+                <li><strong>system_meta.symbol_id</strong>：确保唯一性，可使用文件路径+名称的哈希值</li>
+                <li><strong>system_meta.filepath</strong>：使用相对于仓库根目录的路径</li>
+                <li><strong>system_meta.language</strong>：准确识别语言类型</li>
+                <li><strong>structural_identity.name</strong>：使用原始符号名称，不进行规范化</li>
+                <li><strong>structural_identity.symbol_type</strong>：通过类型映射表归一化</li>
+            </ul>
+            
+            <h3 class="subsection-title">推荐填充字段</h3>
+            
+            <ul>
+                <li><strong>structural_identity.signature</strong>：对函数/方法强烈推荐，用于签名匹配</li>
+                <li><strong>structural_identity.container</strong>：推荐填充，有助于理解上下文</li>
+                <li><strong>semantic_context.docstring</strong>：强烈推荐，对语义检索效果显著</li>
+                <li><strong>system_meta.line_range</strong>：推荐填充，用于代码定位</li>
+            </ul>
+            
+            <h3 class="subsection-title">可选字段填充时机</h3>
+            
+            <ul>
+                <li><strong>semantic_context.code_snippet</strong>：当需要深度语义分析时填充</li>
+                <li><strong>relations.*</strong>：当有调用图分析结果时填充</li>
+                <li><strong>inferred_tags</strong>：当有 AI 标注结果时填充</li>
+                <li><strong>language_extensions</strong>：当有语言特定信息需要保留时填充</li>
+            </ul>
+            
+            <h3 class="subsection-title">避免的问题</h3>
+            
+            <div class="card">
+                <ul>
+                    <li><strong>字段顺序不一致</strong>：使用 <code class="inline-code">to_dict()</code> 方法保证固定顺序</li>
+                    <li><strong>空值处理不当</strong>：不要包含 null 值字段，使用 <code class="inline-code">to_dict()</code> 自动过滤</li>
+                    <li><strong>类型不规范</strong>：symbol_type 必须通过 <code class="inline-code">normalize_symbol_type()</code> 归一化</li>
+                    <li><strong>路径不统一</strong>：filepath 统一使用相对路径或绝对路径，不要混用</li>
+                </ul>
+            </div>
+        </section>
+        
+        <section id="performance" class="section">
+            <h2 class="section-title">
+                <span class="icon">⚡</span>
+                性能优化建议
+            </h2>
+            
+            <div class="feature-grid">
+                <div class="feature-item">
+                    <div class="title">🚀 批量处理</div>
+                    <div class="desc">使用 convert_symbols_batch() 批量转换，减少重复计算。</div>
+                </div>
+                <div class="feature-item">
+                    <div class="title">📝 特征长度限制</div>
+                    <div class="desc">docstring 限制 500 字符，code_snippet 限制 1000 字符，relations 限制 10 条。</div>
+                </div>
+                <div class="feature-item">
+                    <div class="title">💾 懒加载</div>
+                    <div class="desc">code_snippet 可按需加载，不必要时不填充。</div>
+                </div>
+                <div class="feature-item">
+                    <div class="title">🔢 模式选择</div>
+                    <div class="desc">根据场景选择合适的特征提取模式，minimal 最快，full 最慢。</div>
+                </div>
+                <div class="feature-item">
+                    <div class="title">📊 缓存优化</div>
+                    <div class="desc">对相同代码元素的 Schema 可缓存在内存中，避免重复解析。</div>
+                </div>
+                <div class="feature-item">
+                    <div class="title">🔗 增量更新</div>
+                    <div class="desc">仅对变更文件重新生成 Schema，减少全量处理开销。</div>
+                </div>
+            </div>
+            
+            <h3 class="subsection-title">性能基准参考</h3>
+            
+            <div class="table-container">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>操作</th>
+                            <th>数据量</th>
+                            <th>耗时</th>
+                            <th>内存</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>SymbolItem → Schema</td>
+                            <td>10,000 符号</td>
+                            <td>~2s</td>
+                            <td>~50MB</td>
+                        </tr>
+                        <tr>
+                            <td>特征提取 (full)</td>
+                            <td>10,000 Schema</td>
+                            <td>~1s</td>
+                            <td>~20MB</td>
+                        </tr>
+                        <tr>
+                            <td>特征提取 (minimal)</td>
+                            <td>10,000 Schema</td>
+                            <td>~0.3s</td>
+                            <td>~5MB</td>
+                        </tr>
+                        <tr>
+                            <td>JSON 序列化</td>
+                            <td>10,000 Schema</td>
+                            <td>~0.5s</td>
+                            <td>~100MB</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+            
+            <div class="highlight-box">
+                <h4>完整示例代码流程</h4>
+                <pre><code class="language-python"># 完整的 Schema 处理流程
+from parsers.schema_converter import (
+    convert_symbols_batch,
+    schema_to_feature_text,
+    validate_schema
+)
+from clustering.schema_clusterer import SchemaClusterer
+
+# 1. 解析代码获取 SymbolItems
+symbols = parse_codebase("/path/to/repo")
+
+# 2. 批量转换为 Schema
+schemas = convert_symbols_batch(
+    symbols=symbols,
+    code_fetcher=fetch_code_content,
+    call_graph=call_graph,
+    dependency_graph=dep_graph
+)
+
+# 3. 验证 Schema
+valid_schemas = []
+for schema in schemas:
+    errors = validate_schema(schema)
+    if not errors:
+        valid_schemas.append(schema)
+
+# 4. 特征提取与聚类
+clusterer = SchemaClusterer(embedding_model, feature_mode="full")
+labels = clusterer.cluster(valid_schemas, n_clusters=20)
+
+# 5. 结果分析
+for cluster_id in range(20):
+    cluster_items = [s for s, l in zip(valid_schemas, labels) if l == cluster_id]
+    print(f"Cluster {cluster_id}: {len(cluster_items)} items")</code></pre>
+            </div>
+        </section>
+        
+        <!-- Footer -->
+        <footer style="margin-top: 80px; padding: 40px 0; border-top: 1px solid var(--border-color); text-align: center; color: var(--text-muted);">
+            <p>Code Element Schema Documentation v1.0.0</p>
+            <p style="font-size: 0.85rem; margin-top: 8px;">
+                参考文件: 
+                <code class="inline-code">DSL/code_schema.json</code> | 
+                <code class="inline-code">parsers/schema_converter.py</code>
+            </p>
+        </footer>
+    </main>
+    
+    <script>
+        // Initialize Mermaid
+        mermaid.initialize({
+            startOnLoad: true,
+            theme: 'dark',
+            themeVariables: {
+                primaryColor: '#3b82f6',
+                primaryTextColor: '#e2e8f0',
+                primaryBorderColor: '#475569',
+                lineColor: '#6366f1',
+                secondaryColor: '#1e293b',
+                tertiaryColor: '#334155'
+            }
+        });
+        
+        // Initialize Highlight.js
+        hljs.highlightAll();
+        
+        // Smooth scroll for navigation
+        document.querySelectorAll('.nav-link').forEach(link => {
+            link.addEventListener('click', function(e) {
+                e.preventDefault();
+                const target = document.querySelector(this.getAttribute('href'));
+                if (target) {
+                    target.scrollIntoView({ behavior: 'smooth' });
+                }
+            });
+        });
+        
+        // Active link highlighting
+        const sections = document.querySelectorAll('.section');
+        const navLinks = document.querySelectorAll('.nav-link');
+        
+        window.addEventListener('scroll', () => {
+            let current = '';
+            sections.forEach(section => {
+                const sectionTop = section.offsetTop;
+                if (scrollY >= sectionTop - 100) {
+                    current = section.getAttribute('id');
+                }
+            });
+            
+            navLinks.forEach(link => {
+                link.classList.remove('active');
+                if (link.getAttribute('href') === '#' + current) {
+                    link.classList.add('active');
+                }
+            });
+        });
+    </script>
+</body>
+</html>

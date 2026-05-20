@@ -12,7 +12,7 @@ from invert_index import InvertedIndexBuilder
 from query_processing.llm_keyword_extractor import LLMKeywordExtractor
 from search.invert_index_search import invert_index_search4symbol
 
-from definition import OUTPUT_DIR
+from definition import OUTPUT_DIR,PROJECT_PATH
 from utils.file_utils import save_res
 
 
@@ -78,8 +78,8 @@ def main():
     parser.add_argument("--query", type=str, help="A natural language search query for the online phase")
 
     args = parser.parse_args([
-        # "--project_path", "/Users/huangzhuochen/IdeaProjects/youlai-boot-master",
-        # "--output", "./output/youlai-boot-master",
+        # "--project_path", PROJECT_PATH,
+        # "--output", f"{OUTPUT_DIR}/youlai-boot-master",
         "--query", "Find the entry function that handles user login authentication"
     ])
 

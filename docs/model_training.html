@@ -1,0 +1,1742 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>代码语义相似度模型训练方案 - Word2Vec范式</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            line-height: 1.8;
+            color: #333;
+            background: #f5f5f5;
+        }
+        
+        .layout {
+            display: flex;
+            min-height: 100vh;
+        }
+        
+        /* 侧边栏 */
+        .sidebar {
+            width: 280px;
+            background: #1a1a2e;
+            color: #ecf0f1;
+            position: fixed;
+            height: 100vh;
+            overflow-y: auto;
+            padding: 20px 0;
+            flex-shrink: 0;
+        }
+        
+        .sidebar::-webkit-scrollbar { width: 6px; }
+        .sidebar::-webkit-scrollbar-thumb { background: #34495e; border-radius: 3px; }
+        
+        .sidebar-header {
+            padding: 15px 20px 25px 20px;
+            border-bottom: 1px solid #34495e;
+            margin-bottom: 15px;
+        }
+        
+        .sidebar-title {
+            font-size: 18px;
+            font-weight: bold;
+            color: #e94560;
+        }
+        
+        .sidebar-subtitle {
+            font-size: 12px;
+            color: #7f8c8d;
+            margin-top: 8px;
+        }
+        
+        .toc-section {
+            margin-bottom: 8px;
+        }
+        
+        .toc-section-title {
+            padding: 10px 20px;
+            font-size: 13px;
+            font-weight: bold;
+            color: #e94560;
+            background: rgba(233, 69, 96, 0.1);
+        }
+        
+        .toc-list {
+            list-style: none;
+        }
+        
+        .toc-item {
+            display: block;
+            padding: 7px 20px 7px 30px;
+            color: #bdc3c7;
+            text-decoration: none;
+            font-size: 13px;
+            transition: all 0.2s;
+            border-left: 3px solid transparent;
+        }
+        
+        .toc-item:hover {
+            color: #e94560;
+            background: rgba(233, 69, 96, 0.1);
+            border-left-color: #e94560;
+        }
+        
+        .toc-item.active {
+            color: #fff;
+            background: rgba(233, 69, 96, 0.2);
+            border-left-color: #e94560;
+        }
+        
+        /* 主内容区 */
+        .main-content {
+            flex: 1;
+            margin-left: 280px;
+            padding: 30px 40px;
+            max-width: 1200px;
+        }
+        
+        h1 {
+            color: #1a1a2e;
+            border-bottom: 3px solid #e94560;
+            padding-bottom: 15px;
+            margin-bottom: 30px;
+            font-size: 2em;
+        }
+        
+        h2 {
+            color: #16213e;
+            margin: 40px 0 20px 0;
+            padding-left: 15px;
+            border-left: 4px solid #e94560;
+            font-size: 1.5em;
+            scroll-margin-top: 20px;
+        }
+        
+        h3 {
+            color: #0f3460;
+            margin: 25px 0 15px 0;
+            font-size: 1.2em;
+            scroll-margin-top: 20px;
+        }
+        
+        h4 { color: #7f8c8d; margin: 20px 0 10px 0; font-size: 1.1em; }
+        
+        p { margin: 10px 0; }
+        
+        .card {
+            background: white;
+            border-radius: 10px;
+            padding: 25px;
+            margin: 20px 0;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        
+        .highlight-box {
+            background: linear-gradient(135deg, #e94560 0%, #16213e 100%);
+            color: white;
+            padding: 25px;
+            border-radius: 8px;
+            margin: 20px 0;
+        }
+        
+        .key-insight {
+            background: #e8f5e9;
+            border-left: 4px solid #4caf50;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 0 8px 8px 0;
+        }
+        
+        .example-box {
+            background: #f8f9fa;
+            border-left: 4px solid #2196f3;
+            padding: 15px 20px;
+            margin: 15px 0;
+            border-radius: 0 8px 8px 0;
+        }
+        
+        .code-block {
+            background: #1a1a2e;
+            color: #f8f8f2;
+            padding: 20px;
+            border-radius: 8px;
+            overflow-x: auto;
+            margin: 15px 0;
+            font-family: "Monaco", "Menlo", monospace;
+            font-size: 13px;
+        }
+        
+        .code-block .comment { color: #6272a4; }
+        .code-block .keyword { color: #ff79c6; }
+        .code-block .string { color: #f1fa8c; }
+        .code-block .function { color: #50fa7b; }
+        
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+            background: white;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        
+        th {
+            background: #16213e;
+            color: white;
+            padding: 12px 15px;
+            text-align: left;
+        }
+        
+        td { padding: 10px 15px; border-bottom: 1px solid #eee; }
+        tr:hover { background: #f8f9fa; }
+        
+        .badge {
+            display: inline-block;
+            padding: 3px 10px;
+            border-radius: 15px;
+            font-size: 12px;
+            font-weight: bold;
+            margin: 2px;
+        }
+        
+        .badge-red { background: #e94560; color: white; }
+        .badge-blue { background: #0f3460; color: white; }
+        .badge-green { background: #27ae60; color: white; }
+        .badge-orange { background: #f39c12; color: white; }
+        .badge-purple { background: #9b59b6; color: white; }
+        
+        ul, ol { margin: 15px 0; padding-left: 25px; }
+        li { margin: 6px 0; }
+        
+        .formula {
+            background: #fff3e0;
+            padding: 15px 20px;
+            border-radius: 8px;
+            text-align: center;
+            font-family: "Times New Roman", serif;
+            font-size: 1.1em;
+            margin: 15px 0;
+            border: 1px solid #ffcc80;
+        }
+        
+        .compare-box {
+            display: flex;
+            gap: 20px;
+            margin: 20px 0;
+        }
+        
+        .compare-left, .compare-right {
+            flex: 1;
+            padding: 20px;
+            border-radius: 8px;
+        }
+        
+        .compare-left { background: #e3f2fd; }
+        .compare-right { background: #fce4ec; }
+        
+        .step-number {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 28px;
+            height: 28px;
+            background: #e94560;
+            color: white;
+            border-radius: 50%;
+            font-weight: bold;
+            margin-right: 10px;
+        }
+        
+        @media (max-width: 900px) {
+            .sidebar { width: 220px; }
+            .main-content { margin-left: 220px; padding: 20px; }
+        }
+        
+        @media (max-width: 600px) {
+            .sidebar { position: relative; width: 100%; height: auto; }
+            .main-content { margin-left: 0; }
+            .layout { flex-direction: column; }
+        }
+    </style>
+</head>
+<body>
+<div class="layout">
+
+<!-- 侧边栏目录 -->
+<nav class="sidebar">
+    <div class="sidebar-header">
+        <div class="sidebar-title">🧠 Word2Vec 范式</div>
+        <div class="sidebar-subtitle">无标注自监督学习方案</div>
+    </div>
+    
+    <div class="toc-section">
+        <div class="toc-section-title">核心思想</div>
+        <ul class="toc-list">
+            <a href="#why-word2vec" class="toc-item">为什么选择这个范式</a>
+            <a href="#analogy" class="toc-item">Word2Vec 类比</a>
+            <a href="#key-insight" class="toc-item">关键洞察</a>
+        </ul>
+    </div>
+    
+    <div class="toc-section">
+        <div class="toc-section-title">第一部分：数据构建</div>
+        <ul class="toc-list">
+            <a href="#data-overview" class="toc-item">数据构建总览</a>
+            <a href="#context-def" class="toc-item">上下文定义</a>
+            <a href="#context-types" class="toc-item">四种上下文类型</a>
+            <a href="#data-format" class="toc-item">数据格式设计</a>
+            <a href="#data-script" class="toc-item">构建脚本</a>
+        </ul>
+    </div>
+    
+    <div class="toc-section">
+        <div class="toc-section-title">第二部分：模型训练</div>
+        <ul class="toc-list">
+            <a href="#model-arch" class="toc-item">模型架构</a>
+            <a href="#training-obj" class="toc-item">训练目标</a>
+            <a href="#train-script" class="toc-item">训练脚本</a>
+            <a href="#hyperparams" class="toc-item">超参数配置</a>
+        </ul>
+    </div>
+    
+    <div class="toc-section">
+        <div class="toc-section-title">第三部分：推理使用</div>
+        <ul class="toc-list">
+            <a href="#inference" class="toc-item">推理流程</a>
+            <a href="#integration" class="toc-item">集成方案</a>
+        </ul>
+    </div>
+    
+    <div class="toc-section">
+        <div class="toc-section-title">第四部分：快速开始</div>
+        <ul class="toc-list">
+            <a href="#quick-start" class="toc-item">一键执行</a>
+            <a href="#expected-result" class="toc-item">预期效果</a>
+            <a href="#faq" class="toc-item">常见问题</a>
+        </ul>
+    </div>
+</nav>
+
+<!-- 主内容区 -->
+<main class="main-content">
+
+<h1>🎯 代码语义相似度模型训练方案</h1>
+
+<div class="highlight-box">
+    <h3 style="margin:0 0 10px 0; color:white;">核心思想：Word2Vec 范式的自监督学习</h3>
+    <p style="margin:0; opacity:0.9;">
+        不需要任何人工标注！模型通过符号的<strong>上下文共现模式</strong>自动学习语义相似性。
+        就像 Word2Vec 能自动学到 king-man+woman≈queen 一样，我们的模型能自动学到 readahead≈ra。
+    </p>
+</div>
+
+<h2 id="why-word2vec">为什么选择 Word2Vec 范式？</h2>
+
+<div class="card">
+<div class="compare-box">
+    <div class="compare-left">
+        <h4 style="color:#1976d2;">❌ 传统有监督方法</h4>
+        <ul>
+            <li>需要人工标注正负样本对</li>
+            <li>"readahead 和 ra 相似吗？" → 人工回答</li>
+            <li>数据质量依赖标注者</li>
+            <li>难以覆盖所有关系类型</li>
+            <li><strong>无法规模化</strong></li>
+        </ul>
+    </div>
+    <div class="compare-right">
+        <h4 style="color:#c2185b;">✅ Word2Vec 自监督范式</h4>
+        <ul>
+            <li>零人工标注</li>
+            <li>从代码结构中自动学习</li>
+            <li>"readahead 和 ra 经常一起出现" → 自动学习</li>
+            <li>覆盖所有隐式语义关系</li>
+            <li><strong>可无限扩展</strong></li>
+        </ul>
+    </div>
+</div>
+</div>
+
+<h2 id="analogy">Word2Vec 的启示</h2>
+
+<div class="card">
+<h3>Word2Vec 是如何工作的？</h3>
+
+<div class="example-box">
+<p><strong>训练数据：</strong>大量文本句子</p>
+<pre style="background:none; padding:0; margin:10px 0;">
+"The king sat on the throne"
+"The queen ruled the kingdom"  
+"The king and queen were married"
+</pre>
+<p><strong>学习方式：</strong>预测上下文词</p>
+<ul>
+    <li>输入: "king" → 预测上下文: {the, sat, on, throne}</li>
+    <li>输入: "queen" → 预测上下文: {the, ruled, kingdom}</li>
+</ul>
+<p><strong>自动学到的结果：</strong></p>
+<ul>
+    <li>king 和 queen 有相似的上下文 → 向量相似</li>
+    <li><strong>无需任何人告诉模型 "king 和 queen 相关"</strong></li>
+</ul>
+</div>
+
+<h3>迁移到代码符号相似性</h3>
+
+<div class="example-box">
+<p><strong>训练数据：</strong>代码文件中的符号共现</p>
+<pre style="background:none; padding:0; margin:10px 0;">
+// file: mm/readahead.c
+void readahead_init() { struct ra *ctx; ra_setup(ctx); }
+void ra_submit() { readahead_process(); }
+
+// file: fs/readahead.c  
+ssize_t readahead_pages() { ra_count++; }
+</pre>
+<p><strong>学习方式：</strong>预测上下文符号</p>
+<ul>
+    <li>输入: "readahead" → 预测上下文: {ra, ra_setup, ra_submit, ...}</li>
+    <li>输入: "ra" → 预测上下文: {readahead, readahead_init, ...}</li>
+</ul>
+<p><strong>自动学到的结果：</strong></p>
+<ul>
+    <li>readahead 和 ra 有相似的上下文 → 向量相似</li>
+    <li><strong>无需任何人告诉模型 "readahead 缩写为 ra"</strong></li>
+</ul>
+</div>
+
+</div>
+
+<h2 id="key-insight">关键洞察</h2>
+
+<div class="key-insight">
+<h4>🔑 核心洞察：上下文共现 = 隐式语义关系</h4>
+<p>如果两个符号经常在<strong>同一上下文</strong>中出现，它们很可能有语义关联：</p>
+
+<table>
+    <tr>
+        <th>上下文类型</th>
+        <th>示例</th>
+        <th>隐含的语义关系</th>
+    </tr>
+    <tr>
+        <td><span class="badge badge-blue">同文件</span></td>
+        <td>readahead.c 中同时有 readahead() 和 ra</td>
+        <td>可能是缩写/相关概念</td>
+    </tr>
+    <tr>
+        <td><span class="badge badge-green">同函数</span></td>
+        <td>readahead_init() 内调用 ra_setup()</td>
+        <td>功能相关/调用关系</td>
+    </tr>
+    <tr>
+        <td><span class="badge badge-orange">同类型</span></td>
+        <td>struct ra *p; p->readahead_size</td>
+        <td>类型关联</td>
+    </tr>
+    <tr>
+        <td><span class="badge badge-purple">同调用者</span></td>
+        <td>多个函数都调用 readahead 和 ra</td>
+        <td>功能等价</td>
+    </tr>
+</table>
+
+<p style="margin-top:15px;"><strong>模型会自动发现这些隐式关系，无需任何标注！</strong></p>
+</div>
+
+<hr style="margin:40px 0; border:none; border-top:2px solid #e94560;">
+
+<h1 id="data-overview">📦 第一部分：数据构建</h1>
+
+<h2>数据构建总览</h2>
+
+<div class="card">
+<h3>核心思路：为每个符号构建"上下文窗口"</h3>
+
+<p>类比 Word2Vec 对每个词取前后 N 个词作为上下文，我们对每个符号取<strong>多种上下文</strong>：</p>
+
+<div class="code-block">
+<span class="comment"># Word2Vec 的上下文：前后 N 个词</span>
+"The <span class="keyword">cat</span> sat on the mat"
+       ↑
+   上下文: {The, sat, on, the, mat}
+
+<span class="comment"># 我们的方法：代码结构上下文</span>
+file: mm/readahead.c
+├── function: readahead_init()
+│   ├── symbols: {readahead_init, ra, ra_setup, ctx}
+│   └── <span class="keyword">readahead</span> 的上下文: {ra, ra_setup, ctx, readahead_init}
+│
+├── function: ra_submit()  
+│   ├── symbols: {ra_submit, readahead_process, ra}
+│   └── <span class="keyword">ra</span> 的上下文: {readahead_process, ra_submit}
+</div>
+
+<p><strong>关键：</strong>readahead 和 ra 共享相似上下文 → 模型自动学习相似</p>
+
+</div>
+
+<h2 id="context-def">上下文定义</h2>
+
+<div class="card">
+<h3>符号的"上下文" = 与之共现的其他符号集合</h3>
+
+<p>对于每个符号 S，我们定义四种上下文：</p>
+
+<div class="code-block" style="background:#f8f9fa; color:#333;">
+<span style="color:#e94560; font-weight:bold;">符号 S = "readahead"</span>
+
+<span style="color:#1976d2;">上下文1: 文件级上下文 (File Context)</span>
+  → 同一文件中出现的所有其他符号
+  → {ra, ra_setup, ra_submit, ra_count, readahead_init, ...}
+
+<span style="color:#388e3c;">上下文2: 函数级上下文 (Function Context)</span>
+  → 同一函数内出现的符号
+  → readahead_init() 内: {ra, ctx, ra_setup}
+  
+<span style="color:#f57c00;">上下文3: 调用链上下文 (Call Graph Context)</span>
+  → 调用 S 的函数 (callers)
+  → 被 S 调用的函数 (callees)
+  → callers: {do_readahead, generic_readahead}
+  → callees: {ra_setup, ra_submit}
+
+<span style="color:#7b1fa2;">上下文4: 类型关联上下文 (Type Context)</span>
+  → S 所属的类型/容器
+  → S 包含的子符号
+  → container: "struct readahead_state"
+  → contains: {readahead_size, readahead_async}
+</div>
+
+<h3>上下文窗口示例</h3>
+
+<div class="example-box">
+<p><strong>代码片段：</strong></p>
+<pre style="background:none; padding:0; margin:5px 0;">
+// file: mm/readahead.c
+struct ra_context {              // 类型定义
+    int ra_size;                 // 成员变量
+    void *ra_buffer;
+};
+
+void readahead_init(struct ra_context *ctx) {  // 函数
+    ctx->ra_size = 1024;
+    ra_setup(ctx->ra_buffer);    // 函数调用
+}
+
+void ra_submit(struct ra_request *req) {
+    readahead_process(req);
+}
+</pre>
+
+<p><strong>符号 "readahead" 的上下文：</strong></p>
+<pre style="background:none; padding:0; margin:5px 0;">
+{
+    "symbol": "readahead",
+    "contexts": {
+        "file": ["ra_context", "ra_size", "ra_buffer", "readahead_init", 
+                 "ctx", "ra_setup", "ra_submit", "ra_request", "readahead_process"],
+        "function": ["ctx", "ra_size", "ra_buffer", "ra_setup"],  // 在 readahead_init 内
+        "callers": ["do_readahead", "generic_readahead"],  // 调用 readahead_init 的函数
+        "callees": ["ra_setup"],
+        "type": ["readahead_init"],  // 作为函数名前缀
+        "container": []
+    }
+}
+</pre>
+
+<p><strong>符号 "ra" 的上下文：</strong></p>
+<pre style="background:none; padding:0; margin:5px 0;">
+{
+    "symbol": "ra",
+    "contexts": {
+        "file": ["readahead", "readahead_init", "readahead_process", "ra_context", ...],
+        "function": ["ctx", "ra_size", "ra_setup"],
+        "callers": ["readahead_init"],
+        "callees": [],
+        "type": ["ra_context", "ra_size", "ra_buffer", "ra_submit", "ra_request"],
+        "container": []
+    }
+}
+</pre>
+
+<p><strong>模型自动发现：</strong></p>
+<p>readahead 和 ra 有高度重叠的上下文 → 向量相似度高</p>
+
+</div>
+</div>
+
+<h2 id="context-types">四种上下文类型详解</h2>
+
+<div class="card">
+<table>
+    <tr>
+        <th style="width:18%">上下文类型</th>
+        <th style="width:25%">定义</th>
+        <th style="width:30%">获取方式</th>
+        <th style="width:27%">学习到的关系</th>
+    </tr>
+    <tr>
+        <td><span class="badge badge-blue">文件级</span><br>File Context</td>
+        <td>同一源文件中的所有符号</td>
+        <td>从 symbols_index.json 按 file 分组</td>
+        <td>
+            • 缩写关系<br>
+            • 同领域概念<br>
+            • 模块内相关
+        </td>
+    </tr>
+    <tr>
+        <td><span class="badge badge-green">函数级</span><br>Function Context</td>
+        <td>同一函数体内出现的符号</td>
+        <td>AST 解析函数体，提取符号</td>
+        <td>
+            • 功能相关<br>
+            • 数据流关联<br>
+            • 局部变量关系
+        </td>
+    </tr>
+    <tr>
+        <td><span class="badge badge-orange">调用链</span><br>Call Graph Context</td>
+        <td>调用者和被调用者</td>
+        <td>从 call_graph.json 提取</td>
+        <td>
+            • 功能等价<br>
+            • 接口关系<br>
+            • 模块边界
+        </td>
+    </tr>
+    <tr>
+        <td><span class="badge badge-purple">类型关联</span><br>Type Context</td>
+        <td>所属类型/容器，包含的成员</td>
+        <td>从 symbols_index.json 的 container 字段</td>
+        <td>
+            • 继承关系<br>
+            • 组合关系<br>
+            • 命名约定
+        </td>
+    </tr>
+</table>
+
+<h3>上下文权重</h3>
+<p>不同上下文类型对相似性的贡献不同，可设置权重：</p>
+
+<div class="formula">
+context_score = 0.4 × file_context + 0.3 × function_context + 0.2 × call_context + 0.1 × type_context
+</div>
+
+</div>
+
+<h2 id="data-format">数据格式设计</h2>
+
+<div class="card">
+<h3>训练数据格式</h3>
+
+<p>参考 Word2Vec 的训练数据格式，我们设计类似的格式：</p>
+
+<div class="code-block">
+<span class="comment">// Word2Vec 训练数据</span>
+输入序列: ["The", "cat", "sat", "on", "the", "mat"]
+训练样本: (target="cat", context=["The", "sat", "on", "the", "mat"])
+
+<span class="comment">// 我们的训练数据</span>
+输入文件: mm/readahead.c
+训练样本: (target="readahead", context=["ra", "ra_setup", "ra_submit", ...])
+</div>
+
+<h3>JSONL 格式输出</h3>
+
+<div class="code-block">
+<span class="comment">// symbol_contexts.jsonl - 每行一个符号的上下文</span>
+
+{"symbol": "readahead", "file": "mm/readahead.c", "contexts": ["ra", "ra_setup", "ra_submit", "readahead_init", "ctx"]}
+{"symbol": "ra", "file": "mm/readahead.c", "contexts": ["readahead", "readahead_init", "readahead_process", "ra_context", "ra_size"]}
+{"symbol": "readahead_init", "file": "mm/readahead.c", "contexts": ["readahead", "ra", "ctx", "ra_setup", "ra_size"]}
+{"symbol": "ra_submit", "file": "mm/readahead.c", "contexts": ["ra", "ra_request", "readahead_process"]}
+...
+
+<span class="comment">// 说明：</span>
+<span class="comment">// - 每行是一个符号及其上下文符号列表</span>
+<span class="comment">// - 模型学习：给定 symbol，预测 contexts 中的符号</span>
+<span class="comment">// - readahead 和 ra 互为上下文 → 模型学习它们的关联</span>
+</div>
+
+<h3>完整数据结构</h3>
+
+<div class="code-block">
+{
+    "project": "linux-kernel",
+    "symbols": [
+        {
+            "symbol": "readahead",
+            "file": "mm/readahead.c",
+            "type": "function",
+            "contexts": {
+                "file": ["ra", "ra_setup", "ra_submit", "readahead_init", ...],
+                "function": ["ctx", "ra_size", "ra_setup"],
+                "callers": ["do_readahead", "generic_readahead"],
+                "callees": ["ra_setup"],
+                "type": []
+            },
+            "frequency": 47  <span class="comment">// 出现次数</span>
+        },
+        ...
+    ],
+    "statistics": {
+        "total_symbols": 15000,
+        "total_contexts": 150000,
+        "avg_context_size": 10.2,
+        "files_processed": 234
+    }
+}
+</div>
+
+</div>
+
+<h2 id="data-script">数据构建脚本</h2>
+
+<div class="card">
+<h3>完整脚本</h3>
+
+<div class="code-block">
+#!/usr/bin/env python3
+"""
+符号上下文数据构建脚本
+
+类比 Word2Vec 从文本中提取词的上下文，
+本脚本从代码中提取符号的上下文。
+
+输入: symbols_index.json, call_graph.json
+输出: symbol_contexts.jsonl
+"""
+
+import json
+import argparse
+from pathlib import Path
+from collections import defaultdict
+from typing import Dict, List, Set
+
+class SymbolContextBuilder:
+    """构建符号上下文数据"""
+    
+    def __init__(self, symbols_path: str, calls_path: str):
+        self.symbols = self._load_json(symbols_path)
+        self.call_graph = self._load_json(calls_path)
+        
+        # 构建索引
+        self._build_indices()
+    
+    def _load_json(self, path: str) -> list:
+        with open(path, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    
+    def _build_indices(self):
+        """构建各种索引"""
+        # 文件 -> 符号列表
+        self.file_symbols = defaultdict(list)
+        for s in self.symbols:
+            self.file_symbols[s["file"]].append(s["name"])
+        
+        # 函数 -> 符号列表 (简化：使用文件内符号近似)
+        # 实际实现可通过 AST 解析函数体
+        
+        # 调用关系索引
+        self.callers = defaultdict(set)  # callee -> callers
+        self.callees = defaultdict(set)  # caller -> callees
+        for edge in self.call_graph:
+            self.callers[edge["callee"]].add(edge["caller"])
+            self.callees[edge["caller"]].add(edge["callee"])
+        
+        # 类型/容器索引
+        self.type_members = defaultdict(set)
+        for s in self.symbols:
+            if s.get("container"):
+                self.type_members[s["container"]].add(s["name"])
+    
+    def build_contexts(self) -> List[Dict]:
+        """为每个符号构建上下文"""
+        results = []
+        
+        for sym in self.symbols:
+            name = sym["name"]
+            file = sym["file"]
+            
+            contexts = {
+                "symbol": name,
+                "file": file,
+                "contexts": []
+            }
+            
+            # 1. 文件级上下文：同文件的其他符号
+            file_context = [
+                s for s in self.file_symbols[file] 
+                if s != name
+            ]
+            
+            # 2. 调用链上下文
+            caller_context = list(self.callers.get(name, set()))
+            callee_context = list(self.callees.get(name, set()))
+            
+            # 3. 类型上下文
+            container = sym.get("container", "")
+            type_context = list(self.type_members.get(container, set()))
+            
+            # 合并所有上下文
+            all_contexts = set()
+            all_contexts.update(file_context)
+            all_contexts.update(caller_context)
+            all_contexts.update(callee_context)
+            all_contexts.update(type_context)
+            
+            contexts["contexts"] = list(all_contexts)
+            contexts["file_context"] = file_context
+            contexts["callers"] = caller_context
+            contexts["callees"] = callee_context
+            
+            if all_contexts:  # 只保留有上下文的符号
+                results.append(contexts)
+        
+        return results
+    
+    def save(self, output_path: str, results: List[Dict]):
+        """保存结果"""
+        path = Path(output_path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        
+        with open(path, 'w', encoding='utf-8') as f:
+            for item in results:
+                f.write(json.dumps(item, ensure_ascii=False) + '\n')
+        
+        print(f"Saved {len(results)} symbol contexts to {output_path}")
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--symbols", required=True, help="symbols_index.json path")
+    parser.add_argument("--calls", required=True, help="call_graph.json path")
+    parser.add_argument("--output", required=True, help="output jsonl path")
+    args = parser.parse_args()
+    
+    builder = SymbolContextBuilder(args.symbols, args.calls)
+    results = builder.build_contexts()
+    builder.save(args.output, results)
+
+if __name__ == "__main__":
+    main()
+</div>
+
+<h3>执行命令</h3>
+
+<div class="code-block">
+# Step 1: 解析项目（已有）
+python code_parser.py --project_path /path/to/project --output output/project
+
+# Step 2: 构建符号上下文数据
+python build_symbol_contexts.py \
+    --symbols output/project/symbols_index.json \
+    --calls output/project/call_graph.json \
+    --output data/project/symbol_contexts.jsonl
+
+# 输出示例
+# Processing symbols... 15000 symbols
+# Building contexts... 
+# Saved 12847 symbol contexts to data/project/symbol_contexts.jsonl
+</div>
+
+</div>
+
+<hr style="margin:40px 0; border:none; border-top:2px solid #e94560;">
+
+<h1 id="model-arch">🧠 第二部分：模型训练</h1>
+
+<h2>模型架构</h2>
+
+<div class="card">
+<h3>选择：Word2Vec 风格的 Skip-gram 模型</h3>
+
+<p>直接使用 Word2Vec 的训练方法，把符号当作"词"，上下文当作"上下文词"：</p>
+
+<div class="code-block" style="background:#f8f9fa; color:#333;">
+<span style="color:#e94560; font-weight:bold;">Word2Vec Skip-gram 目标：</span>
+
+给定目标词 w，最大化其上下文词 c 的出现概率：
+
+    L = Σ log P(c | w)
+    
+    P(c | w) = exp(v_c · v_w) / Σ exp(v_i · v_w)
+
+<span style="color:#e94560; font-weight:bold;">我们的目标（完全相同）：</span>
+
+给定符号 s，最大化其上下文符号 c 的出现概率：
+
+    L = Σ log P(c | s)
+    
+    P(c | s) = exp(v_c · v_s) / Σ exp(v_i · v_s)
+
+<strong>→ 训练后，readahead 和 ra 的向量会相似，因为它们有相似的上下文！</strong>
+</div>
+
+<h3>实现方案选择</h3>
+
+<table>
+    <tr>
+        <th>方案</th>
+        <th>优点</th>
+        <th>缺点</th>
+        <th>推荐度</th>
+    </tr>
+    <tr>
+        <td><strong>Gensim Word2Vec</strong></td>
+        <td>
+            • 原生支持 Skip-gram<br>
+            • 训练极快<br>
+            • 轻量级
+        </td>
+        <td>
+            • 不支持字符级<br>
+            • 词表固定
+        </td>
+        <td><span class="badge badge-green">★★★★★ 推荐</span></td>
+    </tr>
+    <tr>
+        <td><strong>FastText</strong></td>
+        <td>
+            • 支持子词嵌入<br>
+            • 可处理未登录词
+        </td>
+        <td>
+            • 稍慢于 Word2Vec
+        </td>
+        <td><span class="badge badge-blue">★★★★☆</span></td>
+    </tr>
+    <tr>
+        <td><strong>Sentence-Transformers</strong></td>
+        <td>
+            • 功能强大<br>
+            • 可微调
+        </td>
+        <td>
+            • 训练慢<br>
+            • 需要更多数据
+        </td>
+        <td><span class="badge badge-orange">★★★☆☆</span></td>
+    </tr>
+</table>
+
+<p><strong>推荐使用 Gensim Word2Vec，原因：</strong></p>
+<ul>
+    <li>✅ 训练速度极快（几分钟内完成）</li>
+    <li>✅ 天然支持 Skip-gram 目标</li>
+    <li>✅ 代码简单，易于理解和调试</li>
+    <li>✅ 模型文件小（几MB）</li>
+</ul>
+
+</div>
+
+<h2 id="training-obj">训练目标</h2>
+
+<div class="card">
+<h3>Skip-gram 训练过程</h3>
+
+<div class="example-box">
+<p><strong>训练样本：</strong></p>
+<pre style="background:none; padding:0; margin:5px 0;">
+从 symbol_contexts.jsonl 读取：
+
+(symbol="readahead", contexts=["ra", "ra_setup", "ra_submit", ...])
+(symbol="ra", contexts=["readahead", "readahead_init", ...])
+
+转换为 Skip-gram 训练对：
+("readahead", "ra")      ← 正样本
+("readahead", "ra_setup") ← 正样本
+("ra", "readahead")       ← 正样本
+...
+</pre>
+
+<p><strong>训练过程：</strong></p>
+<ol>
+    <li>输入 (target="readahead", context="ra")</li>
+    <li>模型尝试让 v_readahead · v_ra 最大</li>
+    <li>同时，负采样让 v_readahead · v_random 最小</li>
+    <li>训练后，readahead 和 ra 的向量相似度高</li>
+</ol>
+</div>
+
+<h3>负采样 (Negative Sampling)</h3>
+
+<p>为了加速训练，使用负采样而非 softmax：</p>
+
+<div class="formula">
+L = log σ(v_c · v_s) + Σ log σ(-v_n · v_s)
+</div>
+
+<p>其中：</p>
+<ul>
+    <li>v_s: 目标符号向量</li>
+    <li>v_c: 正上下文符号向量</li>
+    <li>v_n: 负采样符号向量（随机选择）</li>
+</ul>
+
+</div>
+
+<h2 id="train-script">训练脚本</h2>
+
+<div class="card">
+<h3>完整训练脚本</h3>
+
+<div class="code-block">
+#!/usr/bin/env python3
+"""
+符号相似度模型训练脚本
+
+使用 Word2Vec Skip-gram 方法训练符号向量。
+训练后，语义相关的符号会有相似的向量。
+
+用法:
+    python train_symbol_embedding.py \
+        --input data/project/symbol_contexts.jsonl \
+        --output models/project/symbol_embedding \
+        --dim 100 \
+        --window 10 \
+        --epochs 10
+"""
+
+import json
+import argparse
+from pathlib import Path
+from gensim.models import Word2Vec
+from typing import List
+
+def load_training_data(jsonl_path: str) -> List[List[str]]:
+    """
+    加载训练数据
+    
+    将 (symbol, contexts) 转换为 Skip-gram 所需的序列格式：
+    [symbol, context1, context2, ...]
+    
+    每个符号及其上下文构成一个"句子"
+    """
+    sequences = []
+    
+    with open(jsonl_path, 'r', encoding='utf-8') as f:
+        for line in f:
+            data = json.loads(line)
+            symbol = data["symbol"]
+            contexts = data["contexts"]
+            
+            if len(contexts) >= 2:  # 至少有2个上下文
+                # 构成序列：[target, context1, context2, ...]
+                seq = [symbol] + contexts
+                sequences.append(seq)
+    
+    print(f"Loaded {len(sequences)} training sequences")
+    return sequences
+
+def train_word2vec(
+    sequences: List[List[str]],
+    vector_size: int = 100,
+    window: int = 10,
+    min_count: int = 2,
+    epochs: int = 10,
+    negative: int = 5,
+    workers: int = 4
+) -> Word2Vec:
+    """
+    训练 Word2Vec 模型
+    
+    参数说明：
+    - vector_size: 向量维度
+    - window: 上下文窗口大小
+    - min_count: 忽略出现次数少于此值的符号
+    - epochs: 训练轮数
+    - negative: 负采样数量
+    """
+    
+    model = Word2Vec(
+        sentences=sequences,
+        vector_size=vector_size,
+        window=window,
+        min_count=min_count,
+        sg=1,  # Skip-gram 模式
+        negative=negative,
+        workers=workers,
+        epochs=epochs
+    )
+    
+    return model
+
+def test_similarity(model: Word2Vec, test_pairs: List[tuple]):
+    """测试相似度"""
+    print("\n=== Similarity Test ===")
+    for w1, w2, expected in test_pairs:
+        if w1 in model.wv and w2 in model.wv:
+            score = model.wv.similarity(w1, w2)
+            status = "✓" if (score > 0.5) == expected else "✗"
+            print(f"{status} {w1:20} vs {w2:20} → {score:.3f}")
+        else:
+            print(f"✗ {w1:20} or {w2:20} not in vocabulary")
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--input", required=True, help="symbol_contexts.jsonl")
+    parser.add_argument("--output", required=True, help="output model path")
+    parser.add_argument("--dim", type=int, default=100, help="vector dimension")
+    parser.add_argument("--window", type=int, default=10, help="context window")
+    parser.add_argument("--epochs", type=int, default=10, help="training epochs")
+    parser.add_argument("--min_count", type=int, default=2, help="min symbol frequency")
+    args = parser.parse_args()
+    
+    # 1. 加载数据
+    print("Loading training data...")
+    sequences = load_training_data(args.input)
+    
+    # 2. 训练模型
+    print(f"Training Word2Vec (dim={args.dim}, epochs={args.epochs})...")
+    model = train_word2vec(
+        sequences,
+        vector_size=args.dim,
+        window=args.window,
+        epochs=args.epochs,
+        min_count=args.min_count
+    )
+    
+    # 3. 保存模型
+    output_path = Path(args.output)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    model.save(str(output_path))
+    print(f"Model saved to {args.output}")
+    
+    # 4. 输出统计
+    print(f"\n=== Model Statistics ===")
+    print(f"Vocabulary size: {len(model.wv)}")
+    print(f"Vector dimension: {model.wv.vector_size}")
+    
+    # 5. 测试（可选）
+    test_pairs = [
+        ("readahead", "ra", True),
+        ("readahead", "read", True),
+        ("authenticate", "auth", True),
+        ("readahead", "database", False),
+    ]
+    test_similarity(model, test_pairs)
+
+if __name__ == "__main__":
+    main()
+</div>
+
+<h3>执行训练</h3>
+
+<div class="code-block">
+# 训练模型
+python train_symbol_embedding.py \
+    --input data/project/symbol_contexts.jsonl \
+    --output models/project/symbol_embedding \
+    --dim 100 \
+    --epochs 10
+
+# 输出示例
+Loading training data...
+Loaded 12847 training sequences
+Training Word2Vec (dim=100, epochs=10)...
+Model saved to models/project/symbol_embedding
+
+=== Model Statistics ===
+Vocabulary size: 8523
+Vector dimension: 100
+
+=== Similarity Test ===
+✓ readahead           vs ra                  → 0.847
+✓ readahead           vs read                → 0.652
+✓ authenticate        vs auth                → 0.783
+✓ readahead           vs database            → 0.123
+</div>
+
+</div>
+
+<h2 id="hyperparams">超参数配置</h2>
+
+<div class="card">
+<h3>关键参数说明</h3>
+
+<table>
+    <tr>
+        <th>参数</th>
+        <th>默认值</th>
+        <th>说明</th>
+        <th>调优建议</th>
+    </tr>
+    <tr>
+        <td><strong>vector_size</strong></td>
+        <td>100</td>
+        <td>向量维度</td>
+        <td>小项目: 50-100，大项目: 200-300</td>
+    </tr>
+    <tr>
+        <td><strong>window</strong></td>
+        <td>10</td>
+        <td>上下文窗口大小</td>
+        <td>取决于平均上下文长度，一般 5-15</td>
+    </tr>
+    <tr>
+        <td><strong>min_count</strong></td>
+        <td>2</td>
+        <td>最小出现次数</td>
+        <td>过滤噪声，建议 2-5</td>
+    </tr>
+    <tr>
+        <td><strong>epochs</strong></td>
+        <td>10</td>
+        <td>训练轮数</td>
+        <td>小数据: 10-20，大数据: 5-10</td>
+    </tr>
+    <tr>
+        <td><strong>negative</strong></td>
+        <td>5</td>
+        <td>负采样数量</td>
+        <td>一般 5-10</td>
+    </tr>
+</table>
+
+<h3>配置文件</h3>
+
+<div class="code-block">
+# config/train_config.yaml
+
+model:
+  type: word2vec
+  vector_size: 100
+  window: 10
+  min_count: 2
+  sg: 1  # Skip-gram
+  
+training:
+  epochs: 10
+  negative: 5
+  workers: 4
+  
+output:
+  model_path: "models/project/symbol_embedding"
+  save_format: "binary"  # or "text" for human-readable
+</div>
+
+</div>
+
+<hr style="margin:40px 0; border:none; border-top:2px solid #e94560;">
+
+<h1 id="inference">🔮 第三部分：推理使用</h1>
+
+<h2>推理流程</h2>
+
+<div class="card">
+<h3>使用训练好的模型计算相似度</h3>
+
+<div class="code-block">
+#!/usr/bin/env python3
+"""
+符号相似度推理模块
+
+加载训练好的 Word2Vec 模型，计算符号间的相似度。
+"""
+
+from gensim.models import Word2Vec
+from typing import List, Tuple, Optional
+
+class SymbolSimilarity:
+    """符号相似度计算器"""
+    
+    def __init__(self, model_path: str):
+        """加载模型"""
+        self.model = Word2Vec.load(model_path)
+        self.vocab = set(self.model.wv.index_to_key)
+    
+    def similarity(self, symbol1: str, symbol2: str) -> float:
+        """
+        计算两个符号的相似度
+        
+        Returns:
+            float: 相似度分数 [0, 1]
+        """
+        s1, s2 = symbol1.lower(), symbol2.lower()
+        
+        if s1 not in self.vocab or s2 not in self.vocab:
+            return 0.0
+        
+        return float(self.model.wv.similarity(s1, s2))
+    
+    def most_similar(
+        self, 
+        symbol: str, 
+        topn: int = 10
+    ) -> List[Tuple[str, float]]:
+        """
+        找出最相似的符号
+        
+        Returns:
+            List of (symbol, score) tuples
+        """
+        s = symbol.lower()
+        
+        if s not in self.vocab:
+            return []
+        
+        return self.model.wv.most_similar(s, topn=topn)
+    
+    def filter_candidates(
+        self,
+        target: str,
+        candidates: List[str],
+        threshold: float = 0.5
+    ) -> List[Tuple[str, float]]:
+        """
+        过滤候选符号，返回相似的
+        
+        Args:
+            target: 目标符号
+            candidates: 候选符号列表
+            threshold: 相似度阈值
+            
+        Returns:
+            List of (candidate, score) tuples, sorted by score
+        """
+        results = []
+        
+        for cand in candidates:
+            score = self.similarity(target, cand)
+            if score >= threshold:
+                results.append((cand, score))
+        
+        results.sort(key=lambda x: x[1], reverse=True)
+        return results
+    
+    def is_abbreviation(
+        self, 
+        full_name: str, 
+        abbr: str, 
+        threshold: float = 0.6
+    ) -> bool:
+        """
+        判断 abbr 是否是 full_name 的缩写
+        
+        基于向量相似度，如果二者相似度高于阈值，则认为是缩写关系
+        """
+        return self.similarity(full_name, abbr) >= threshold
+
+# 使用示例
+if __name__ == "__main__":
+    sim = SymbolSimilarity("models/project/symbol_embedding")
+    
+    # 测试相似度
+    print(sim.similarity("readahead", "ra"))      # 0.847
+    print(sim.similarity("authenticate", "auth")) # 0.783
+    
+    # 找相似符号
+    print(sim.most_similar("readahead", topn=5))
+    # [('ra', 0.847), ('readahead_init', 0.721), ('ra_submit', 0.698), ...]
+    
+    # 过滤候选
+    candidates = ["ra", "rd", "rea", "rhd", "read", "write", "db"]
+    print(sim.filter_candidates("readahead", candidates, threshold=0.5))
+    # [('ra', 0.847), ('read', 0.652), ('rea', 0.581)]
+</div>
+
+</div>
+
+<h2 id="integration">集成到 CodeSearch</h2>
+
+<div class="card">
+<h3>替换 model_filter.py</h3>
+
+<div class="code-block">
+# expansion/model_filter.py
+
+from gensim.models import Word2Vec
+from typing import List, Tuple
+
+class SymbolSimilarityFilter:
+    """
+    基于训练好的 Word2Vec 模型的符号相似度过滤器
+    
+    替代原来的通用 sentence-transformers 模型，
+    使用项目专属训练的向量。
+    """
+    
+    def __init__(self, model_path: str = None):
+        if model_path is None:
+            model_path = "./models/project/symbol_embedding"
+        
+        self.model = Word2Vec.load(model_path)
+        self.vocab = set(self.model.wv.index_to_key)
+    
+    def similarity(self, text1: str, text2: str) -> float:
+        """计算两个符号的相似度"""
+        t1, t2 = text1.lower(), text2.lower()
+        
+        if t1 not in self.vocab or t2 not in self.vocab:
+            return 0.0
+        
+        return float(self.model.wv.similarity(t1, t2))
+    
+    def filter_candidates(
+        self,
+        full_name: str,
+        candidates: List[str],
+        threshold: float = 0.35
+    ) -> List[Tuple[str, float]]:
+        """
+        过滤候选缩写
+        
+        Args:
+            full_name: 完整符号名
+            candidates: 候选缩写列表
+            threshold: 相似度阈值
+            
+        Returns:
+            过滤后的 [(abbr, score), ...] 列表
+        """
+        filtered = []
+        
+        for abbr in candidates:
+            score = self.similarity(full_name, abbr)
+            if score >= threshold:
+                filtered.append((abbr, score))
+        
+        filtered.sort(key=lambda x: x[1], reverse=True)
+        return filtered
+    
+    def check_pair(
+        self, 
+        full_name: str, 
+        abbr: str, 
+        threshold: float = 0.35
+    ) -> bool:
+        """检查单对是否相似"""
+        return self.similarity(full_name, abbr) >= threshold
+
+# 兼容旧接口
+AbbreviationModelFilter = SymbolSimilarityFilter
+</div>
+
+<h3>更新 full_term_matcher.py</h3>
+
+<div class="code-block">
+# search/full_term_matcher.py
+
+class FullTermMatcher:
+    def __init__(
+        self,
+        invert_index_path: str,
+        ngramed_symbol_path: str,
+        similarity_model_path: str = None,  # 新增
+        similarity_threshold: float = 0.35
+    ):
+        self.invert_index = self._load_json(invert_index_path)
+        self.ngramed_symbol = self._load_json(ngramed_symbol_path)
+        
+        # 加载相似度模型
+        if similarity_model_path:
+            from expansion.model_filter import SymbolSimilarityFilter
+            self.similarity_filter = SymbolSimilarityFilter(similarity_model_path)
+        else:
+            self.similarity_filter = None
+    
+    def _keyword_subsequences_with_filter(self, keyword: str) -> Set[str]:
+        """生成子序列并用模型过滤"""
+        subsequences = self._keyword_subsequences(keyword)
+        
+        if self.similarity_filter:
+            # 使用模型过滤，保留相似度 >= 阈值的
+            filtered = self.similarity_filter.filter_candidates(
+                keyword,
+                list(subsequences),
+                threshold=self.similarity_threshold
+            )
+            subsequences = set(x[0] for x in filtered)
+            
+            # 始终保留原关键词本身
+            subsequences.add(keyword.lower())
+        
+        return subsequences
+</div>
+
+</div>
+
+<hr style="margin:40px 0; border:none; border-top:2px solid #e94560;">
+
+<h1 id="quick-start">🚀 第四部分：快速开始</h1>
+
+<h2>一键执行流程</h2>
+
+<div class="card">
+<div class="code-block" style="background:#f8f9fa; color:#333;">
+<span style="color:#e94560; font-weight:bold;">═══════════════════════════════════════════════════════════</span>
+<span style="color:#e94560; font-weight:bold;">          Step 1: 解析项目（复用已有功能）            </span>
+<span style="color:#e94560; font-weight:bold;">═══════════════════════════════════════════════════════════</span>
+
+$ python code_parser.py \
+    --project_path /path/to/project \
+    --output output/project
+
+输出:
+  output/project/symbols_index.json   ← 符号表
+  output/project/call_graph.json      ← 调用图
+
+<span style="color:#e94560; font-weight:bold;">═══════════════════════════════════════════════════════════</span>
+<span style="color:#e94560; font-weight:bold;">          Step 2: 构建符号上下文数据                  </span>
+<span style="color:#e94560; font-weight:bold;">═══════════════════════════════════════════════════════════</span>
+
+$ python build_symbol_contexts.py \
+    --symbols output/project/symbols_index.json \
+    --calls output/project/call_graph.json \
+    --output data/project/symbol_contexts.jsonl
+
+输出:
+  Processing 15000 symbols...
+  Building contexts...
+  Saved 12847 symbol contexts
+
+<span style="color:#e94560; font-weight:bold;">═══════════════════════════════════════════════════════════</span>
+<span style="color:#e94560; font-weight:bold;">          Step 3: 训练模型（Word2Vec）                 </span>
+<span style="color:#e94560; font-weight:bold;">═══════════════════════════════════════════════════════════</span>
+
+$ python train_symbol_embedding.py \
+    --input data/project/symbol_contexts.jsonl \
+    --output models/project/symbol_embedding \
+    --dim 100 \
+    --epochs 10
+
+输出:
+  Loaded 12847 training sequences
+  Training Word2Vec...
+  Model saved!
+  Vocabulary size: 8523
+
+<span style="color:#27ae60; font-weight:bold;">═══════════════════════════════════════════════════════════</span>
+<span style="color:#27ae60; font-weight:bold;">          ✓ 完成！模型已可用于推理                     </span>
+<span style="color:#27ae60; font-weight:bold;">═══════════════════════════════════════════════════════════</span>
+</div>
+
+<h3>一键脚本</h3>
+
+<div class="code-block">
+#!/bin/bash
+# run_pipeline.sh - 一键运行完整流程
+
+PROJECT_PATH=$1
+PROJECT_NAME=$(basename $PROJECT_PATH)
+
+echo "=== Step 1: Parse project ==="
+python code_parser.py \
+    --project_path $PROJECT_PATH \
+    --output output/$PROJECT_NAME
+
+echo "=== Step 2: Build contexts ==="
+python build_symbol_contexts.py \
+    --symbols output/$PROJECT_NAME/symbols_index.json \
+    --calls output/$PROJECT_NAME/call_graph.json \
+    --output data/$PROJECT_NAME/symbol_contexts.jsonl
+
+echo "=== Step 3: Train model ==="
+python train_symbol_embedding.py \
+    --input data/$PROJECT_NAME/symbol_contexts.jsonl \
+    --output models/$PROJECT_NAME/symbol_embedding \
+    --dim 100 --epochs 10
+
+echo "=== Done! ==="
+
+# 使用
+# ./run_pipeline.sh /path/to/your/project
+</div>
+
+</div>
+
+<h2 id="expected-result">预期效果</h2>
+
+<div class="card">
+<h3>训练后的模型效果</h3>
+
+<div class="example-box">
+<p><strong>测试代码：</strong></p>
+<pre style="background:none; padding:0; margin:5px 0;">
+from expansion.model_filter import SymbolSimilarityFilter
+
+sim = SymbolSimilarityFilter("models/project/symbol_embedding")
+
+# 测试缩写关系
+print(sim.similarity("readahead", "ra"))        # 0.847 ✓
+print(sim.similarity("authentication", "auth")) # 0.783 ✓
+print(sim.similarity("configuration", "cfg"))   # 0.812 ✓
+
+# 测试同义词
+print(sim.similarity("login", "authenticate"))  # 0.654 ✓
+print(sim.similarity("remove", "delete"))       # 0.621 ✓
+
+# 测试功能相关
+print(sim.similarity("read", "write"))          # 0.589 ✓
+print(sim.similarity("connect", "disconnect"))  # 0.672 ✓
+
+# 测试无关符号
+print(sim.similarity("readahead", "database"))  # 0.123 ✓ (低分)
+print(sim.similarity("readahead", "auth"))      # 0.087 ✓ (低分)
+</pre>
+</div>
+
+<h3>与通用模型对比</h3>
+
+<table>
+    <tr>
+        <th>符号对</th>
+        <th>通用模型<br>(sentence-transformers)</th>
+        <th>项目训练模型<br>(Word2Vec)</th>
+        <th>说明</th>
+    </tr>
+    <tr>
+        <td>readahead vs ra</td>
+        <td>0.42</td>
+        <td><span class="badge badge-green">0.85</span></td>
+        <td>项目特定缩写，训练模型效果好</td>
+    </tr>
+    <tr>
+        <td>authenticate vs login</td>
+        <td>0.68</td>
+        <td><span class="badge badge-green">0.65</span></td>
+        <td>通用语义，两者相近</td>
+    </tr>
+    <tr>
+        <td>UserService vs User</td>
+        <td>0.55</td>
+        <td><span class="badge badge-green">0.78</span></td>
+        <td>项目命名约定，训练模型更好</td>
+    </tr>
+    <tr>
+        <td>readahead vs database</td>
+        <td>0.35</td>
+        <td><span class="badge badge-green">0.12</span></td>
+        <td>无关符号，训练模型区分更好</td>
+    </tr>
+</table>
+
+</div>
+
+<h2 id="faq">常见问题</h2>
+
+<div class="card">
+<h3>Q1: 为什么 Word2Vec 能自动学到缩写关系？</h3>
+<div class="example-box">
+<p><strong>答案：</strong>因为缩写和全称经常在同一上下文出现！</p>
+<pre style="background:none; padding:0; margin:5px 0;">
+// 在同一文件中
+void readahead() { ... }    // 全称
+struct ra *ctx;             // 缩写
+
+// readahead 和 ra 都出现在 mm/readahead.c
+// 它们的上下文重叠 → 向量相似 → 模型自动学到关联
+</pre>
+<p>这就像 Word2Vec 能学到 king 和 queen 相似，因为它们有相似的上下文一样。</p>
+</div>
+
+<h3>Q2: 需要多少数据才能训练出好效果？</h3>
+<div class="example-box">
+<p><strong>答案：</strong>比想象中少得多！</p>
+<ul>
+    <li>小项目（1000-5000 符号）：效果已经不错</li>
+    <li>中项目（5000-20000 符号）：效果很好</li>
+    <li>大项目（20000+ 符号）：效果最佳</li>
+</ul>
+<p>关键不是数据量，而是<strong>符号间的共现模式</strong>是否明显。</p>
+</div>
+
+<h3>Q3: 训练需要多久？</h3>
+<div class="example-box">
+<p><strong>答案：</strong>非常快！Word2Vec 训练速度极快。</p>
+<ul>
+    <li>10000 符号：约 1-2 分钟</li>
+    <li>50000 符号：约 5-10 分钟</li>
+    <li>100000 符号：约 15-20 分钟</li>
+</ul>
+</div>
+
+<h3>Q4: 如果符号不在词表中怎么办？</h3>
+<div class="example-box">
+<p><strong>答案：</strong>有几种策略：</p>
+<ul>
+    <li><strong>策略1：</strong>返回 0 相似度（保守）</li>
+    <li><strong>策略2：</strong>使用 FastText 支持子词，可处理未登录词</li>
+    <li><strong>策略3：</strong>回退到通用模型（如 sentence-transformers）</li>
+</ul>
+</div>
+
+</div>
+
+<hr style="margin:40px 0; border:none; border-top:2px solid #e94560;">
+
+<h1>📋 总结</h1>
+
+<div class="key-insight">
+<h4>🎯 核心要点回顾</h4>
+
+<ol>
+    <li><strong>零标注</strong>：完全不需要人工标注，模型从代码结构自动学习</li>
+    <li><strong>Word2Vec 范式</strong>：符号当作词，上下文符号当作上下文词</li>
+    <li><strong>上下文定义</strong>：文件级 + 函数级 + 调用链 + 类型关联</li>
+    <li><strong>训练快速</strong>：Word2Vec 训练，几分钟内完成</li>
+    <li><strong>效果精准</strong>：项目特定，比通用模型更懂项目命名约定</li>
+</ol>
+
+</div>
+
+<div class="card">
+<h3>完整命令回顾</h3>
+
+<div class="code-block">
+<span class="comment"># 三步完成</span>
+python code_parser.py --project_path /path/to/project --output output/proj
+python build_symbol_contexts.py --symbols output/proj/symbols_index.json --calls output/proj/call_graph.json --output data/proj/symbol_contexts.jsonl
+python train_symbol_embedding.py --input data/proj/symbol_contexts.jsonl --output models/proj/symbol_embedding
+</div>
+
+</div>
+
+</main>
+</div>
+
+<script>
+// 目录高亮脚本
+document.addEventListener('DOMContentLoaded', function() {
+    const tocItems = document.querySelectorAll('.toc-item');
+    const sections = document.querySelectorAll('h1[id], h2[id], h3[id]');
+    
+    tocItems.forEach(item => {
+        item.addEventListener('click', function(e) {
+            e.preventDefault();
+            const targetId = this.getAttribute('href').substring(1);
+            const targetElement = document.getElementById(targetId);
+            if (targetElement) {
+                targetElement.scrollIntoView({ behavior: 'smooth' });
+                tocItems.forEach(i => i.classList.remove('active'));
+                this.classList.add('active');
+            }
+        });
+    });
+    
+    const observer = new IntersectionObserver((entries) => {
+        entries.forEach(entry => {
+            if (entry.isIntersecting) {
+                const id = entry.target.getAttribute('id');
+                tocItems.forEach(item => {
+                    if (item.getAttribute('href') === '#' + id) {
+                        tocItems.forEach(i => i.classList.remove('active'));
+                        item.classList.add('active');
+                    }
+                });
+            }
+        });
+    }, { threshold: 0.5 });
+    
+    sections.forEach(section => observer.observe(section));
+});
+</script>
+
+</body>
+</html>

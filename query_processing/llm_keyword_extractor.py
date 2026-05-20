@@ -13,11 +13,12 @@ import os
 import re
 from dataclasses import dataclass
 from typing import Any, Dict, Optional
-from utils.llm_api import call_response_llm
+from utils.llm_api import call_chat_llm
+from definition import BASE_MODEL
 
 @dataclass
 class LLMKeywordExtractorConfig:
-    model: str = "qwen-plus"
+    model: str = BASE_MODEL
     top_n: int = 8
     temperature: float = 0.0
 
@@ -58,8 +59,8 @@ class LLMKeywordExtractor:
             },
             {"role": "user", "content": prompt},
         ]
-        return call_response_llm(
-            input=prompt_messages,
+        return call_chat_llm(
+            messages=prompt_messages,
             model=self.config.model,
             temperature=self.config.temperature,
             client=self.client,

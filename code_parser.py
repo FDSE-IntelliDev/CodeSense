@@ -19,6 +19,8 @@ from parsers import (
 )
 from parsers.registry import LANG_EXT
 
+from definition import PROJECT_PATH
+
 sys.setrecursionlimit(10000)
 
 TEXT_FILE_SIZE_LIMIT = 2 * 1024 * 1024
@@ -170,8 +172,8 @@ def main():
     #     "--output","./output/youlai-boot-master-gt"
     # ])
     args = parser.parse_args([
-        "--project_path", "/Users/huangzhuochen/linux-6.14",
-        "--output", "./output/linux-6.14-ctags"
+        "--project_path", PROJECT_PATH,
+        "--output", "./output/youlai-boot-master",
     ])
 
 

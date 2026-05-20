@@ -4,6 +4,7 @@ import subprocess
 import threading
 from typing import Dict, List, Any, Optional
 from definition import JDTLS_PATH
+from parsers.tools import get_function_position
 
 class JavaLSPClient:
     """
@@ -110,22 +111,17 @@ class JavaCallChainExtractor:
     def __init__(self, lsp_client: JavaLSPClient):
         self.lsp_client = lsp_client
 
-    def get_call_chain(self, filepath: str, line: int, character: int, layer: int) -> dict:
+    def get_call_chain(self, filepath: str, func_name: str, layer: int) -> dict:
         """
         Retrieves the call chain (callers and callees) up to 'layer' depth.
-
-        Return Structure Design:
-        Since function calls branch out, the optimal structure is a bidirectional tree.
-        {
-           "target": {"name": "targetFunc", "uri": "file://...", "range": {...}},
-           "callers_tree": [
-               { "name": "caller1", "callers_tree": [...] }, ...
-           ],
-           "callees_tree": [
-               { "name": "callee1", "callees_tree": [...] }, ...
-           ]
-        }
+        Now it identifies the function position by func_name inside the file.
         """
+        # 0. Get function position
+        pos = get_function_position(filepath, func_name)
+        if not pos:
+            return {"error": f"Could not find function {func_name} in {filepath}"}
+
+        line, character = pos
         # 1. Prepare Call Hierarchy Item
         file_uri = f"file://{os.path.abspath(filepath)}"
         prep_res = self.lsp_client._send_request("textDocument/prepareCallHierarchy", {
@@ -178,20 +174,11 @@ if __name__ == "__main__":
     import sys
     # Add project root to path so we can import parsers as a module
     sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    from parsers.tools import get_function_position
     import time
 
     project_root = "/Users/huangzhuochen/IdeaProjects/youlai-boot-master"
     target_file = f"{project_root}/src/main/java/com/youlai/boot/system/service/impl/UserServiceImpl.java"
     func_name = "updateUser"
-
-    pos = get_function_position(target_file, func_name)
-    if not pos:
-        print(f"Could not find function {func_name} in {target_file}")
-        sys.exit(1)
-
-    target_line, target_char = pos
-    print(f"Located target '{func_name}' at line {target_line}, character {target_char} (0-based)")
 
     # You may need to provide the absolute path to `jdtls` if it's not in your PATH
     lsp_client = JavaLSPClient(project_root=project_root, jdtls_path="jdtls")
@@ -204,11 +191,10 @@ if __name__ == "__main__":
 
     try:
         extractor = JavaCallChainExtractor(lsp_client)
-        print(f"Extracting call chain for layer=1...")
+        print(f"Extracting call chain for layer=2...")
         result = extractor.get_call_chain(
             filepath=target_file,
-            line=target_line,
-            character=target_char,
+            func_name=func_name,
             layer=2
         )
         print("\n=== Call Chain Result ===")
