@@ -9,13 +9,13 @@ TOKENIZER_DIR=str(Path(ROOT_DIR) / "tokenizer")
 EMBEDDING_DIR=str(Path(ROOT_DIR) / "embedding")
 EXPANSION_DIR=str(Path(ROOT_DIR) / "expansion")
 
-PROJECT_PATH="/Users/bytedance/old6ma/projects/youlai-boot-master"
-# BASE_URL="https://dashscope.aliyuncs.com/compatible-mode/v1"
-# API_KEY="sk-e2a20472cac148bdb711c663110c4d6f"
-# BASE_MODEL="qwen-plus"
+PROJECT_PATH="/Users/huangzhuochen/IdeaProjects/youlai-boot-master"
+BASE_URL="https://dashscope.aliyuncs.com/compatible-mode/v1"
+API_KEY="sk-e2a20472cac148bdb711c663110c4d6f"
+BASE_MODEL="qwen-plus"
 
-BASE_URL="https://openkey.cloud/v1"
-API_KEY="sk-qJN0l8K8tFDtobxlDc083e5c4d684062B49b02A5C6F3Be6a"
-BASE_MODEL="gpt-4o-mini"
+# BASE_URL="https://openkey.cloud/v1"
+# API_KEY="sk-qJN0l8K8tFDtobxlDc083e5c4d684062B49b02A5C6F3Be6a"
+# BASE_MODEL="gpt-4o-mini"
 
 JDTLS_PATH="/opt/homebrew/bin/jdtls"

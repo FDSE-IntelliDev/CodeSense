@@ -3,9 +3,9 @@ from typing import List, Tuple
 from .base import SymbolItem, RangeInfo, DependencyItem
 
 try:
-    import javalang
+    from tree_sitter_languages import get_parser
 except Exception:
-    javalang = None
+    get_parser = None
 
 
 def parse_java(file_rel: str, source: str):
@@ -14,100 +14,160 @@ def parse_java(file_rel: str, source: str):
     deps: List[DependencyItem] = []
     lines = source.splitlines()
 
-    if javalang is None:
+    if get_parser is None:
         return symbols, calls, deps
 
     try:
-        tree = javalang.parse.parse(source)
+        parser = get_parser("java")
+        tree = parser.parse(source.encode("utf-8"))
+        root = tree.root_node
     except Exception:
         return symbols, calls, deps
 
-    package_name = tree.package.name if tree.package else ""
+    src_bytes = source.encode("utf-8")
 
-    for imp in getattr(tree, "imports", []) or []:
-        target = imp.path.replace(".", "/") if getattr(imp, "path", None) else ""
-        if target:
-            deps.append(DependencyItem(file_rel, target, "import"))
+    def node_text(node) -> str:
+        return src_bytes[node.start_byte:node.end_byte].decode("utf-8", errors="ignore")
 
-    for t in tree.types or []:
-        if isinstance(t, javalang.tree.ClassDeclaration):
-            cname = t.name
-            c_line = getattr(t, "position", None).line if getattr(t, "position", None) else 1
+    def node_range(node) -> RangeInfo:
+        return RangeInfo(node.start_point[0] + 1, node.end_point[0] + 1)
+
+    def child_name(node) -> str:
+        n = node.child_by_field_name("name")
+        return node_text(n) if n else ""
+
+    def package_name_from_root() -> str:
+        for ch in root.children:
+            if ch.type != "package_declaration":
+                continue
+            for c in ch.children:
+                if c.type in ("scoped_identifier", "identifier"):
+                    return node_text(c)
+        return ""
+
+    package_name = package_name_from_root()
+
+    # import deps
+    for ch in root.children:
+        if ch.type != "import_declaration":
+            continue
+        imp_text = node_text(ch)
+        imp_text = imp_text.replace("import", "").replace("static", "").replace(";", "").strip()
+        if imp_text:
+            deps.append(DependencyItem(file_rel, imp_text.replace(".", "/"), "import"))
+
+    def walk(node, container: str = ""):
+        ntype = node.type
+
+        if ntype == "class_declaration":
+            cname = child_name(node) or "AnonymousClass"
             symbols.append(
                 SymbolItem(
                     name=cname,
                     type="class",
                     file=file_rel,
-                    range=RangeInfo(c_line, len(lines)),
+                    range=node_range(node),
                     signature=f"class {cname}",
                     language="java",
                     doc="",
-                    container=package_name,
+                    container=container or package_name,
+                )
+            )
+            class_container = cname
+            for ch in node.children:
+                walk(ch, class_container)
+            return
+
+        if ntype == "field_declaration":
+            for ch in node.children:
+                if ch.type != "variable_declarator":
+                    continue
+                vname = child_name(ch)
+                if not vname:
+                    continue
+                symbols.append(
+                    SymbolItem(
+                        name=vname,
+                        type="variable",
+                        file=file_rel,
+                        range=node_range(ch),
+                        signature=vname,
+                        language="java",
+                        doc="",
+                        container=container,
+                    )
+                )
+
+        if ntype == "method_declaration":
+            mname = child_name(node)
+            params_node = node.child_by_field_name("parameters")
+            signature = f"{mname}{node_text(params_node) if params_node else '()'}"
+
+            symbols.append(
+                SymbolItem(
+                    name=mname,
+                    type="method",
+                    file=file_rel,
+                    range=node_range(node),
+                    signature=signature,
+                    language="java",
+                    doc="",
+                    container=container,
                 )
             )
 
-            for field in t.fields or []:
-                f_line = getattr(field, "position", None).line if getattr(field, "position", None) else c_line
-                for decl in field.declarators or []:
-                    symbols.append(
-                        SymbolItem(
-                            name=decl.name,
-                            type="variable",
-                            file=file_rel,
-                            range=RangeInfo(f_line, f_line),
-                            signature=decl.name,
-                            language="java",
-                            doc="",
-                            container=cname,
-                        )
-                    )
+            caller = f"{container}.{mname}" if container else mname
 
-            for method in t.methods or []:
-                m_line = getattr(method, "position", None).line if getattr(method, "position", None) else c_line
-                params = []
-                for p in method.parameters or []:
-                    ptype = getattr(getattr(p, "type", None), "name", "Object")
-                    params.append(f"{ptype} {p.name}")
-                symbols.append(
-                    SymbolItem(
-                        name=method.name,
-                        type="method",
-                        file=file_rel,
-                        range=RangeInfo(m_line, len(lines)),
-                        signature=f"{method.name}({', '.join(params)})",
-                        language="java",
-                        doc="",
-                        container=cname,
-                    )
+            def collect_method_invocations(n, out):
+                if n.type == "method_invocation":
+                    out.append(n)
+                for c in n.children:
+                    collect_method_invocations(c, out)
+
+            invocations = []
+            collect_method_invocations(node, invocations)
+            for inv in invocations:
+                callee = child_name(inv) or ""
+                i_line = inv.start_point[0] + 1
+                code = lines[i_line - 1].strip() if 1 <= i_line <= len(lines) else ""
+                calls.append((caller, callee, i_line, code))
+
+        if ntype == "constructor_declaration":
+            kname = child_name(node) or container
+            params_node = node.child_by_field_name("parameters")
+            signature = f"{kname}{node_text(params_node) if params_node else '()'}"
+
+            symbols.append(
+                SymbolItem(
+                    name=kname,
+                    type="method",
+                    file=file_rel,
+                    range=node_range(node),
+                    signature=signature,
+                    language="java",
+                    doc="",
+                    container=container,
                 )
+            )
 
-                caller = f"{cname}.{method.name}"
-                for _, inv in method.filter(javalang.tree.MethodInvocation):
-                    callee = inv.member or ""
-                    i_line = getattr(inv, "position", None).line if getattr(inv, "position", None) else m_line
-                    code = lines[i_line - 1].strip() if 1 <= i_line <= len(lines) else ""
-                    calls.append((caller, callee, i_line, code))
+            caller = f"{container}.{kname}" if container else kname
 
-            for ctor in t.constructors or []:
-                k_line = getattr(ctor, "position", None).line if getattr(ctor, "position", None) else c_line
-                symbols.append(
-                    SymbolItem(
-                        name=ctor.name,
-                        type="method",
-                        file=file_rel,
-                        range=RangeInfo(k_line, len(lines)),
-                        signature=f"{ctor.name}(...)",
-                        language="java",
-                        doc="",
-                        container=cname,
-                    )
-                )
+            def collect_ctor_invocations(n, out):
+                if n.type == "method_invocation":
+                    out.append(n)
+                for c in n.children:
+                    collect_ctor_invocations(c, out)
 
-                caller = f"{cname}.{ctor.name}"
-                for _, inv in ctor.filter(javalang.tree.MethodInvocation):
-                    callee = inv.member or ""
-                    i_line = getattr(inv, "position", None).line if getattr(inv, "position", None) else k_line
-                    code = lines[i_line - 1].strip() if 1 <= i_line <= len(lines) else ""
-                    calls.append((caller, callee, i_line, code))
+            invocations = []
+            collect_ctor_invocations(node, invocations)
+            for inv in invocations:
+                callee = child_name(inv) or ""
+                i_line = inv.start_point[0] + 1
+                code = lines[i_line - 1].strip() if 1 <= i_line <= len(lines) else ""
+                calls.append((caller, callee, i_line, code))
 
+        for ch in node.children:
+            walk(ch, container)
+
+    walk(root, "")
     return symbols, calls, deps

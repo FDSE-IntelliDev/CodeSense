@@ -117,6 +117,8 @@ def run(project_path: str, output_dir: str):
     for i in range(0, len(files), BATCH_SIZE):
         batch = files[i:i + BATCH_SIZE]
         for fp in batch:
+            # if fp=="/Users/huangzhuochen/IdeaProjects/youlai-boot-master/src/main/java/com/youlai/boot/core/validator/FieldValidator.java":
+            #     a=1
             symbols, calls, deps = analyze_file_ast(project_path, fp)
             fr = relpath(fp, project_path)
             all_symbols.extend(symbols)

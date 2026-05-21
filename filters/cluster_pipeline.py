@@ -6,19 +6,16 @@ from sentence_transformers import SentenceTransformer
 from parsers.read_tools import get_symbol_code
 from sklearn.cluster import AgglomerativeClustering
 from sklearn.metrics.pairwise import cosine_similarity
+from definition import OUTPUT_DIR
+
+from pathlib import Path
 
 class CodeEmbedder:
-    """
-    轻量高效的代码元素 Embedding 提取器。
-    采用本地加载模式，选择面向代码检索优化的轻量级模型。
-    """
-    def __init__(self, model_name: str = "flax-sentence-embeddings/st-codesearch-distilroberta-base"):
-        """
-        默认模型: st-codesearch-distilroberta-base
-        原因：这是一个经过特殊微调的轻量级（DistilRoBERTa，参数少速度快）Sentence-Transformer，
-        专为 CodeSearch（通过自然语言找代码）任务设计。
-        """
-        # 加载本地缓存好的模型或自动从 HuggingFace 下载
+    def __init__(self, model_name: str = None):
+        if model_name is None:
+            model_name = str(
+                Path(__file__).resolve().parent.parent / "models" / "st-codesearch-distilroberta-base"
+            )
         self.model = SentenceTransformer(model_name)
 
     def encode(self, texts: List[str]) -> np.ndarray:
@@ -199,3 +196,51 @@ class FiltrationDispatcher:
             "discarded": discarded_symbols,
             "stats": stats
         }
+
+
+if __name__ == "__main__":
+    from pathlib import Path
+    import json
+
+    # 1. 指定真实的搜索结果文件路径 (动态获取项目根目录并拼接路径)
+    project_root = Path(__file__).resolve().parent.parent
+    result_file_path = project_root / "output" / "youlai-boot-master" / "filtered_by_type.json"
+
+    print(f"正在读取真实搜索结果: {result_file_path}")
+    with open(result_file_path, "r", encoding="utf-8") as f:
+        real_search_results = json.load(f)
+    print(f"成功加载，共计 {len(real_search_results)} 个代码元素。")
+
+    with open(f'{OUTPUT_DIR}/youlai-boot-master/semQL.json', "r", encoding="utf-8") as f:
+        semql = json.load(f)
+
+    print("\n正在加载本地 Embedding 模型...")
+    # 3. 初始化组件
+    embedder = CodeEmbedder()
+    clusterer = SymbolClusterer(distance_threshold=0.3)
+    dispatcher = FiltrationDispatcher(embedder, clusterer)
+
+    print("开始运行过滤 Pipeline...")
+    # 4. 运行调度器
+    result_dict = dispatcher.run_pipeline(real_search_results, semql)
+
+    # 5. 存储结果
+    output_dir = project_root / "output" / "youlai-boot-master"
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    kept_file_path = output_dir / "filtered_by_cluster.json"
+    discarded_file_path = output_dir / "exclude_by_cluster.json"
+
+    with open(kept_file_path, "w", encoding="utf-8") as f:
+        json.dump(result_dict.get("kept", []), f, ensure_ascii=False, indent=4)
+
+    with open(discarded_file_path, "w", encoding="utf-8") as f:
+        json.dump(result_dict.get("discarded", []), f, ensure_ascii=False, indent=4)
+
+    # 6. 控制台简要输出
+    print("\n========== Pipeline 运行完成 ==========")
+    stats = result_dict.get("stats", {})
+    print(f"统计信息: 初始总数={stats.get('total_initial')}")
+    print(f"聚类数={stats.get('num_clusters')}, 保留={stats.get('total_kept')}, 丢弃={stats.get('total_discarded')}")
+    print(f"✅ 保留的符号已写入: {kept_file_path}")
+    print(f"❌ 丢弃的符号已写入: {discarded_file_path}")

@@ -78,8 +78,8 @@ def main():
     parser.add_argument("--query", type=str, help="A natural language search query for the online phase")
 
     args = parser.parse_args([
-        # "--project_path", PROJECT_PATH,
-        # "--output", f"{OUTPUT_DIR}/youlai-boot-master",
+        "--project_path", PROJECT_PATH,
+        "--output", f"{OUTPUT_DIR}/youlai-boot-master",
         "--query", "Find the entry function that handles user login authentication"
     ])
 
