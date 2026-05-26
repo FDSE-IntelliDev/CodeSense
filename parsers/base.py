@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Dict, Any
+from typing import Dict, Any, List
 
 
 @dataclass
@@ -14,6 +14,7 @@ class SymbolItem:
     type: str
     file: str
     range: RangeInfo
+    name_pos: List[int]
     signature: str
     language: str
     doc: str

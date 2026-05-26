@@ -2,7 +2,8 @@ import os
 import json
 import subprocess
 import threading
-from typing import Dict, List, Any, Optional
+from pathlib import Path
+from typing import List, Optional
 from definition import JDTLS_PATH
 from parsers.tools import get_function_position
 
@@ -10,22 +11,40 @@ class JavaLSPClient:
     """
     A lightweight LSP client communicating with Java Language Server (JDT.LS) via stdio.
     """
-    def __init__(self, project_root: str, jdtls_path: str = JDTLS_PATH ):
+    def __init__(
+        self,
+        project_root: str,
+        jdtls_path: str = JDTLS_PATH,
+        data_dir: Optional[str] = None,
+        configuration_dir: Optional[str] = None,
+        request_timeout: float = 10.0,
+        verbose: bool = True,
+    ):
         self.project_root = project_root
         self.jdtls_path = jdtls_path
+        self.data_dir = data_dir
+        self.configuration_dir = configuration_dir
+        self.request_timeout = request_timeout
+        self.verbose = verbose
         self._process = None
         self._req_id = 1
         self._responses = {}
+        self._opened_documents = set()
 
     def start(self):
-        import traceback
         import hashlib
 
         # Use a data directory outside the project root to prevent "overlaps the workspace location" error
         proj_hash = hashlib.md5(self.project_root.encode('utf-8')).hexdigest()[:8]
-        data_dir = os.path.abspath(os.path.expanduser(f"~/.cache/jdtls_workspace_{proj_hash}"))
+        repo_root = Path(__file__).resolve().parent.parent
+        default_data_dir = repo_root / "output" / f"jdtls_workspace_{proj_hash}"
+        default_config_dir = repo_root / "output" / f"jdtls_config_{proj_hash}"
+        data_dir = os.path.abspath(os.path.expanduser(self.data_dir or str(default_data_dir)))
+        configuration_dir = os.path.abspath(os.path.expanduser(self.configuration_dir or str(default_config_dir)))
+        os.makedirs(data_dir, exist_ok=True)
+        os.makedirs(configuration_dir, exist_ok=True)
 
-        cmd = [self.jdtls_path, "-data", data_dir]
+        cmd = [self.jdtls_path, "-configuration", configuration_dir, "-data", data_dir]
         self._process = subprocess.Popen(
             cmd,
             stdin=subprocess.PIPE,
@@ -52,7 +71,7 @@ class JavaLSPClient:
             data = json.loads(body)
 
             # Print raw server status/progress notifications
-            if "method" in data:
+            if self.verbose and "method" in data:
                 print(f"[JDTLS Raw] {json.dumps(data, ensure_ascii=False)}")
 
             if "id" in data:
@@ -74,7 +93,8 @@ class JavaLSPClient:
 
         # In a real implementation, you would wait for the specific response id with a timeout
         import time
-        for _ in range(50):
+        deadline = time.time() + self.request_timeout
+        while time.time() < deadline:
             if req_id in self._responses:
                 return self._responses.pop(req_id)
             time.sleep(0.1)
@@ -90,6 +110,27 @@ class JavaLSPClient:
         content = f"Content-Length: {len(body)}\r\n\r\n{body}"
         self._process.stdin.write(content.encode('utf-8'))
         self._process.stdin.flush()
+
+    def open_document(self, filepath: str, language_id: str = "java"):
+        file_path = os.path.abspath(filepath)
+        if file_path in self._opened_documents:
+            return
+        try:
+            text = Path(file_path).read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            return
+        self._send_notification(
+            "textDocument/didOpen",
+            {
+                "textDocument": {
+                    "uri": f"file://{file_path}",
+                    "languageId": language_id,
+                    "version": 1,
+                    "text": text,
+                }
+            },
+        )
+        self._opened_documents.add(file_path)
 
     def _initialize(self):
         res = self._send_request("initialize", {
@@ -111,9 +152,11 @@ class JavaCallChainExtractor:
     def __init__(self, lsp_client: JavaLSPClient):
         self.lsp_client = lsp_client
 
-    def get_call_chain(self, filepath: str, func_name: str, layer: int) -> dict:
+    def get_call_chain(self, filepath: str, func_name: str, layer: Optional[int] = None) -> dict:
         """
-        Retrieves the call chain (callers and callees) up to 'layer' depth.
+        Retrieves the call chain (callers and callees).
+        If 'layer' is given, it extracts up to 'layer' depth.
+        If 'layer' is None, it extracts until there are no more callees/callers (infinite depth).
         Now it identifies the function position by func_name inside the file.
         """
         # 0. Get function position
@@ -140,33 +183,39 @@ class JavaCallChainExtractor:
             "callees_tree": self._get_outgoing(target_item, layer)
         }
 
-    def _get_incoming(self, item: dict, depth: int) -> List[dict]:
-        if depth <= 0:
+    def _get_incoming(self, item: dict, depth: Optional[int]) -> List[dict]:
+        if depth is not None and depth <= 0:
             return []
         res = self.lsp_client._send_request("callHierarchy/incomingCalls", {"item": item})
         incoming = res.get("result", [])
+        if incoming is None:
+            return []
         tree = []
         for call in incoming:
             caller = call["from"]
+            next_depth = depth - 1 if depth is not None else None
             tree.append({
                 "caller": caller,
                 "ranges": call["fromRanges"],
-                "callers_tree": self._get_incoming(caller, depth - 1)
+                "callers_tree": self._get_incoming(caller, next_depth)
             })
         return tree
 
-    def _get_outgoing(self, item: dict, depth: int) -> List[dict]:
-        if depth <= 0:
+    def _get_outgoing(self, item: dict, depth: Optional[int]) -> List[dict]:
+        if depth is not None and depth <= 0:
             return []
         res = self.lsp_client._send_request("callHierarchy/outgoingCalls", {"item": item})
         outgoing = res.get("result", [])
+        if outgoing is None:
+            return []
         tree = []
         for call in outgoing:
             callee = call["to"]
+            next_depth = depth - 1 if depth is not None else None
             tree.append({
                 "callee": callee,
                 "ranges": call["fromRanges"],
-                "callees_tree": self._get_outgoing(callee, depth - 1)
+                "callees_tree": self._get_outgoing(callee, next_depth)
             })
         return tree
 

@@ -32,6 +32,12 @@ def parse_java(file_rel: str, source: str):
     def node_range(node) -> RangeInfo:
         return RangeInfo(node.start_point[0] + 1, node.end_point[0] + 1)
 
+    def node_name_pos(node):
+        n = node.child_by_field_name("name")
+        if n is None:
+            return [node.start_point[0] + 1, node.start_point[1]]
+        return [n.start_point[0] + 1, n.start_point[1]]
+
     def child_name(node) -> str:
         n = node.child_by_field_name("name")
         return node_text(n) if n else ""
@@ -67,6 +73,7 @@ def parse_java(file_rel: str, source: str):
                     type="class",
                     file=file_rel,
                     range=node_range(node),
+                    name_pos=node_name_pos(node),
                     signature=f"class {cname}",
                     language="java",
                     doc="",
@@ -91,6 +98,7 @@ def parse_java(file_rel: str, source: str):
                         type="variable",
                         file=file_rel,
                         range=node_range(ch),
+                        name_pos=node_name_pos(ch),
                         signature=vname,
                         language="java",
                         doc="",
@@ -109,6 +117,7 @@ def parse_java(file_rel: str, source: str):
                     type="method",
                     file=file_rel,
                     range=node_range(node),
+                    name_pos=node_name_pos(node),
                     signature=signature,
                     language="java",
                     doc="",
@@ -143,6 +152,7 @@ def parse_java(file_rel: str, source: str):
                     type="method",
                     file=file_rel,
                     range=node_range(node),
+                    name_pos=node_name_pos(node),
                     signature=signature,
                     language="java",
                     doc="",

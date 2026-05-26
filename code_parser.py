@@ -7,13 +7,10 @@ import os
 import pathlib
 import sys
 from dataclasses import asdict
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional
 
 from parsers import (
-    BaseCallResolver,
-    CallItem,
     DependencyItem,
-    LSPCallResolver,
     SymbolItem,
     parse_file_with_registry,
 )
@@ -111,7 +108,6 @@ def run(project_path: str, output_dir: str):
     files = list_source_files(project_path)
 
     all_symbols: List[SymbolItem] = []
-    all_calls_raw: List[Tuple[str, str, int, str, str]] = []
     all_deps: List[DependencyItem] = []
 
     for i in range(0, len(files), BATCH_SIZE):
@@ -119,20 +115,12 @@ def run(project_path: str, output_dir: str):
         for fp in batch:
             # if fp=="/Users/huangzhuochen/IdeaProjects/youlai-boot-master/src/main/java/com/youlai/boot/core/validator/FieldValidator.java":
             #     a=1
-            symbols, calls, deps = analyze_file_ast(project_path, fp)
+            symbols, _calls, deps = analyze_file_ast(project_path, fp)
             fr = relpath(fp, project_path)
             all_symbols.extend(symbols)
-            all_calls_raw.extend([(c[0], c[1], c[2], c[3], fr) for c in calls])
             all_deps.extend(deps)
 
     symbols_lookup = build_symbol_lookup(all_symbols)
-    call_resolver: BaseCallResolver = LSPCallResolver(project_path)
-
-    all_calls: List[CallItem] = []
-    for caller, callee, line, code, fr in all_calls_raw:
-        all_calls.extend(
-            call_resolver.resolve(caller, callee, line, code, fr, symbols_lookup)
-        )
 
     dep_seen = set()
     deps_uniq = []
@@ -155,13 +143,10 @@ def run(project_path: str, output_dir: str):
             indent=2,
         )
 
-    with open(os.path.join(output_dir, "call_graph.json"), "w", encoding="utf-8") as f:
-        json.dump([asdict(c) for c in all_calls], f, ensure_ascii=False, indent=2)
-
     with open(os.path.join(output_dir, "dependency_graph.json"), "w", encoding="utf-8") as f:
         json.dump([asdict(d) for d in deps_uniq], f, ensure_ascii=False, indent=2)
 
-    print(f"Done. symbols={len(all_symbols)}, calls={len(all_calls)}, deps={len(deps_uniq)}")
+    print(f"Done. symbols={len(all_symbols)}, deps={len(deps_uniq)}")
     print(f"Output dir: {output_dir}")
 
 
