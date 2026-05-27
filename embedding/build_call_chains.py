@@ -56,6 +56,12 @@ def run():
     time.sleep(10)
     extractor = JavaCallChainExtractor(lsp_client)
     result_set = []
+    part_id = 0
+    part_files = []
+    out_dir = f"{OUTPUT_DIR}/youlai-boot-master"
+    os.makedirs(out_dir, exist_ok=True)
+    tmp_dir = f"{out_dir}/tmp"
+    os.makedirs(tmp_dir, exist_ok=True)
     try:
         total = len(methods)
         for idx, func in enumerate(methods):
@@ -90,15 +96,43 @@ def run():
             func_chains = []
             flatten_call_tree(chain_res, [root_item], func_chains)
             result_set.extend(func_chains)
+
+            if len(result_set) >= 100:
+                part_file = f"{tmp_dir}/word2vec_call_chains_part_{part_id}.json"
+                with open(part_file, "w", encoding="utf-8") as f:
+                    json.dump(result_set, f, ensure_ascii=False, indent=2)
+                part_files.append(part_file)
+                part_id += 1
+                result_set = []
+
+        if result_set:
+            part_file = f"{tmp_dir}/word2vec_call_chains_part_{part_id}.json"
+            with open(part_file, "w", encoding="utf-8") as f:
+                json.dump(result_set, f, ensure_ascii=False, indent=2)
+            part_files.append(part_file)
+            result_set = []
     finally:
         lsp_client.stop()
         print("LSP Server stopped.")
-    out_dir = f"{OUTPUT_DIR}/youlai-boot-master"
-    os.makedirs(out_dir, exist_ok=True)
+
     out_file = f"{out_dir}/word2vec_call_chains.json"
-    with open(out_file, "w", encoding="utf-8") as f:
-        json.dump(result_set, f, ensure_ascii=False, indent=2)
-    print(f"Done. Extracted {len(result_set)} isolated path chains. Output saved to {out_file}")
+    print(f"Merging {len(part_files)} partial files into {out_file}...")
+    total_chains = 0
+    with open(out_file, "w", encoding="utf-8") as out_f:
+        out_f.write("[\n")
+        first = True
+        for pf in part_files:
+            with open(pf, "r", encoding="utf-8") as in_f:
+                part_data = json.load(in_f)
+                for item in part_data:
+                    if not first:
+                        out_f.write(",\n")
+                    json.dump(item, out_f, ensure_ascii=False)
+                    first = False
+                    total_chains += 1
+            os.remove(pf)
+        out_f.write("\n]\n")
+    print(f"Done. Extracted {total_chains} isolated path chains. Output saved to {out_file}")
 
 
 if __name__ == "__main__":

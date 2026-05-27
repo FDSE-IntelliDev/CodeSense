@@ -176,16 +176,29 @@ class JavaCallChainExtractor:
             return {"error": "Could not resolve call hierarchy item at given position."}
 
         target_item = prep_res["result"][0]
+        visited_incoming = set()
+        visited_outgoing = set()
 
         return {
             "target": target_item,
-            "callers_tree": self._get_incoming(target_item, layer),
-            "callees_tree": self._get_outgoing(target_item, layer)
+            "callers_tree": self._get_incoming(target_item, layer, visited_incoming),
+            "callees_tree": self._get_outgoing(target_item, layer, visited_outgoing)
         }
 
-    def _get_incoming(self, item: dict, depth: Optional[int]) -> List[dict]:
+    def _make_item_key(self, item: dict) -> str:
+        """Create a unique key for a call hierarchy item to detect cycles."""
+        uri = item.get("uri", "")
+        range_info = item.get("range", {})
+        start = range_info.get("start", {})
+        return f"{uri}:{start.get('line', 0)}:{start.get('character', 0)}"
+
+    def _get_incoming(self, item: dict, depth: Optional[int], visited: set) -> List[dict]:
         if depth is not None and depth <= 0:
             return []
+        item_key = self._make_item_key(item)
+        if item_key in visited:
+            return []
+        visited.add(item_key)
         res = self.lsp_client._send_request("callHierarchy/incomingCalls", {"item": item})
         incoming = res.get("result", [])
         if incoming is None:
@@ -197,13 +210,17 @@ class JavaCallChainExtractor:
             tree.append({
                 "caller": caller,
                 "ranges": call["fromRanges"],
-                "callers_tree": self._get_incoming(caller, next_depth)
+                "callers_tree": self._get_incoming(caller, next_depth, visited)
             })
         return tree
 
-    def _get_outgoing(self, item: dict, depth: Optional[int]) -> List[dict]:
+    def _get_outgoing(self, item: dict, depth: Optional[int], visited: set) -> List[dict]:
         if depth is not None and depth <= 0:
             return []
+        item_key = self._make_item_key(item)
+        if item_key in visited:
+            return []
+        visited.add(item_key)
         res = self.lsp_client._send_request("callHierarchy/outgoingCalls", {"item": item})
         outgoing = res.get("result", [])
         if outgoing is None:
@@ -215,7 +232,7 @@ class JavaCallChainExtractor:
             tree.append({
                 "callee": callee,
                 "ranges": call["fromRanges"],
-                "callees_tree": self._get_outgoing(callee, next_depth)
+                "callees_tree": self._get_outgoing(callee, next_depth, visited)
             })
         return tree
 
