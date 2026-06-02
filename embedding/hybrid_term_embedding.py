@@ -14,16 +14,20 @@ from pathlib import Path
 from typing import Dict, List, Tuple
 
 sys.path.append(str(Path(__file__).parent.parent))
-from definition import OUTPUT_DIR
+from definition import OUTPUT_DIR, CORPUS
 from embedding.icf_term_embedding import ICFTermEmbedding
 from embedding.semantic_term_embedding import SemanticTermEmbedding
 
 
 class HybridTermEmbedding:
-    CO_WEIGHT = 0.4
-    SEM_WEIGHT = 0.6
-
-    def __init__(self, semantic_model_name: str = SemanticTermEmbedding.DEFAULT_SEMANTIC_MODEL):
+    def __init__(
+        self,
+        semantic_model_name: str = SemanticTermEmbedding.DEFAULT_SEMANTIC_MODEL,
+        co_weight: float = 0.4,
+        sem_weight: float = 0.6,
+    ):
+        self.co_weight = co_weight
+        self.sem_weight = sem_weight
         self.co_model = ICFTermEmbedding()
         self.sem_model = SemanticTermEmbedding(semantic_model_name=semantic_model_name)
 
@@ -32,10 +36,10 @@ class HybridTermEmbedding:
         sources = []
 
         if sem_score > 0:
-            total += self.SEM_WEIGHT * sem_score
+            total += self.sem_weight * sem_score
             sources.append('semantic')
         if co_score > 0:
-            total += self.CO_WEIGHT * co_score
+            total += self.co_weight * co_score
             sources.append('co')
         return total , '_and_'.join(sources)
 
@@ -47,8 +51,9 @@ class HybridTermEmbedding:
         semantic_vocab_path: str,
         semantic_embeddings_path: str,
         project_vocab_path: str = None,
+        enhanced_corpus_path: str = None,
     ):
-        self.co_model.train(call_chains_path, co_model_path, icf_path, project_vocab_path)
+        self.co_model.train(call_chains_path, co_model_path, icf_path, project_vocab_path, enhanced_corpus_path)
         self.sem_model.build_index(
             call_chains_path,
             semantic_vocab_path,
@@ -122,6 +127,7 @@ def default_paths(project_name: str = 'youlai-boot-master') -> Dict[str, str]:
     return {
         'project_vocab': str(base / 'term_project_vocab.json'),
         'call_chains': str(base / 'word2vec_call_chains.json'),
+        'enhanced_corpus': str(base / CORPUS),
         'fasttext_model': str(base / 'term_icf_fasttext.model'),
         'icf': str(base / 'term_icf.npz'),
         'semantic_vocab': str(base / 'term_project_vocab.json'),
@@ -143,6 +149,7 @@ def demo():
         paths['semantic_vocab'],
         paths['semantic_embeddings'],
         paths['project_vocab'],
+        paths['enhanced_corpus'],
     )
 
     for query in ['auth', 'save', 'get', 'user login']:
@@ -179,6 +186,7 @@ if __name__ == '__main__':
             paths['semantic_vocab'],
             paths['semantic_embeddings'],
             paths['project_vocab'],
+            paths['enhanced_corpus'],
         )
     # elif args.related or (args.pair_a and args.pair_b):
     embedder.load(

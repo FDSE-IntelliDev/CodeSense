@@ -21,7 +21,7 @@ from pathlib import Path
 from typing import Dict, List
 
 sys.path.append(str(Path(__file__).parent.parent))
-from definition import OUTPUT_DIR
+from definition import OUTPUT_DIR, CORPUS
 from embedding.project_term_vocab import extract_terms_from_func_name
 
 
@@ -53,9 +53,9 @@ def build_enhanced_corpus(
     include_local_windows: bool = True,
     include_edges: bool = True,
     window_sizes: List[int] = None,
-    full_chain_repeat: int = 1,
-    local_window_repeat: int = 2,
-    edge_repeat: int = 3,
+    full_chain_repeat: int = 1, # 整体业务流程，弱权重
+    local_window_repeat: int = 2, # 近距离调用关系，中权重
+    edge_repeat: int = 3, # 直接调用边，强权重
 ) -> List[List[str]]:
     """构建增强调用链 corpus。"""
     if window_sizes is None:
@@ -116,25 +116,15 @@ def default_paths(project_name: str = 'youlai-boot-master') -> Dict[str, str]:
     base = Path(OUTPUT_DIR) / project_name
     return {
         'call_chains': str(base / 'word2vec_call_chains.json'),
-        'enhanced_corpus': str(base / 'enhanced_call_chain_corpus.json'),
+        'enhanced_corpus': str(base / CORPUS),
     }
 
 
 def main():
-    parser = argparse.ArgumentParser(description='Build enhanced call-chain corpus')
-    parser.add_argument('--project', type=str, default='youlai-boot-master')
-    parser.add_argument('--input', type=str, default=None)
-    parser.add_argument('--output', type=str, default=None)
-    parser.add_argument('--window-sizes', type=str, default='2,3', help='Comma-separated local window sizes')
-    parser.add_argument('--full-chain-repeat', type=int, default=1)
-    parser.add_argument('--local-window-repeat', type=int, default=2)
-    parser.add_argument('--edge-repeat', type=int, default=3)
-    args = parser.parse_args()
-
-    paths = default_paths(args.project)
-    input_path = args.input or paths['call_chains']
-    output_path = args.output or paths['enhanced_corpus']
-    window_sizes = [int(x.strip()) for x in args.window_sizes.split(',') if x.strip()]
+    paths = default_paths('youlai-boot-master')
+    input_path = paths['call_chains']
+    output_path = paths['enhanced_corpus']
+    window_sizes = [2,3]
 
     with open(input_path, 'r', encoding='utf-8') as f:
         chains = json.load(f)
@@ -142,9 +132,6 @@ def main():
     corpus = build_enhanced_corpus(
         chains,
         window_sizes=window_sizes,
-        full_chain_repeat=args.full_chain_repeat,
-        local_window_repeat=args.local_window_repeat,
-        edge_repeat=args.edge_repeat,
     )
 
     with open(output_path, 'w', encoding='utf-8') as f:

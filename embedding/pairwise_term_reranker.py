@@ -19,7 +19,7 @@ from pathlib import Path
 from typing import Dict, List, Tuple
 
 sys.path.append(str(Path(__file__).parent.parent))
-from definition import OUTPUT_DIR
+from definition import OUTPUT_DIR, CORPUS
 from embedding.hybrid_term_embedding import HybridTermEmbedding
 
 try:
@@ -31,13 +31,20 @@ except ImportError:
 
 class PairwiseTermReranker:
     DEFAULT_PAIRWISE_MODEL = 'cross-encoder/stsb-distilroberta-base'
-    HYBRID_WEIGHT = 0.4
-    PAIRWISE_WEIGHT = 0.6
 
-    def __init__(self, pairwise_model_name: str = DEFAULT_PAIRWISE_MODEL):
-        self.hybrid_model = HybridTermEmbedding()
+    def __init__(
+        self,
+        pairwise_model_name: str = DEFAULT_PAIRWISE_MODEL,
+        co_weight: float = 0.4,
+        sem_weight: float = 0.6,
+        hybrid_weight: float = 0.4,
+        pairwise_weight: float = 0.6,
+    ):
+        self.hybrid_model = HybridTermEmbedding(co_weight=co_weight, sem_weight=sem_weight)
         self.pairwise_model_name = pairwise_model_name
         self.pairwise_model = None
+        self.hybrid_weight = hybrid_weight
+        self.pairwise_weight = pairwise_weight
 
     def _ensure_pairwise_model(self):
         if self.pairwise_model is not None:
@@ -65,22 +72,17 @@ class PairwiseTermReranker:
         return max(0.0, self._normalize_pair_score(float(raw_score)))
 
     def _fuse_scores(self, hybrid_score: float, pair_score: float) -> Tuple[float, str]:
-        available_weight = 0.0
         total = 0.0
         sources = []
 
         if hybrid_score > 0:
-            total += self.HYBRID_WEIGHT * hybrid_score
-            available_weight += self.HYBRID_WEIGHT
+            total += self.hybrid_weight * hybrid_score
             sources.append('hybrid')
         if pair_score > 0:
-            total += self.PAIRWISE_WEIGHT * pair_score
-            available_weight += self.PAIRWISE_WEIGHT
+            total += self.pairwise_weight * pair_score
             sources.append('pairwise')
 
-        if available_weight <= 0:
-            return 0.0, 'none'
-        return total / available_weight, '_and_'.join(sources)
+        return total, '_and_'.join(sources)
 
     def build_base_index(
         self,
@@ -90,6 +92,7 @@ class PairwiseTermReranker:
         semantic_vocab_path: str,
         semantic_embeddings_path: str,
         project_vocab_path: str = None,
+        enhanced_corpus_path: str = None,
     ):
         self.hybrid_model.build_index(
             call_chains_path,
@@ -98,6 +101,7 @@ class PairwiseTermReranker:
             semantic_vocab_path,
             semantic_embeddings_path,
             project_vocab_path,
+            enhanced_corpus_path,
         )
 
     def load(
@@ -152,6 +156,7 @@ def default_paths(project_name: str = 'youlai-boot-master') -> Dict[str, str]:
     return {
         'project_vocab': str(base / 'term_project_vocab.json'),
         'call_chains': str(base / 'word2vec_call_chains.json'),
+        'enhanced_corpus': str(base / CORPUS),
         'fasttext_model': str(base / 'term_icf_fasttext.model'),
         'icf': str(base / 'term_icf.npz'),
         'semantic_vocab': str(base / 'term_project_vocab.json'),
@@ -162,8 +167,13 @@ def default_paths(project_name: str = 'youlai-boot-master') -> Dict[str, str]:
 if __name__ == '__main__':
 
     paths = default_paths('youlai-boot-master')
-    reranker = PairwiseTermReranker()
-    query="save"
+    reranker = PairwiseTermReranker(
+        co_weight=0.2,
+        sem_weight=0.8,
+        hybrid_weight=0,
+        pairwise_weight=1,
+    )
+    query="security"
     top_k=10
     candidate_k=30
 
@@ -175,6 +185,7 @@ if __name__ == '__main__':
             paths['semantic_vocab'],
             paths['semantic_embeddings'],
             paths['project_vocab'],
+            paths['enhanced_corpus'],
         )
     # elif args.related or (args.pair_a and args.pair_b):
     reranker.load(

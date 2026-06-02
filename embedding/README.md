@@ -255,6 +255,7 @@ query string
 ```text
 output/youlai-boot-master/
 ├── word2vec_call_chains.json
+├── enhanced_call_chain_corpus.json
 ├── term_project_vocab.json
 ├── term_icf_fasttext.model
 ├── term_icf.npz
@@ -262,6 +263,8 @@ output/youlai-boot-master/
 ```
 
 说明：
+- `word2vec_call_chains.json`：原始调用链数据，用于构建项目词表和 ICF
+- `enhanced_call_chain_corpus.json`：增强训练语料，用于训练 FastText 共现模型
 - `term_project_vocab.json`：项目术语表，作为 semantic / co-occurrence 的共享底层词表，也作为语义向量矩阵的行顺序表
 - `term_icf_fasttext.model`：共现单通道模型
 - `term_icf.npz`：ICF 数据和高频词集合
@@ -280,19 +283,27 @@ output/youlai-boot-master/
 
 ## 10. 使用方法
 
-### 10.1 训练共现单通道
+### 10.1 构建增强调用链 corpus
+
+```bash
+python embedding/build_enhanced_corpus.py
+```
+
+该步骤从 `word2vec_call_chains.json` 生成 `enhanced_call_chain_corpus.json`，供 ICF/FastText 共现通道训练使用。
+
+### 10.2 训练共现单通道
 
 ```bash
 python embedding/icf_term_embedding.py --train
 ```
 
-### 10.2 构建语义单通道索引
+### 10.3 构建语义单通道索引
 
 ```bash
 python embedding/semantic_term_embedding.py --build
 ```
 
-### 10.3 构建双通道索引
+### 10.4 构建双通道索引
 
 ```bash
 python embedding/hybrid_term_embedding.py --train
@@ -300,7 +311,7 @@ python embedding/hybrid_term_embedding.py --train
 
 注意：双通道构建会调用共现单通道训练，以及语义单通道的索引构建过程。
 
-### 10.4 构建 pairwise 所需基础索引
+### 10.5 构建 pairwise 所需基础索引
 
 ```bash
 python embedding/pairwise_term_reranker.py --build

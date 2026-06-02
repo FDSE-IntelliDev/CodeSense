@@ -155,210 +155,216 @@
 ```json
 [
   {
-    "term": "integrity",
-    "co_score": 0.701726,
-    "sem_score": 0.496484,
-    "final_score": 0.578581,
-    "rank_source": "semantic_and_co",
-    "is_high_freq": false,
-    "icf": 7.076316
-  },
-  {
     "term": "authentication",
-    "co_score": 0.457845,
+    "co_score": 0.488428,
     "sem_score": 0.631101,
-    "final_score": 0.561799,
+    "final_score": 0.602566,
     "rank_source": "semantic_and_co",
     "is_high_freq": false,
     "icf": 5.977704
   },
   {
-    "term": "registration",
-    "co_score": 0.748756,
-    "sem_score": 0.282833,
-    "final_score": 0.469202,
+    "term": "integrity",
+    "co_score": 0.553012,
+    "sem_score": 0.496484,
+    "final_score": 0.50779,
+    "rank_source": "semantic_and_co",
+    "is_high_freq": false,
+    "icf": 7.076316
+  },
+  {
+    "term": "permission",
+    "co_score": 0.490993,
+    "sem_score": 0.481482,
+    "final_score": 0.483384,
     "rank_source": "semantic_and_co",
     "is_high_freq": false,
     "icf": 8.685754
   },
   {
-    "term": "job",
-    "co_score": 0.53592,
-    "sem_score": 0.364125,
-    "final_score": 0.432843,
+    "term": "authenticate",
+    "co_score": 0.201861,
+    "sem_score": 0.520519,
+    "final_score": 0.456787,
+    "rank_source": "semantic_and_co",
+    "is_high_freq": false,
+    "icf": 4.142459
+  },
+  {
+    "term": "authenticated",
+    "co_score": 0.273949,
+    "sem_score": 0.458837,
+    "final_score": 0.421859,
     "rank_source": "semantic_and_co",
     "is_high_freq": false,
     "icf": 7.992607
   },
   {
-    "term": "region",
-    "co_score": 0.650414,
-    "sem_score": 0.286115,
-    "final_score": 0.431835,
-    "rank_source": "semantic_and_co",
+    "term": "lock",
+    "co_score": 0.0,
+    "sem_score": 0.516062,
+    "final_score": 0.41285,
+    "rank_source": "semantic",
     "is_high_freq": false,
-    "icf": 8.685754
+    "icf": null
   },
   {
-    "term": "policy",
-    "co_score": 0.462365,
-    "sem_score": 0.403981,
-    "final_score": 0.427335,
-    "rank_source": "semantic_and_co",
+    "term": "access",
+    "co_score": 0.0,
+    "sem_score": 0.501576,
+    "final_score": 0.401261,
+    "rank_source": "semantic",
     "is_high_freq": false,
-    "icf": 8.685754
+    "icf": null
   },
   {
-    "term": "internal",
-    "co_score": 0.61676,
-    "sem_score": 0.284012,
-    "final_score": 0.417111,
-    "rank_source": "semantic_and_co",
+    "term": "auth",
+    "co_score": 0.0,
+    "sem_score": 0.495341,
+    "final_score": 0.396273,
+    "rank_source": "semantic",
     "is_high_freq": false,
-    "icf": 4.090634
+    "icf": null
   },
   {
-    "term": "entry",
-    "co_score": 0.532758,
-    "sem_score": 0.335758,
-    "final_score": 0.414558,
-    "rank_source": "semantic_and_co",
+    "term": "password",
+    "co_score": 0.0,
+    "sem_score": 0.48655,
+    "final_score": 0.38924,
+    "rank_source": "semantic",
     "is_high_freq": false,
-    "icf": 8.685754
+    "icf": null
   },
   {
-    "term": "input",
-    "co_score": 0.539256,
-    "sem_score": 0.322028,
-    "final_score": 0.408919,
+    "term": "job",
+    "co_score": 0.473842,
+    "sem_score": 0.364125,
+    "final_score": 0.386068,
     "rank_source": "semantic_and_co",
     "is_high_freq": false,
-    "icf": 8.685754
-  },
-  {
-    "term": "sql",
-    "co_score": 0.578269,
-    "sem_score": 0.28895,
-    "final_score": 0.404678,
-    "rank_source": "semantic_and_co",
-    "is_high_freq": false,
-    "icf": 5.048168
+    "icf": 7.992607
   }
 ]
+
 ```
 
 # 双通道+pairwise rerank策略
 ```json
 [
   {
-    "term": "authentication",
-    "co_score": 0.457845,
-    "sem_score": 0.631101,
-    "final_score": 0.340761,
+    "term": "roles",
+    "co_score": 0.0,
+    "sem_score": 0.387975,
+    "final_score": 0.271872,
     "rank_source": "hybrid_and_pairwise",
     "is_high_freq": false,
-    "icf": 5.977704,
-    "hybrid_score": 0.561799,
-    "pair_score": 0.193402
-  },
-  {
-    "term": "chain",
-    "co_score": 0.802241,
-    "sem_score": 0.0,
-    "final_score": 0.32154,
-    "rank_source": "hybrid_and_pairwise",
-    "is_high_freq": false,
-    "icf": 7.076316,
-    "hybrid_score": 0.320896,
-    "pair_score": 0.32197
-  },
-  {
-    "term": "integrity",
-    "co_score": 0.701726,
-    "sem_score": 0.496484,
-    "final_score": 0.316533,
-    "rank_source": "hybrid_and_pairwise",
-    "is_high_freq": false,
-    "icf": 7.076316,
-    "hybrid_score": 0.578581,
-    "pair_score": 0.141834
+    "icf": null,
+    "hybrid_score": 0.31038,
+    "pair_score": 0.271872
   },
   {
     "term": "ip",
-    "co_score": 0.401037,
+    "co_score": 0.0,
     "sem_score": 0.386057,
-    "final_score": 0.311591,
+    "final_score": 0.257952,
     "rank_source": "hybrid_and_pairwise",
     "is_high_freq": false,
-    "icf": 5.427657,
-    "hybrid_score": 0.392049,
+    "icf": null,
+    "hybrid_score": 0.308846,
     "pair_score": 0.257952
   },
   {
+    "term": "credentials",
+    "co_score": 0.0,
+    "sem_score": 0.457073,
+    "final_score": 0.240833,
+    "rank_source": "hybrid_and_pairwise",
+    "is_high_freq": false,
+    "icf": null,
+    "hybrid_score": 0.365658,
+    "pair_score": 0.240833
+  },
+  {
+    "term": "authenticated",
+    "co_score": 0.273949,
+    "sem_score": 0.458837,
+    "final_score": 0.234743,
+    "rank_source": "hybrid_and_pairwise",
+    "is_high_freq": false,
+    "icf": 7.992607,
+    "hybrid_score": 0.421859,
+    "pair_score": 0.234743
+  },
+  {
+    "term": "tokens",
+    "co_score": 0.0,
+    "sem_score": 0.39507,
+    "final_score": 0.227245,
+    "rank_source": "hybrid_and_pairwise",
+    "is_high_freq": false,
+    "icf": null,
+    "hybrid_score": 0.316056,
+    "pair_score": 0.227245
+  },
+  {
+    "term": "system",
+    "co_score": 0.247531,
+    "sem_score": 0.372581,
+    "final_score": 0.224092,
+    "rank_source": "hybrid_and_pairwise",
+    "is_high_freq": false,
+    "icf": 5.85254,
+    "hybrid_score": 0.347571,
+    "pair_score": 0.224092
+  },
+  {
+    "term": "authenticate",
+    "co_score": 0.201861,
+    "sem_score": 0.520519,
+    "final_score": 0.223697,
+    "rank_source": "hybrid_and_pairwise",
+    "is_high_freq": false,
+    "icf": 4.142459,
+    "hybrid_score": 0.456787,
+    "pair_score": 0.223697
+  },
+  {
     "term": "internal",
-    "co_score": 0.61676,
+    "co_score": 0.500938,
     "sem_score": 0.284012,
-    "final_score": 0.300151,
+    "final_score": 0.222177,
     "rank_source": "hybrid_and_pairwise",
     "is_high_freq": false,
     "icf": 4.090634,
-    "hybrid_score": 0.417111,
+    "hybrid_score": 0.327397,
     "pair_score": 0.222177
   },
   {
-    "term": "interceptor",
-    "co_score": 0.733968,
-    "sem_score": 0.0,
-    "final_score": 0.266181,
+    "term": "access",
+    "co_score": 0.0,
+    "sem_score": 0.501576,
+    "final_score": 0.21224,
     "rank_source": "hybrid_and_pairwise",
     "is_high_freq": false,
-    "icf": 8.685754,
-    "hybrid_score": 0.293587,
-    "pair_score": 0.247911
+    "icf": null,
+    "hybrid_score": 0.401261,
+    "pair_score": 0.21224
   },
   {
-    "term": "entry",
-    "co_score": 0.532758,
-    "sem_score": 0.335758,
-    "final_score": 0.264735,
+    "term": "password",
+    "co_score": 0.0,
+    "sem_score": 0.48655,
+    "final_score": 0.205619,
     "rank_source": "hybrid_and_pairwise",
     "is_high_freq": false,
-    "icf": 8.685754,
-    "hybrid_score": 0.414558,
-    "pair_score": 0.164853
-  },
-  {
-    "term": "web",
-    "co_score": 0.420104,
-    "sem_score": 0.330862,
-    "final_score": 0.262569,
-    "rank_source": "hybrid_and_pairwise",
-    "is_high_freq": false,
-    "icf": 8.685754,
-    "hybrid_score": 0.366559,
-    "pair_score": 0.193243
-  },
-  {
-    "term": "service",
-    "co_score": 0.358795,
-    "sem_score": 0.401402,
-    "final_score": 0.262246,
-    "rank_source": "hybrid_and_pairwise",
-    "is_high_freq": false,
-    "icf": 8.685754,
-    "hybrid_score": 0.384359,
-    "pair_score": 0.180837
-  },
-  {
-    "term": "input",
-    "co_score": 0.539256,
-    "sem_score": 0.322028,
-    "final_score": 0.260044,
-    "rank_source": "hybrid_and_pairwise",
-    "is_high_freq": false,
-    "icf": 8.685754,
-    "hybrid_score": 0.408919,
-    "pair_score": 0.160795
+    "icf": null,
+    "hybrid_score": 0.38924,
+    "pair_score": 0.205619
   }
 ]
 ```
+
+
+应用场景：关键词扩展（测试个别query效果还不错）、全称缩写过滤筛除（目前还未测试）、搜索结果过滤
+
+输入单词效果较好 输入短语效果下降明显

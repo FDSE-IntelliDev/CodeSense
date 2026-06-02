@@ -19,7 +19,7 @@ from typing import Dict, List, Optional, Tuple
 import numpy as np
 
 sys.path.append(str(Path(__file__).parent.parent))
-from definition import OUTPUT_DIR
+from definition import OUTPUT_DIR,CORPUS
 from embedding.project_term_vocab import extract_terms_from_func_name, load_or_build_project_terms, normalize_query_text, tokenize_text
 
 try:
@@ -174,18 +174,21 @@ class ICFTermEmbedding:
             return normalized
         return None
 
-    def _train_fasttext(self, call_chains_path: str, output_path: str):
-        with open(call_chains_path, 'r', encoding='utf-8') as f:
-            chains = json.load(f)
+    def _train_fasttext(self, corpus_path: str, output_path: str):
+        """使用增强 corpus 训练 FastText。"""
+        corpus_file = Path(corpus_path)
+        if not corpus_file.exists():
+            raise FileNotFoundError(
+                f"Enhanced corpus not found: {corpus_path}. "
+                f"Please run embedding/build_enhanced_corpus.py first."
+            )
 
-        corpus = []
-        for chain in chains:
-            chain_terms = []
-            for item in chain:
-                terms = self.icf_calc.extract_terms(item['func_name'])
-                chain_terms.extend(terms)
-            if len(chain_terms) >= 2:
-                corpus.append(chain_terms)
+        with open(corpus_file, 'r', encoding='utf-8') as f:
+            corpus = json.load(f)
+
+        corpus = [sentence for sentence in corpus if isinstance(sentence, list) and len(sentence) >= 2]
+        if not corpus:
+            raise ValueError(f"Enhanced corpus is empty or invalid: {corpus_path}")
 
         self.fasttext_model = FastText(
             sentences=corpus,
@@ -200,12 +203,33 @@ class ICFTermEmbedding:
         self.fasttext_model.save(output_path)
         if not self.project_vocab:
             self.project_vocab = set(self.fasttext_model.wv.key_to_index.keys())
+        print(f"FastText corpus: {corpus_path}")
         print(f"FastText vocab: {len(self.fasttext_model.wv.key_to_index)}")
         print(f"Project vocab: {len(self.project_vocab)}")
 
-    def train(self, call_chains_path: str, model_output_path: str, icf_output_path: str, vocab_path: Optional[str] = None):
+    def train(
+        self,
+        call_chains_path: str,
+        model_output_path: str,
+        icf_output_path: str,
+        vocab_path: Optional[str] = None,
+        corpus_path: Optional[str] = None,
+    ):
+        """
+        训练/加载共现通道。
+
+        Args:
+            call_chains_path: 原始 word2vec_call_chains.json，用于构建项目词表和 ICF。
+            model_output_path: FastText 模型输出路径。
+            icf_output_path: ICF 数据输出路径。
+            vocab_path: 项目共享词表路径。
+            corpus_path: enhanced_call_chain_corpus.json，用于训练 FastText。
+        """
         if vocab_path:
             self.project_vocab = set(load_or_build_project_terms(call_chains_path, vocab_path))
+
+        if corpus_path is None:
+            corpus_path = str(Path(call_chains_path).with_name('enhanced_call_chain_corpus.json'))
 
         model_exists = Path(model_output_path).exists()
         icf_exists = Path(icf_output_path).exists()
@@ -221,7 +245,7 @@ class ICFTermEmbedding:
         self.icf_calc.save(icf_output_path)
         if not GENSIM_AVAILABLE:
             raise ImportError('gensim is required. Install: pip install gensim')
-        self._train_fasttext(call_chains_path, model_output_path)
+        self._train_fasttext(corpus_path, model_output_path)
 
     def load(self, model_path: str, icf_path: str, vocab_path: Optional[str] = None):
         self.icf_calc.load(icf_path)
@@ -320,6 +344,7 @@ def default_paths(project_name: str = 'youlai-boot-master') -> Dict[str, str]:
     return {
         'project_vocab': str(base / 'term_project_vocab.json'),
         'call_chains': str(base / 'word2vec_call_chains.json'),
+        'enhanced_corpus': str(base / 'enhanced_call_chain_corpus.json'),
         'fasttext_model': str(base / 'term_icf_fasttext.model'),
         'icf': str(base / 'term_icf.npz'),
     }
@@ -332,7 +357,7 @@ def demo():
 
     paths = default_paths()
     embedder = ICFTermEmbedding()
-    embedder.train(paths['call_chains'], paths['fasttext_model'], paths['icf'], paths['project_vocab'])
+    embedder.train(paths['call_chains'], paths['fasttext_model'], paths['icf'], paths['project_vocab'], paths['enhanced_corpus'])
 
     for query in ['auth', 'save', 'get']:
         print(f"\nQuery: {query}")
@@ -369,7 +394,7 @@ if __name__ == '__main__':
     str_a,str_b="",""
 
     # if args.train:
-    embedder.train(paths['call_chains'], paths['fasttext_model'], paths['icf'], paths['project_vocab'])
+    embedder.train(paths['call_chains'], paths['fasttext_model'], paths['icf'], paths['project_vocab'], paths['enhanced_corpus'])
     # elif args.related or (args.pair_a and args.pair_b):
     embedder.load(paths['fasttext_model'], paths['icf'])
         # if args.related:

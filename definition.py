@@ -10,6 +10,9 @@ EMBEDDING_DIR=str(Path(ROOT_DIR) / "embedding")
 EXPANSION_DIR=str(Path(ROOT_DIR) / "expansion")
 
 PROJECT_PATH="/Users/bytedance/old6ma/projects/youlai-boot-master"
+
+CORPUS="enhanced_call_chain_corpus.json"
+
 BASE_URL="https://dashscope.aliyuncs.com/compatible-mode/v1"
 API_KEY="sk-e2a20472cac148bdb711c663110c4d6f"
 BASE_MODEL="qwen-plus"
