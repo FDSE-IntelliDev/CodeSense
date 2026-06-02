@@ -16,8 +16,8 @@ from typing import Dict, List, Optional
 import numpy as np
 
 sys.path.append(str(Path(__file__).parent.parent))
-from definition import OUTPUT_DIR
-from embedding.icf_term_embedding import ICFCalculator
+from definition import OUTPUT_DIR,PROJECT_PATH
+from embedding.project_term_vocab import load_or_build_project_terms, normalize_query_text, save_project_terms, tokenize_text
 
 try:
     from sentence_transformers import SentenceTransformer
@@ -30,7 +30,6 @@ class SemanticTermEmbedding:
     DEFAULT_SEMANTIC_MODEL = 'all-MiniLM-L6-v2'
 
     def __init__(self, semantic_model_name: str = DEFAULT_SEMANTIC_MODEL):
-        self.icf_calc = ICFCalculator()
         self.semantic_model_name = semantic_model_name
         self.semantic_model = None
         self.project_vocab = set()
@@ -57,10 +56,10 @@ class SemanticTermEmbedding:
         return embeddings.astype(np.float32)
 
     def _resolve_project_term(self, text: str) -> Optional[str]:
-        tokens = self.icf_calc.extract_query_terms(text)
+        tokens = tokenize_text(text)
         if len(tokens) == 1 and tokens[0] in self.project_vocab:
             return tokens[0]
-        normalized = self.icf_calc.normalize_query_text(text)
+        normalized = normalize_query_text(text)
         if normalized in self.project_vocab:
             return normalized
         return None
@@ -71,23 +70,43 @@ class SemanticTermEmbedding:
         vocab_output_path: str,
         embeddings_output_path: str,
         model_name: Optional[str] = None,
+        project_vocab_path: Optional[str] = None,
     ):
-        self.icf_calc.compute_from_chains(call_chains_path)
-        self.project_vocab = set(self.icf_calc.icf_scores.keys())
+        vocab_source_path = project_vocab_path or vocab_output_path
+        self.semantic_terms = load_or_build_project_terms(call_chains_path, vocab_source_path)
+        self.project_vocab = set(self.semantic_terms)
+
+        if vocab_output_path != vocab_source_path:
+            save_project_terms(vocab_output_path, self.semantic_terms)
 
         if model_name:
             self.semantic_model_name = model_name
 
-        self.semantic_terms = sorted(self.project_vocab)
         self.semantic_term_to_idx = {term: idx for idx, term in enumerate(self.semantic_terms)}
 
         if not self.semantic_terms:
             raise ValueError('No project terms available to build semantic index.')
 
-        self.semantic_embeddings = self._encode_texts(self.semantic_terms)
+        embeddings_path = Path(embeddings_output_path)
+        if embeddings_path.exists():
+            data = np.load(embeddings_path, allow_pickle=True)
+            existing_embeddings = data['embeddings'].astype(np.float32)
+            existing_model_name = str(data['model_name']) if 'model_name' in data else self.semantic_model_name
 
-        with open(vocab_output_path, 'w', encoding='utf-8') as f:
-            json.dump(self.semantic_terms, f, ensure_ascii=False, indent=2)
+            vocab_size_matches = existing_embeddings.shape[0] == len(self.semantic_terms)
+            model_matches = existing_model_name == self.semantic_model_name
+
+            if vocab_size_matches and model_matches:
+                self.semantic_embeddings = existing_embeddings
+                print(f"Semantic embeddings loaded from existing file: {embeddings_output_path}")
+                print(f"  Semantic terms: {len(self.semantic_terms)}")
+                print(f"  Embedding dim: {self.semantic_embeddings.shape[1]}")
+                return
+
+            print("Existing semantic embeddings are incompatible; rebuilding.")
+            print(f"  vocab_size_matches={vocab_size_matches}, model_matches={model_matches}")
+
+        self.semantic_embeddings = self._encode_texts(self.semantic_terms)
 
         np.savez(
             embeddings_output_path,
@@ -96,7 +115,6 @@ class SemanticTermEmbedding:
             normalized=np.array(True),
             dim=np.array(self.semantic_embeddings.shape[1]),
         )
-        print(f"Semantic vocab saved to: {vocab_output_path}")
         print(f"Semantic embeddings saved to: {embeddings_output_path}")
         print(f"  Semantic terms: {len(self.semantic_terms)}")
         print(f"  Embedding dim: {self.semantic_embeddings.shape[1]}")
@@ -115,11 +133,11 @@ class SemanticTermEmbedding:
         if self.semantic_embeddings is None or not self.semantic_terms:
             return []
 
-        normalized_query = self.icf_calc.normalize_query_text(query)
+        normalized_query = normalize_query_text(query)
         query_vec = self._encode_texts([normalized_query])[0]
         scores = np.dot(self.semantic_embeddings, query_vec)
 
-        excluded = set(self.icf_calc.extract_query_terms(query))
+        excluded = set(tokenize_text(query))
         excluded.add(normalized_query)
 
         ranked_indices = np.argsort(scores)[::-1]
@@ -140,8 +158,8 @@ class SemanticTermEmbedding:
         return results
 
     def score_pair(self, text_a: str, text_b: str) -> Dict[str, object]:
-        vec_a = self._encode_texts([self.icf_calc.normalize_query_text(text_a)])[0]
-        vec_b = self._encode_texts([self.icf_calc.normalize_query_text(text_b)])[0]
+        vec_a = self._encode_texts([normalize_query_text(text_a)])[0]
+        vec_b = self._encode_texts([normalize_query_text(text_b)])[0]
 
         denom = np.linalg.norm(vec_a) * np.linalg.norm(vec_b)
         if denom <= 0:
@@ -167,8 +185,9 @@ class SemanticTermEmbedding:
 def default_paths(project_name: str = 'youlai-boot-master') -> Dict[str, str]:
     base = Path(OUTPUT_DIR) / project_name
     return {
+        'project_vocab': str(base / 'term_project_vocab.json'),
         'call_chains': str(base / 'word2vec_call_chains.json'),
-        'semantic_vocab': str(base / 'term_semantic_vocab.json'),
+        'semantic_vocab': str(base / 'term_project_vocab.json'),
         'semantic_embeddings': str(base / 'term_semantic_embeddings.npz'),
     }
 
@@ -194,33 +213,29 @@ def demo():
 
 
 if __name__ == '__main__':
-    import argparse
+    # parser = argparse.ArgumentParser(description='Single-channel semantic term embedding')
+    # parser.add_argument('--build', action='store_true')
+    # parser.add_argument('--demo', action='store_true')
+    # parser.add_argument('--related', type=str)
+    # parser.add_argument('--pair-a', type=str)
+    # parser.add_argument('--pair-b', type=str)
+    # parser.add_argument('--top-k', type=int, default=10)
+    # parser.add_argument('--project', type=str, default='youlai-boot-master')
+    # args = parser.parse_args()
 
-    parser = argparse.ArgumentParser(description='Single-channel semantic term embedding')
-    parser.add_argument('--build', action='store_true')
-    parser.add_argument('--demo', action='store_true')
-    parser.add_argument('--related', type=str)
-    parser.add_argument('--pair-a', type=str)
-    parser.add_argument('--pair-b', type=str)
-    parser.add_argument('--top-k', type=int, default=10)
-    parser.add_argument('--project', type=str, default='youlai-boot-master')
-    args = parser.parse_args(
-        [
-            '--pair-a', 'save',
-            '--pair-b', 'update',
-        ]
-    )
-
-    paths = default_paths(args.project)
+    paths = default_paths('youlai-boot-master')
     embedder = SemanticTermEmbedding()
 
-    if args.build:
-        embedder.build_index(paths['call_chains'], paths['semantic_vocab'], paths['semantic_embeddings'])
-    elif args.related or (args.pair_a and args.pair_b):
-        embedder.load(paths['semantic_vocab'], paths['semantic_embeddings'])
-        if args.related:
-            print(json.dumps(embedder.find_related_terms(args.related, top_k=args.top_k), ensure_ascii=False, indent=2))
-        if args.pair_a and args.pair_b:
-            print(json.dumps(embedder.score_pair(args.pair_a, args.pair_b), ensure_ascii=False, indent=2))
-    else:
-        demo()
+
+    query="save"
+    top_k=10
+    str_a,str_b="",""
+    # if args.build:
+    embedder.build_index(paths['call_chains'], paths['semantic_vocab'], paths['semantic_embeddings'])
+    # elif args.related or (args.pair_a and args.pair_b):
+    embedder.load(paths['semantic_vocab'], paths['semantic_embeddings'])
+    print(json.dumps(embedder.find_related_terms(query, top_k=top_k), ensure_ascii=False, indent=2))
+        # if args.pair_a and args.pair_b:
+    print(json.dumps(embedder.score_pair(str_a,str_b), ensure_ascii=False, indent=2))
+    # else:
+    demo()

@@ -20,7 +20,7 @@ import numpy as np
 
 sys.path.append(str(Path(__file__).parent.parent))
 from definition import OUTPUT_DIR
-from tokenizer.tokenizer_core import tokenizer
+from embedding.project_term_vocab import extract_terms_from_func_name, load_or_build_project_terms, normalize_query_text, tokenize_text
 
 try:
     from gensim.models import FastText
@@ -46,21 +46,16 @@ class ICFCalculator:
         self.high_freq_cutoff_icf: Optional[float] = None
 
     def _tokenize_text(self, text: str) -> List[str]:
-        raw = tokenizer(text).split(' ')
-        return [t.lower() for t in raw if len(t) > 1 and t.lower() not in self.STOPWORDS]
+        return tokenize_text(text)
 
     def extract_terms(self, func_name: str) -> List[str]:
-        name = func_name.split('(')[0].split(':')[0].strip()
-        return self._tokenize_text(name)
+        return extract_terms_from_func_name(func_name)
 
     def extract_query_terms(self, text: str) -> List[str]:
-        return self._tokenize_text(text.strip())
+        return tokenize_text(text.strip())
 
     def normalize_query_text(self, text: str) -> str:
-        terms = self.extract_query_terms(text)
-        if terms:
-            return ' '.join(terms)
-        return text.strip().lower()
+        return normalize_query_text(text)
 
     def compute_from_chains(self, call_chains_path: str):
         with open(call_chains_path, 'r', encoding='utf-8') as f:
@@ -203,22 +198,40 @@ class ICFTermEmbedding:
             workers=4,
         )
         self.fasttext_model.save(output_path)
-        self.project_vocab = set(self.fasttext_model.wv.key_to_index.keys())
-        print(f"FastText vocab: {len(self.project_vocab)}")
+        if not self.project_vocab:
+            self.project_vocab = set(self.fasttext_model.wv.key_to_index.keys())
+        print(f"FastText vocab: {len(self.fasttext_model.wv.key_to_index)}")
+        print(f"Project vocab: {len(self.project_vocab)}")
 
-    def train(self, call_chains_path: str, model_output_path: str, icf_output_path: str):
+    def train(self, call_chains_path: str, model_output_path: str, icf_output_path: str, vocab_path: Optional[str] = None):
+        if vocab_path:
+            self.project_vocab = set(load_or_build_project_terms(call_chains_path, vocab_path))
+
+        model_exists = Path(model_output_path).exists()
+        icf_exists = Path(icf_output_path).exists()
+        if model_exists and icf_exists:
+            try:
+                self.load(model_output_path, icf_output_path, vocab_path)
+                print("Co-occurrence artifacts loaded from existing files; skip training.")
+                return
+            except Exception as exc:
+                print(f"Existing co-occurrence artifacts are incompatible; rebuilding. reason={exc}")
+
         self.icf_calc.compute_from_chains(call_chains_path)
         self.icf_calc.save(icf_output_path)
         if not GENSIM_AVAILABLE:
             raise ImportError('gensim is required. Install: pip install gensim')
         self._train_fasttext(call_chains_path, model_output_path)
 
-    def load(self, model_path: str, icf_path: str):
+    def load(self, model_path: str, icf_path: str, vocab_path: Optional[str] = None):
         self.icf_calc.load(icf_path)
         if not GENSIM_AVAILABLE:
             raise ImportError('gensim is required. Install: pip install gensim')
         self.fasttext_model = FastText.load(model_path)
-        self.project_vocab = set(self.fasttext_model.wv.key_to_index.keys())
+        if vocab_path and Path(vocab_path).exists():
+            self.project_vocab = set(load_or_build_project_terms('', vocab_path))
+        else:
+            self.project_vocab = set(self.fasttext_model.wv.key_to_index.keys())
 
     def _find_co_candidates(self, query: str, top_k: int = 20) -> Dict[str, float]:
         if not self.fasttext_model:
@@ -305,6 +318,7 @@ class ICFTermEmbedding:
 def default_paths(project_name: str = 'youlai-boot-master') -> Dict[str, str]:
     base = Path(OUTPUT_DIR) / project_name
     return {
+        'project_vocab': str(base / 'term_project_vocab.json'),
         'call_chains': str(base / 'word2vec_call_chains.json'),
         'fasttext_model': str(base / 'term_icf_fasttext.model'),
         'icf': str(base / 'term_icf.npz'),
@@ -318,7 +332,7 @@ def demo():
 
     paths = default_paths()
     embedder = ICFTermEmbedding()
-    embedder.train(paths['call_chains'], paths['fasttext_model'], paths['icf'])
+    embedder.train(paths['call_chains'], paths['fasttext_model'], paths['icf'], paths['project_vocab'])
 
     for query in ['auth', 'save', 'get']:
         print(f"\nQuery: {query}")
@@ -332,32 +346,35 @@ def demo():
 
 
 if __name__ == '__main__':
-    import argparse
+    # import argparse
+    #
+    # parser = argparse.ArgumentParser(description='Single-channel co-occurrence term embedding')
+    # parser.add_argument('--train', action='store_true')
+    # parser.add_argument('--demo', action='store_true')
+    # parser.add_argument('--related', type=str)
+    # parser.add_argument('--pair-a', type=str)
+    # parser.add_argument('--pair-b', type=str)
+    # parser.add_argument('--top-k', type=int, default=10)
+    # parser.add_argument('--project', type=str, default='youlai-boot-master')
+    # args = parser.parse_args(
+    #     [
+    #         '--demo',
+    #     ]
+    # )
 
-    parser = argparse.ArgumentParser(description='Single-channel co-occurrence term embedding')
-    parser.add_argument('--train', action='store_true')
-    parser.add_argument('--demo', action='store_true')
-    parser.add_argument('--related', type=str)
-    parser.add_argument('--pair-a', type=str)
-    parser.add_argument('--pair-b', type=str)
-    parser.add_argument('--top-k', type=int, default=10)
-    parser.add_argument('--project', type=str, default='youlai-boot-master')
-    args = parser.parse_args(
-        [
-            '--demo',
-        ]
-    )
-
-    paths = default_paths(args.project)
+    paths = default_paths('youlai-boot-master')
     embedder = ICFTermEmbedding()
+    query="save"
+    top_k=10
+    str_a,str_b="",""
 
-    if args.train:
-        embedder.train(paths['call_chains'], paths['fasttext_model'], paths['icf'])
-    elif args.related or (args.pair_a and args.pair_b):
-        embedder.load(paths['fasttext_model'], paths['icf'])
-        if args.related:
-            print(json.dumps(embedder.find_related_terms(args.related, top_k=args.top_k), ensure_ascii=False, indent=2))
-        if args.pair_a and args.pair_b:
-            print(json.dumps(embedder.score_pair(args.pair_a, args.pair_b), ensure_ascii=False, indent=2))
-    else:
-        demo()
+    # if args.train:
+    embedder.train(paths['call_chains'], paths['fasttext_model'], paths['icf'], paths['project_vocab'])
+    # elif args.related or (args.pair_a and args.pair_b):
+    embedder.load(paths['fasttext_model'], paths['icf'])
+        # if args.related:
+    print(json.dumps(embedder.find_related_terms(query, top_k), ensure_ascii=False, indent=2))
+        # if args.pair_a and args.pair_b:
+    print(json.dumps(embedder.score_pair(str_a, str_b), ensure_ascii=False, indent=2))
+    # else:
+    demo()

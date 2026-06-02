@@ -14,3 +14,5 @@ output/
 # JetBrains IDE
 .idea/
 *.iml
+
+.DS_Store

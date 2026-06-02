@@ -28,22 +28,16 @@ class HybridTermEmbedding:
         self.sem_model = SemanticTermEmbedding(semantic_model_name=semantic_model_name)
 
     def _fuse_scores(self, co_score: float, sem_score: float) -> Tuple[float, str]:
-        available_weight = 0.0
         total = 0.0
         sources = []
 
         if sem_score > 0:
             total += self.SEM_WEIGHT * sem_score
-            available_weight += self.SEM_WEIGHT
             sources.append('semantic')
         if co_score > 0:
             total += self.CO_WEIGHT * co_score
-            available_weight += self.CO_WEIGHT
             sources.append('co')
-
-        if available_weight <= 0:
-            return 0.0, 'none'
-        return total / available_weight, '_and_'.join(sources)
+        return total , '_and_'.join(sources)
 
     def build_index(
         self,
@@ -52,9 +46,15 @@ class HybridTermEmbedding:
         icf_path: str,
         semantic_vocab_path: str,
         semantic_embeddings_path: str,
+        project_vocab_path: str = None,
     ):
-        self.co_model.train(call_chains_path, co_model_path, icf_path)
-        self.sem_model.build_index(call_chains_path, semantic_vocab_path, semantic_embeddings_path)
+        self.co_model.train(call_chains_path, co_model_path, icf_path, project_vocab_path)
+        self.sem_model.build_index(
+            call_chains_path,
+            semantic_vocab_path,
+            semantic_embeddings_path,
+            project_vocab_path=project_vocab_path,
+        )
 
     def load(
         self,
@@ -62,8 +62,9 @@ class HybridTermEmbedding:
         icf_path: str,
         semantic_vocab_path: str,
         semantic_embeddings_path: str,
+        project_vocab_path: str = None,
     ):
-        self.co_model.load(co_model_path, icf_path)
+        self.co_model.load(co_model_path, icf_path, project_vocab_path)
         self.sem_model.load(semantic_vocab_path, semantic_embeddings_path)
 
     def find_related_terms(self, query: str, top_k: int = 10) -> List[Dict[str, object]]:
@@ -119,10 +120,11 @@ class HybridTermEmbedding:
 def default_paths(project_name: str = 'youlai-boot-master') -> Dict[str, str]:
     base = Path(OUTPUT_DIR) / project_name
     return {
+        'project_vocab': str(base / 'term_project_vocab.json'),
         'call_chains': str(base / 'word2vec_call_chains.json'),
         'fasttext_model': str(base / 'term_icf_fasttext.model'),
         'icf': str(base / 'term_icf.npz'),
-        'semantic_vocab': str(base / 'term_semantic_vocab.json'),
+        'semantic_vocab': str(base / 'term_project_vocab.json'),
         'semantic_embeddings': str(base / 'term_semantic_embeddings.npz'),
     }
 
@@ -140,6 +142,7 @@ def demo():
         paths['icf'],
         paths['semantic_vocab'],
         paths['semantic_embeddings'],
+        paths['project_vocab'],
     )
 
     for query in ['auth', 'save', 'get', 'user login']:
@@ -160,39 +163,34 @@ def demo():
 
 
 if __name__ == '__main__':
-    import argparse
 
-    parser = argparse.ArgumentParser(description='Hybrid dual-channel term embedding')
-    parser.add_argument('--train', action='store_true')
-    parser.add_argument('--demo', action='store_true')
-    parser.add_argument('--related', type=str)
-    parser.add_argument('--pair-a', type=str)
-    parser.add_argument('--pair-b', type=str)
-    parser.add_argument('--top-k', type=int, default=10)
-    parser.add_argument('--project', type=str, default='youlai-boot-master')
-    args = parser.parse_args()
-
-    paths = default_paths(args.project)
+    paths = default_paths('youlai-boot-master')
     embedder = HybridTermEmbedding()
+    query=""
+    top_k=10
+    str_a,str_b="",""
 
-    if args.train:
-        embedder.build_index(
+
+    # if args.train:
+    embedder.build_index(
             paths['call_chains'],
             paths['fasttext_model'],
             paths['icf'],
             paths['semantic_vocab'],
             paths['semantic_embeddings'],
+            paths['project_vocab'],
         )
-    elif args.related or (args.pair_a and args.pair_b):
-        embedder.load(
+    # elif args.related or (args.pair_a and args.pair_b):
+    embedder.load(
             paths['fasttext_model'],
             paths['icf'],
             paths['semantic_vocab'],
             paths['semantic_embeddings'],
+            paths['project_vocab'],
         )
-        if args.related:
-            print(json.dumps(embedder.find_related_terms(args.related, top_k=args.top_k), ensure_ascii=False, indent=2))
-        if args.pair_a and args.pair_b:
-            print(json.dumps(embedder.score_pair(args.pair_a, args.pair_b), ensure_ascii=False, indent=2))
-    else:
-        demo()
+        # if args.related:
+    print(json.dumps(embedder.find_related_terms(query,top_k), ensure_ascii=False, indent=2))
+        # if args.pair_a and args.pair_b:
+    print(json.dumps(embedder.score_pair(str_a,str_b), ensure_ascii=False, indent=2))
+    # else:
+    demo()

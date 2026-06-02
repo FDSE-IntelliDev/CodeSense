@@ -1,19 +1,21 @@
-# Term Embedding Model - 单通道与双通道术语相似度模型
+# Term Embedding Model - 单通道、双通道与 Pairwise 重排
 
 ## 1. 目标
 
-当前在 `embedding/` 目录下提供三套可独立测试的 term-level 模型：
+当前在 `embedding/` 目录下提供四层可独立测试的 term-level 模型/阶段：
 
 1. **共现单通道**：`FastText + ICF`
 2. **语义单通道**：`SentenceTransformer`
-3. **双通道融合**：共现分数 + 语义分数
+3. **双通道融合**：语义分数 + 共现分数
+4. **Pairwise 重排**：在双通道候选之上，对 `(query, candidate)` 词对做二阶段判断
 
 这样可以分别测试：
 - 纯共现能力
 - 纯语义能力
 - 融合后的最终效果
+- 在融合候选上再进行 pairwise 重排后的效果
 
-并且每个通道都提供两类接口：
+并且每一层都尽量提供两类接口：
 
 - 输入一个 `string`，返回项目内最相关的 top-N 个词
 - 输入 `string A` 和 `string B`，返回二者的相似度得分
@@ -29,7 +31,8 @@ embedding/
 ├── parallel_build_call_chains.py
 ├── icf_term_embedding.py         # 单通道：FastText + ICF
 ├── semantic_term_embedding.py    # 单通道：Semantic only
-└── hybrid_term_embedding.py      # 双通道：融合模型
+├── hybrid_term_embedding.py      # 双通道：语义 + 共现融合
+└── pairwise_term_reranker.py     # 第三阶段：pairwise 重排
 ```
 
 ---
@@ -139,73 +142,157 @@ score_pair(text_a: str, text_b: str)
 - 高频共现噪声是否下降
 - 是否能同时保留项目内命名习惯和语义相近性
 
-### TODO：Semantic 通道后续优化方向
+---
 
-当前 semantic channel 仍然主要是一个“单向量语义相关度”模型，因此会出现一些典型问题：
+## 6. 第三阶段：Pairwise 重排
 
-- 反义词或对立动作词（如 `save` / `delete`）可能因为主题接近而相似度偏高
-- 某些开发里更相近的动作词（如 `save` / `update`）不一定比反义词更近
+文件：
 
-后续可以考虑两条优化路线：
+```text
+embedding/pairwise_term_reranker.py
+```
 
-1. **增加 pairwise 阶段**
-   - 保留当前 semantic embedding 作为第一阶段粗召回
-   - 再增加一个 pairwise scorer，对 `(A, B)` 这种词对做二阶段判断/重排
-   - 目标是区分：
-     - 语义相近 / 可替代
-     - 主题相关但方向相反
-     - 仅仅共现接近
+职责：
+- 先使用双通道模型召回候选词
+- 再对 `(query, candidate)` 词对做 pairwise 打分
+- 用 pairwise 分数对双通道结果进行重排
 
-2. **提供更多相关语料一起做 semantic 表示**
-   - 当前 semantic channel 主要对“术语字符串本身”编码
-   - 后续如果每个代码元素增加了语义标签、schema 字段或其它结构化属性
-   - 可以考虑把这些额外信息作为 term 的上下文语料一起编码
-   - 例如：
-     - 语义标签
-     - schema 中的字段说明
-     - 与代码元素绑定的描述性文本
-   - 目标是让 semantic 相似度不只看裸词，而是看“词 + 语义上下文”
+默认 pairwise 模型：
 
-这两条路线可以独立推进，也可以组合使用：
-- 先通过“更多语料”改善 term embedding 本身
-- 再通过 pairwise 阶段做更细粒度的关系判断
+```text
+cross-encoder/stsb-distilroberta-base
+```
+
+### 当前融合方式
+
+```text
+final_score = 0.6 * pair_score + 0.4 * hybrid_score
+```
+
+### 提供接口
+
+```python
+find_related_terms(query: str, top_k: int = 10)
+score_pair(text_a: str, text_b: str)
+```
+
+### 它解决什么问题
+当前 semantic 单向量模型容易把“主题相近但方向相反”的词拉近，例如：
+- `save` / `delete`
+
+Pairwise 重排阶段的作用是：
+- 在双通道已经召回的候选上，进一步判断 `(A, B)` 是否真的更接近
+- 区分：
+  - 真正语义相近 / 可替代
+  - 主题相关但方向相反
+  - 仅仅共现接近
 
 ---
 
-## 6. 离线产物
+## 7. 当前整体流程
+
+当前推荐流程如下：
+
+```text
+query string
+  ↓
+[第一阶段] semantic 单通道召回
+  - 提供语义相近候选
+  - 对 OOV / 弱共现场景更友好
+  ↓
+[第二阶段] co-occurrence 单通道打分
+  - 用 FastText + ICF 引入项目内调用链共现信息
+  - 修正 purely semantic 结果中缺失的项目特定相关性
+  ↓
+[第二阶段输出] hybrid 双通道融合
+  - semantic score + co score -> hybrid score
+  ↓
+[第三阶段] pairwise rerank
+  - 对 (query, candidate) 逐对重排
+  - 进一步区分“语义相近”和“主题接近但方向相反”
+  ↓
+最终 top-N term results
+```
+
+换句话说，当前设计是：
+
+- **semantic**：负责粗召回语义候选
+- **co-occurrence**：负责补项目内共现结构信号
+- **pairwise**：负责最终判别和重排
+
+---
+
+## 8. TODO：Semantic 通道后续优化方向
+
+当前 semantic / pairwise 模块虽然已经引入，但 semantic 表示本身仍然主要依赖“术语字符串本身”。
+
+后续仍保留一个重要优化方向：
+
+### 提供更多相关语料一起做 semantic 表示
+
+如果未来每个代码元素增加了更多结构化或语义化信息，可以考虑把这些额外内容一起作为 term 的上下文语料：
+
+- 语义标签
+- schema 中的字段说明
+- 与代码元素绑定的描述性文本
+- 其它结构化属性
+
+目标是让 semantic 相似度不只看裸词，而是看：
+
+```text
+词 + 语义标签 + schema 内容 + 额外描述语料
+```
+
+这样可以进一步提升：
+- 裸词语义不足时的表达能力
+- domain-specific 语义一致性
+- pairwise 阶段的可判别性
+
+---
+
+## 9. 离线产物
 
 ```text
 output/youlai-boot-master/
 ├── word2vec_call_chains.json
+├── term_project_vocab.json
 ├── term_icf_fasttext.model
 ├── term_icf.npz
-├── term_semantic_vocab.json
 └── term_semantic_embeddings.npz
 ```
 
 说明：
+- `term_project_vocab.json`：项目术语表，作为 semantic / co-occurrence 的共享底层词表，也作为语义向量矩阵的行顺序表
 - `term_icf_fasttext.model`：共现单通道模型
 - `term_icf.npz`：ICF 数据和高频词集合
-- `term_semantic_vocab.json`：语义单通道使用的项目术语表
 - `term_semantic_embeddings.npz`：语义向量矩阵
+
+### 词表复用策略
+
+项目术语表是独立于具体通道的底层产物：
+
+- 如果 `term_project_vocab.json` 已存在，semantic / co-occurrence 都优先读取它
+- 如果不存在，则从 `word2vec_call_chains.json` 中抽取术语并保存
+- semantic embedding matrix 的行顺序直接与 `term_project_vocab.json` 对齐
+
 
 ---
 
-## 7. 使用方法
+## 10. 使用方法
 
-### 7.1 训练共现单通道
+### 10.1 训练共现单通道
 
 ```bash
 python embedding/icf_term_embedding.py --train
 ```
 
-### 7.2 构建语义单通道索引
+### 10.2 构建语义单通道索引
 
 ```bash
-python embedding/semantic_term_embedding.py --train
+python embedding/semantic_term_embedding.py --build
 ```
 
-### 7.3 构建双通道索引
+### 10.3 构建双通道索引
 
 ```bash
 python embedding/hybrid_term_embedding.py --train
@@ -213,9 +300,17 @@ python embedding/hybrid_term_embedding.py --train
 
 注意：双通道构建会调用共现单通道训练，以及语义单通道的索引构建过程。
 
+### 10.4 构建 pairwise 所需基础索引
+
+```bash
+python embedding/pairwise_term_reranker.py --build
+```
+
+注意：pairwise 本身主要是在线重排，这里的 `--build` 只是触发其依赖的 hybrid 基础索引构建。
+
 ---
 
-## 8. 查询接口示例
+## 11. 查询接口示例
 
 ### 共现单通道：查 top-N
 
@@ -253,16 +348,30 @@ python embedding/hybrid_term_embedding.py --related "auth" --top-k 10
 python embedding/hybrid_term_embedding.py --pair-a "auth" --pair-b "authenticate"
 ```
 
+### Pairwise：查 top-N
+
+```bash
+python embedding/pairwise_term_reranker.py --related "auth" --top-k 10
+```
+
+### Pairwise：查 A/B 相似度
+
+```bash
+python embedding/pairwise_term_reranker.py --pair-a "save" --pair-b "update"
+```
+
 ---
 
-## 9. 返回结果说明
+## 12. 返回结果说明
 
 ### `find_related_terms(...)`
 各文件会返回 term 列表，字段可能包括：
 
 - `term`
-- `co_score`（仅共现 / 双通道）
-- `sem_score`（仅语义 / 双通道）
+- `co_score`（仅共现 / 双通道 / pairwise）
+- `sem_score`（仅语义 / 双通道 / pairwise）
+- `hybrid_score`（仅 pairwise）
+- `pair_score`（仅 pairwise）
 - `final_score`
 - `rank_source`
 - `is_high_freq`
@@ -306,31 +415,34 @@ python embedding/hybrid_term_embedding.py --pair-a "auth" --pair-b "authenticate
 
 **不会。**
 
-语义单通道 / 双通道里的 `sem_score` 是直接对输入字符串编码后计算的：
+语义单通道 / 双通道 / pairwise 阶段里的 semantic 分数，本质上都可以直接对输入字符串编码后计算：
 
-- 只要 sentence-transformer 能编码这个字符串
-- 即使它没有在项目词表中出现，也仍然可以计算 semantic similarity
+- 只要 sentence-transformer / cross-encoder 能处理这个字符串
+- 即使它没有在项目词表中出现，也仍然可以计算 semantic / pairwise similarity
 
 也就是说：
 
 - **共现通道是否可用**：取决于能否 resolve 到项目 term
 - **语义通道是否可用**：不依赖是否在项目词表里出现
+- **pairwise 阶段是否可用**：也不依赖是否在项目词表里出现，但它通常建立在已有候选集之上做重排
 
 所以常见情况会是：
 
 - `signin` 不在项目词表里 → `co_score = 0`
-- 但 semantic model 仍可计算 `signin` 和 `login` 的相似度 → `sem_score > 0`
+- semantic model 仍可计算 `signin` 和 `login` 的相似度 → `sem_score > 0`
+- pairwise model 也仍可比较 `(signin, login)` 这一对 → `pair_score > 0`
 
 ---
 
-## 10. 推荐测试方式
+## 13. 推荐测试方式
 
-建议分别对三套模型跑这些例子：
+建议分别对四套阶段/模型跑这些例子：
 
 ### 正样本
 - `auth` / `authenticate`
 - `user` / `users`
 - `token` / `auth`
+- `save` / `update`
 
 ### 负样本
 - `get` / `role`
@@ -340,8 +452,10 @@ python embedding/hybrid_term_embedding.py --pair-a "auth" --pair-b "authenticate
 - 单通道共现输出
 - 单通道语义输出
 - 双通道融合输出
+- pairwise 重排输出
 
 这样能清楚看到：
 - 哪些词是共现拉起来的
 - 哪些词是语义拉起来的
-- 融合后最终效果是否更稳
+- 哪些词在 pairwise 阶段被重新拉开
+- 最终结果是否更符合开发语义直觉
