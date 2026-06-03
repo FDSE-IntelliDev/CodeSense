@@ -72,7 +72,39 @@ class HybridTermEmbedding:
         self.co_model.load(co_model_path, icf_path, project_vocab_path)
         self.sem_model.load(semantic_vocab_path, semantic_embeddings_path)
 
-    def find_related_terms(self, query: str, top_k: int = 10) -> List[Dict[str, object]]:
+    def _compute_top_k(self, query: str, min_k: int = 3, max_k: int = 10) -> int:
+        resolved = self.co_model._resolve_project_term(query)
+        if resolved is None:
+            return max_k
+
+        chain_count = len(self.co_model.icf_calc.term_in_chains.get(resolved, set()))
+        total_chains = self.co_model.icf_calc.total_chains
+
+        if total_chains <= 0:
+            return max_k
+
+        max_chain_count = 0
+        for chains in self.co_model.icf_calc.term_in_chains.values():
+            if len(chains) > max_chain_count:
+                max_chain_count = len(chains)
+
+        if max_chain_count <= 0:
+            return max_k
+
+        relative = chain_count / max_chain_count
+
+        if relative >= 0.5:
+            return max_k
+        if relative >= 0.25:
+            return 8
+        if relative >= 0.1:
+            return 5
+        return min_k
+
+    def find_related_terms(self, query: str, top_k: int = None) -> List[Dict[str, object]]:
+        if top_k is None:
+            top_k = self._compute_top_k(query)
+
         co_results = self.co_model.find_related_terms(query, top_k=max(20, top_k * 3))
         sem_results = self.sem_model.find_related_terms(query, top_k=max(20, top_k * 3))
 
@@ -174,7 +206,7 @@ if __name__ == '__main__':
     paths = default_paths('youlai-boot-master')
     embedder = HybridTermEmbedding()
     query=""
-    top_k=10
+    top_k=None
     str_a,str_b="",""
 
 

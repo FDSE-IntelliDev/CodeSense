@@ -122,6 +122,10 @@ class ICFCalculator:
             high_freq_terms=np.array(sorted(self.high_freq_terms), dtype=object),
             high_freq_cutoff_icf=self.high_freq_cutoff_icf if self.high_freq_cutoff_icf is not None else np.nan,
             total_chains=self.total_chains,
+            term_in_chains=np.array(
+                [(term, sorted(chains)) for term, chains in self.term_in_chains.items()],
+                dtype=object,
+            ),
         )
         print(f"ICF saved to: {output_path}")
 
@@ -135,9 +139,14 @@ class ICFCalculator:
         else:
             self.high_freq_cutoff_icf = None
         self.total_chains = int(data['total_chains'])
+        self.term_in_chains = defaultdict(set)
+        if 'term_in_chains' in data:
+            for term, chain_ids in data['term_in_chains']:
+                self.term_in_chains[str(term)] = set(chain_ids)
         if not self.high_freq_terms:
             self._refresh_high_freq_terms()
         print(f"ICF loaded: {len(self.icf_scores)} terms")
+        print(f"  term_in_chains terms: {len(self.term_in_chains)}")
         print(f"  High frequency ratio: top {int(self.high_freq_ratio * 100)}% by chain coverage")
 
 
@@ -257,6 +266,13 @@ class ICFTermEmbedding:
         else:
             self.project_vocab = set(self.fasttext_model.wv.key_to_index.keys())
 
+        if not self.icf_calc.term_in_chains:
+            raise RuntimeError(
+                'term_in_chains is empty after loading ICF; '
+                'the saved npz may be from an older version. '
+                'Please re-run --train to regenerate term_icf.npz.'
+            )
+
     def _find_co_candidates(self, query: str, top_k: int = 20) -> Dict[str, float]:
         if not self.fasttext_model:
             return {}
@@ -295,7 +311,39 @@ class ICFTermEmbedding:
     def find_similar(self, term: str, top_k: int = 10) -> List[Tuple[str, float]]:
         return list(self._find_co_candidates(term, top_k=top_k).items())
 
-    def find_related_terms(self, query: str, top_k: int = 10) -> List[Dict[str, object]]:
+    def _compute_top_k(self, query: str, min_k: int = 3, max_k: int = 10) -> int:
+        resolved = self._resolve_project_term(query)
+        if resolved is None:
+            return max_k
+
+        chain_count = len(self.icf_calc.term_in_chains.get(resolved, set()))
+        total_chains = self.icf_calc.total_chains
+
+        if total_chains <= 0:
+            return max_k
+
+        max_chain_count = 0
+        for chains in self.icf_calc.term_in_chains.values():
+            if len(chains) > max_chain_count:
+                max_chain_count = len(chains)
+
+        if max_chain_count <= 0:
+            return max_k
+
+        relative = chain_count / max_chain_count
+
+        if relative >= 0.5:
+            return max_k
+        if relative >= 0.25:
+            return 8
+        if relative >= 0.1:
+            return 5
+        return min_k
+
+    def find_related_terms(self, query: str, top_k: int = None) -> List[Dict[str, object]]:
+        if top_k is None:
+            top_k = self._compute_top_k(query)
+
         candidates = self._find_co_candidates(query, top_k=max(20, top_k * 3))
         results = []
         for term, score in candidates.items():

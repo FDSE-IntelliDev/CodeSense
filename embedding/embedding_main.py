@@ -27,6 +27,7 @@ sys.path.append(str(Path(__file__).parent.parent))
 from embedding.parallel_build_call_chains import run_parallel
 from embedding.build_enhanced_corpus import build_enhanced_corpus, summarize_corpus
 from embedding.pairwise_term_reranker import PairwiseTermReranker, default_paths
+from embedding.hybrid_term_embedding import HybridTermEmbedding
 
 
 def build_corpus(
@@ -120,50 +121,65 @@ def build_and_train(
     return reranker
 
 
-def find_relative_terms(
-    query: str,
-    project_name: str = 'youlai-boot-master',
-    top_k: int = 10,
-    candidate_k: int = 30,
-    co_weight: float = 0.2,
-    sem_weight: float = 0.8,
-    hybrid_weight: float = 0.0,
-    pairwise_weight: float = 1.0,
-) -> List[Dict[str, object]]:
-    """加载训练好的双通道 embedding 模型，返回 query 相关 term。
+def init_embedding(
+        project_name: str = 'youlai-boot-master',
+        co_weight: float = 0.2,
+        sem_weight: float = 0.8,
+        hybrid_weight: float = 0.0,
+        pairwise_weight: float = 1.0,
 
-    Args:
-        query: 输入查询字符串
-        project_name: output 下的项目目录名
-        top_k: 最终返回 term 数量
-        candidate_k: pairwise rerank 前的 hybrid 候选池大小
-        co_weight: hybrid 中 co-occurrence 通道权重
-        sem_weight: hybrid 中 semantic 通道权重
-        hybrid_weight: pairwise 阶段中 hybrid score 权重
-        pairwise_weight: pairwise 阶段中 pairwise score 权重
-
-    Returns:
-        reranker.find_related_terms(...) 的结果
-    """
+):
     paths = default_paths(project_name)
 
-    reranker = PairwiseTermReranker(
+    embedder = HybridTermEmbedding(
         co_weight=co_weight,
-        sem_weight=sem_weight,
-        hybrid_weight=hybrid_weight,
-        pairwise_weight=pairwise_weight,
+        sem_weight=sem_weight
     )
 
-    reranker.load(
+    embedder.build_index(
+        paths['call_chains'],
+        paths['fasttext_model'],
+        paths['icf'],
+        paths['semantic_vocab'],
+        paths['semantic_embeddings'],
+        paths['project_vocab'],
+        paths['enhanced_corpus'],
+    )
+
+    embedder.load(
         paths['fasttext_model'],
         paths['icf'],
         paths['semantic_vocab'],
         paths['semantic_embeddings'],
         paths['project_vocab'],
     )
+    return embedder
 
-    return reranker.find_related_terms(query, top_k, candidate_pool_k=candidate_k)
+def find_relative_terms(
+    query: str,
+    top_k: int = None,
+    embedder: HybridTermEmbedding = None,
+) -> List[Dict[str, object]]:
 
+    return embedder.find_related_terms(query,top_k)
+
+
+def score_pair(
+    text_a: str,
+    text_b: str,
+    embedder: HybridTermEmbedding = None,
+) -> Dict[str, object]:
+    """计算两个单词语义相似度。
+
+    Args:
+        text_a: 第一个术语
+        text_b: 第二个术语
+        embedder: 已初始化并加载的 HybridTermEmbedding 实例
+
+    Returns:
+        包含 co_score / sem_score / final_score 等字段的字典
+    """
+    return embedder.score_pair(text_a, text_b)
 
 def main():
     project_name = 'youlai-boot-master'
@@ -178,16 +194,11 @@ def main():
     #     hybrid_weight=0,
     #     pairwise_weight=1,
     # )
+    init_embedding(project_name, co_weight=0.2, sem_weight=0.8)
 
     result = find_relative_terms(
         query=query,
-        project_name=project_name,
         top_k=10,
-        candidate_k=30,
-        co_weight=0.2,
-        sem_weight=0.8,
-        hybrid_weight=0,
-        pairwise_weight=1,
     )
     print(json.dumps(result, ensure_ascii=False, indent=2))
 

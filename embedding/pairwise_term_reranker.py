@@ -120,7 +120,38 @@ class PairwiseTermReranker:
             project_vocab_path,
         )
 
-    def find_related_terms(self, query: str, top_k: int = 10, candidate_pool_k: int = 30) -> List[Dict[str, object]]:
+    def _compute_top_k(self, query: str, min_k: int = 3, max_k: int = 10) -> int:
+        resolved = self.hybrid_model.co_model._resolve_project_term(query)
+        if resolved is None:
+            return max_k
+
+        chain_count = len(self.hybrid_model.co_model.icf_calc.term_in_chains.get(resolved, set()))
+        total_chains = self.hybrid_model.co_model.icf_calc.total_chains
+
+        if total_chains <= 0:
+            return max_k
+
+        max_chain_count = 0
+        for chains in self.hybrid_model.co_model.icf_calc.term_in_chains.values():
+            if len(chains) > max_chain_count:
+                max_chain_count = len(chains)
+
+        if max_chain_count <= 0:
+            return max_k
+
+        relative = chain_count / max_chain_count
+
+        if relative >= 0.5:
+            return max_k
+        if relative >= 0.25:
+            return 8
+        if relative >= 0.1:
+            return 5
+        return min_k
+
+    def find_related_terms(self, query: str, top_k: int = None, candidate_pool_k: int = 30) -> List[Dict[str, object]]:
+        if top_k is None:
+            top_k = self._compute_top_k(query)
         hybrid_candidates = self.hybrid_model.find_related_terms(query, top_k=max(candidate_pool_k, top_k * 3))
         print(json.dumps(hybrid_candidates[:top_k], indent=2))
         print("="*20)
@@ -174,7 +205,7 @@ if __name__ == '__main__':
         pairwise_weight=1,
     )
     query="security"
-    top_k=10
+    top_k=None
     candidate_k=30
 
     # if args.build:
