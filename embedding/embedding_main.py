@@ -183,7 +183,7 @@ def score_pair(
 
 def main():
     project_name = 'youlai-boot-master'
-    query="save dept"
+    query="auth"#输入用tokenizer分词 然后向量平均 检查co_score=0的case
 
     # build_corpus(project_name=project_name, num_workers=4)
     #
@@ -194,11 +194,12 @@ def main():
     #     hybrid_weight=0,
     #     pairwise_weight=1,
     # )
-    init_embedding(project_name, co_weight=0.2, sem_weight=0.8)
+    embedder = init_embedding(project_name, co_weight=0.2, sem_weight=0.8)
 
     result = find_relative_terms(
         query=query,
-        top_k=10,
+        top_k=None,
+        embedder=embedder
     )
     print(json.dumps(result, ensure_ascii=False, indent=2))
 

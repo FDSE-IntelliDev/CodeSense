@@ -286,7 +286,7 @@ class ICFTermEmbedding:
             if token not in self.project_vocab:
                 continue
             try:
-                neighbors = self.fasttext_model.wv.most_similar(token, topn=max(top_k * 3, 20))
+                neighbors = self.fasttext_model.wv.most_similar(token, topn=max(top_k * 3, 20)) #todo 改成分词后算个平均 检查一下词表外的情况
             except KeyError:
                 continue
 
