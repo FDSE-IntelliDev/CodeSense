@@ -11,12 +11,13 @@ from definition import OUTPUT_DIR
 from pathlib import Path
 
 class CodeEmbedder:
+    DEFAULT_SEMANTIC_MODEL = 'all-MiniLM-L6-v2'
     def __init__(self, model_name: str = None):
-        if model_name is None:
-            model_name = str(
-                Path(__file__).resolve().parent.parent / "models" / "st-codesearch-distilroberta-base"
-            )
-        self.model = SentenceTransformer(model_name)
+        # if model_name is None:
+        #     model_name = str(
+        #         Path(__file__).resolve().parent.parent / "models" / "st-codesearch-distilroberta-base"
+        #     )
+        self.model = SentenceTransformer(self.DEFAULT_SEMANTIC_MODEL)
 
     def encode(self, texts: List[str]) -> np.ndarray:
         """
@@ -143,44 +144,77 @@ class FiltrationDispatcher:
         # 将簇按照相关性从高到低排序
         sorted_clusters = sorted(cluster_scores.items(), key=lambda x: x[1], reverse=True)
 
-        # 5. 执行制定过滤策略
+        # 5. 按簇相关性分层返回
+        # - priority_1: 相关性最高的一档，直接保留
+        # - priority_2: 次高相关的一档，保留
+        # - priority_3: 中低相关的一档，保留
+        # - priority_4_discarded: 最低相关的一档，直接丢弃
+        ranked_cluster_ids = [cid for cid, _ in sorted_clusters]
+        num_clusters = len(ranked_cluster_ids)
+
+        def _ceil_count(ratio: float) -> int:
+            if num_clusters <= 0:
+                return 0
+            return int(np.ceil(num_clusters * ratio))
+
+        priority_1_count = max(1, _ceil_count(0.10)) if num_clusters else 0
+        priority_2_count = _ceil_count(0.20)
+        priority_3_count = _ceil_count(0.30)
+
+        priority_1_clusters = set(ranked_cluster_ids[:priority_1_count])
+        priority_2_start = priority_1_count
+        priority_2_end = min(num_clusters, priority_2_start + priority_2_count)
+        priority_2_clusters = set(ranked_cluster_ids[priority_2_start:priority_2_end])
+        priority_3_start = priority_2_end
+        priority_3_end = min(num_clusters, priority_3_start + priority_3_count)
+        priority_3_clusters = set(ranked_cluster_ids[priority_3_start:priority_3_end])
+        priority_4_clusters = set(ranked_cluster_ids[priority_3_end:])
+
+        tiered_symbols = {
+            "priority_1": [],
+            "priority_2": [],
+            "priority_3": [],
+            "priority_4_discarded": [],
+        }
         kept_symbols = []
         discarded_symbols = []
 
-        # 简易多阶策略配置
-        # 1) Top 1 或 Top 2 的作为核心簇保留
-        # 2) 余下簇中，高于某个阈值的做严格单体筛选
-        # 3) 其它全抛
-
-        top_k = 2 if len(sorted_clusters) > 3 else 1
-        core_clusters = set(cid for cid, score in sorted_clusters[:top_k])
-
-        # 对于其它簇，定义及格线
-        marginal_threshold = 0.4
-        individual_strict_threshold = 0.65
-
-        for idx, (symbol, label, emb) in enumerate(zip(search_results, labels, code_embeddings)):
+        for symbol, label, emb in zip(search_results, labels, code_embeddings):
             symbol["_cluster_id"] = int(label)
             symbol["_cluster_score"] = float(cluster_scores.get(label, 0.0))
+            symbol["_individual_score"] = float(np.dot(query_embedding, emb))
 
-            if label in core_clusters:
-                # 核心簇，直接保留
-                symbol["_filter_reason"] = "core_cluster"
+            if label in priority_1_clusters:
+                symbol["_filter_reason"] = "priority_1_cluster"
+                symbol["_cluster_tier"] = "priority_1"
+                tiered_symbols["priority_1"].append(symbol)
                 kept_symbols.append(symbol)
-            elif cluster_scores.get(label, 0.0) >= marginal_threshold:
-                # 边缘簇，看个体分数
-                indiv_sim = np.dot(query_embedding, emb)
-                symbol["_individual_score"] = float(indiv_sim)
-                if indiv_sim >= individual_strict_threshold:
-                    symbol["_filter_reason"] = "marginal_strict_pass"
-                    kept_symbols.append(symbol)
-                else:
-                    symbol["_filter_reason"] = "marginal_strict_fail"
-                    discarded_symbols.append(symbol)
+            elif label in priority_2_clusters:
+                symbol["_filter_reason"] = "priority_2_cluster"
+                symbol["_cluster_tier"] = "priority_2"
+                tiered_symbols["priority_2"].append(symbol)
+                kept_symbols.append(symbol)
+            elif label in priority_3_clusters:
+                symbol["_filter_reason"] = "priority_3_cluster"
+                symbol["_cluster_tier"] = "priority_3"
+                tiered_symbols["priority_3"].append(symbol)
+                kept_symbols.append(symbol)
             else:
-                # 辣鸡簇，直接丢弃
-                symbol["_filter_reason"] = "low_cluster_score"
+                symbol["_filter_reason"] = "priority_4_cluster_discarded"
+                symbol["_cluster_tier"] = "priority_4_discarded"
+                tiered_symbols["priority_4_discarded"].append(symbol)
                 discarded_symbols.append(symbol)
+
+        for tier_name, symbols in tiered_symbols.items():
+            symbols.sort(
+                key=lambda item: (
+                    float(item.get("_cluster_score", 0.0)),
+                    float(item.get("_individual_score", 0.0)),
+                ),
+                reverse=True,
+            )
+            for rank_idx, symbol in enumerate(symbols, start=1):
+                symbol["_tier_rank"] = str(rank_idx)
 
         unique_labels = np.unique(labels)
         stats = {
@@ -188,12 +222,20 @@ class FiltrationDispatcher:
             "total_kept": len(kept_symbols),
             "total_discarded": len(discarded_symbols),
             "num_clusters": len(unique_labels),
-            "cluster_ranking": [{"cluster_id": int(cid), "score": float(score)} for cid, score in sorted_clusters]
+            "cluster_ranking": [{"cluster_id": int(cid), "score": float(score)} for cid, score in sorted_clusters],
+            "tier_cluster_counts": {
+                "priority_1": len(priority_1_clusters),
+                "priority_2": len(priority_2_clusters),
+                "priority_3": len(priority_3_clusters),
+                "priority_4_discarded": len(priority_4_clusters),
+            },
+            "tier_symbol_counts": {tier: len(items) for tier, items in tiered_symbols.items()},
         }
 
         return {
             "kept": kept_symbols,
             "discarded": discarded_symbols,
+            "tiers": tiered_symbols,
             "stats": stats
         }
 

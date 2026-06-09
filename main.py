@@ -57,19 +57,19 @@ def process_online(query: str):
     print(f"User Query: '{query}'")
 
     # Extract query DSL via LLM
-    print("Extracting query DSL using LLM...")
-    extractor = LLMKeywordExtractor()
-    dsl_result = extractor.extract_keywords(query)
-    print("\n--- Extracted Query DSL ---")
-    print(json.dumps(dsl_result, indent=2, ensure_ascii=False))
-    save_res(semQL_path,dsl_result)
+    # print("Extracting query DSL using LLM...")
+    # extractor = LLMKeywordExtractor()
+    # dsl_result = extractor.extract_keywords(query)
+    # print("\n--- Extracted Query DSL ---")
+    # print(json.dumps(dsl_result, indent=2, ensure_ascii=False))
+    # save_res(semQL_path,dsl_result)
 
     print("\n--- Inverted Index Search ---")
     search_results = invert_index_search4symbol(invert_index_path=invert_index_path,ngramed_symbol_path=ngramed_symbol_path,query_dsl_result_path=semQL_path)
     save_res(invert_index_search_result_path,search_results)
     print(f"Search Results: {len(search_results)} matched elements found.")
     print("---------------------------\n")
-    return dsl_result
+    # return dsl_result
 
 def main():
     parser = argparse.ArgumentParser(description="CodeSearch Pipeline")
@@ -78,8 +78,8 @@ def main():
     parser.add_argument("--query", type=str, help="A natural language search query for the online phase")
 
     args = parser.parse_args([
-        "--project_path", PROJECT_PATH,
-        "--output", f"{OUTPUT_DIR}/youlai-boot-master",
+        # "--project_path", PROJECT_PATH,
+        # "--output", f"{OUTPUT_DIR}/youlai-boot-master",
         "--query", "Find the entry function that handles user login authentication"
     ])
 

@@ -67,7 +67,7 @@ def unigram_delimiter(word, processed_word):
 
 
 def enbale_trained_tokenizer(raw_word, processed_word):
-    if raw_word == processed_word:  # 没有进行分词
+    if raw_word.lower() == processed_word:  # 没有进行分词
         if ' ' in raw_word:  # raw_word是短语
             for word in processed_word.split():
                 if not is_english_word(word):  # 如果处理后的短语内存在某个单词不是英文单词

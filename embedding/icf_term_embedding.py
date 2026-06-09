@@ -273,6 +273,68 @@ class ICFTermEmbedding:
                 'Please re-run --train to regenerate term_icf.npz.'
             )
 
+    def _get_average_vector(self, text: str) -> Optional[np.ndarray]:
+        """将输入文本分词后，取所有项目词表内 token 的 FastText 向量平均值。"""
+        if not self.fasttext_model:
+            return None
+        tokens = self.icf_calc.extract_query_terms(text)
+        vectors = []
+        for token in tokens:
+            if token not in self.project_vocab:
+                continue
+            try:
+                vectors.append(self.fasttext_model.wv[token])
+            except KeyError:
+                continue
+        if not vectors:
+            return None
+        return np.mean(vectors, axis=0)
+
+    def _find_co_candidates_by_average_vector(self, query: str, top_k: int = 20) -> Dict[str, float]:
+        """使用 query token 平均向量查找相关 term。
+
+        适用场景：
+        - 输入是短语或短句
+        - 希望同时考虑 query 中所有 term 的整体共现语义
+        - 更适合细粒度过滤/排序，而不是高召回候选集扩展
+        """
+        query_vector = self._get_average_vector(query)
+        if query_vector is None:
+            return {}
+
+        query_tokens = set(self.icf_calc.extract_query_terms(query))
+        excluded = set(query_tokens)
+        excluded.add(self.icf_calc.normalize_query_text(query))
+
+        try:
+            neighbors = self.fasttext_model.wv.similar_by_vector(query_vector, topn=max(top_k, 20))
+        except KeyError:
+            return {}
+
+        query_icf_values = [self.icf_calc.get_icf(token) for token in query_tokens if token in self.project_vocab]
+        query_is_high_freq = any(self.icf_calc.is_high_freq(token) for token in query_tokens)
+        query_icf = sum(query_icf_values) / len(query_icf_values) if query_icf_values else self.icf_calc.high_freq_cutoff_icf
+
+        candidate_scores: Dict[str, float] = {}
+        for word, sim in neighbors:
+            if word not in self.project_vocab or word in excluded:
+                continue
+            score = weighted_similarity(
+                sim,
+                query_icf,
+                self.icf_calc.get_icf(word),
+                query_is_high_freq,
+                self.icf_calc.is_high_freq(word),
+                self.icf_calc.high_freq_cutoff_icf,
+            )
+            if score > candidate_scores.get(word, 0.0):
+                candidate_scores[word] = score
+
+        ranked = sorted(candidate_scores.items(), key=lambda item: item[1], reverse=True)
+        return dict(ranked[:top_k])
+
+    # 对query分词后分别找最相关的term。这适合获得高recall的candidate set，
+    # 用于大量搜索代码库中可能相关的元素；但对于短语/短句，它没有整体考虑所有term的联合语义。
     def _find_co_candidates(self, query: str, top_k: int = 20) -> Dict[str, float]:
         if not self.fasttext_model:
             return {}
@@ -286,7 +348,7 @@ class ICFTermEmbedding:
             if token not in self.project_vocab:
                 continue
             try:
-                neighbors = self.fasttext_model.wv.most_similar(token, topn=max(top_k * 3, 20)) #todo 改成分词后算个平均 检查一下词表外的情况
+                neighbors = self.fasttext_model.wv.most_similar(token, topn=max(top_k, 20)) #todo 改成分词后算个平均 检查一下词表外的情况
             except KeyError:
                 continue
 
@@ -344,7 +406,7 @@ class ICFTermEmbedding:
         if top_k is None:
             top_k = self._compute_top_k(query)
 
-        candidates = self._find_co_candidates(query, top_k=max(20, top_k * 3))
+        candidates = self._find_co_candidates(query, top_k=max(20, top_k))
         results = []
         for term, score in candidates.items():
             results.append({
@@ -357,6 +419,49 @@ class ICFTermEmbedding:
             })
         results.sort(key=lambda item: item['final_score'], reverse=True)
         return results[:top_k]
+
+    def find_related_terms_by_average_vector(self, query: str, top_k: int = None) -> List[Dict[str, object]]:
+        """基于 query token 平均向量查找相关 term。
+
+        适用场景：
+        - 短语/短句的细粒度相关性计算
+        - filter/rerank 阶段，而不是高召回扩展阶段
+        """
+        if top_k is None:
+            top_k = self._compute_top_k(query)
+
+        candidates = self._find_co_candidates_by_average_vector(query, top_k=max(20, top_k))
+        results = []
+        for term, score in candidates.items():
+            results.append({
+                'term': term,
+                'co_score': round(score, 6),
+                'final_score': round(score, 6),
+                'rank_source': 'co_average_vector',
+                'is_high_freq': self.icf_calc.is_high_freq(term),
+                'icf': round(self.icf_calc.get_icf(term), 6),
+            })
+        results.sort(key=lambda item: item['final_score'], reverse=True)
+        return results[:top_k]
+
+    def score_pair_by_average_vector(self, text_a: str, text_b: str) -> Dict[str, object]:
+        """先分别对 text_a/text_b 分词并计算平均向量，再比较相似度。"""
+        vec_a = self._get_average_vector(text_a)
+        vec_b = self._get_average_vector(text_b)
+        score = 0.0
+        if vec_a is not None and vec_b is not None:
+            denom = np.linalg.norm(vec_a) * np.linalg.norm(vec_b)
+            if denom > 0:
+                raw = float(np.dot(vec_a, vec_b) / denom)
+                score = max(0.0, raw)
+
+        return {
+            'text_a': text_a,
+            'text_b': text_b,
+            'co_score': round(score, 6),
+            'final_score': round(score, 6),
+            'rank_source': 'co_average_vector',
+        }
 
     def score_pair(self, text_a: str, text_b: str) -> Dict[str, object]:
         term_a = self._resolve_project_term(text_a)

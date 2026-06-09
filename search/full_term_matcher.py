@@ -5,6 +5,7 @@ from typing import Any, Dict, Iterable, List, Set
 
 from expansion.abbreviate import abbreviate,normalize_entity
 from definition import OUTPUT_DIR
+from embedding.embedding_main import score_pair
 
 import itertools
 
@@ -43,6 +44,7 @@ class FullTermMatcher:
         self.ngramed_symbol_path = ngramed_symbol_path
         self.invert_index: Dict[str, Any] = self._load_json(invert_index_path)
         self.ngramed_symbol: Dict[str, Any] = self._load_json(ngramed_symbol_path)
+        self.abbr_to_subtokens: Dict[str, Set[str]] = self._build_abbr_to_subtokens()
 
     @staticmethod
     def _load_json(path: str) -> Dict[str, Any]:
@@ -125,23 +127,31 @@ class FullTermMatcher:
 
     def _resolve_subtoken_candidates(self, subseqs: Iterable[str]) -> Set[str]:
         """
-        Map subsequences to sub-tokens via invert_index.
-        invert_index assumed shape: subtoken -> [abbreviation...]
+        Map subsequences to sub-tokens via precomputed abbreviation -> subtoken index.
         """
         subtokens: Set[str] = set()
-        normalized_subseqs = {self._normalize(s) for s in subseqs if self._normalize(s)}
+        for subseq in subseqs:
+            normalized = self._normalize(subseq)
+            if not normalized:
+                continue
+            subtokens.update(self.abbr_to_subtokens.get(normalized, set()))
+        return subtokens
 
+    def _build_abbr_to_subtokens(self) -> Dict[str, Set[str]]:
+        """Build reverse index: normalized abbreviation -> subtokens."""
+        out: Dict[str, Set[str]] = {}
         for subtoken, abbr_list in self.invert_index.items():
             if not isinstance(abbr_list, list):
                 continue
-            normalized_abbrs = {self._normalize(item) for item in abbr_list if self._normalize(item)}
-            intersection=normalized_subseqs & normalized_abbrs
-            if intersection:
-                st = self._normalize(subtoken)
-                if st:
-                    subtokens.add(st)
-
-        return subtokens
+            st = self._normalize(subtoken)
+            if not st:
+                continue
+            for item in abbr_list:
+                abbr = self._normalize(item)
+                if not abbr:
+                    continue
+                out.setdefault(abbr, set()).add(st)
+        return out
 
     def _resolve_symbols(self, subtokens: Iterable[str]) -> List[Dict[str, Any]]:
         """
@@ -242,19 +252,30 @@ class FullTermMatcher:
                 if not normalized_kw:
                     continue
                 sub_result = self._keyword_subsequences(normalized_kw)
-                #todo: 这里可以增加一个embedding model过滤步骤，训练该模型判断生成的子序列是否和原词语义相关，过滤掉一些不相关的子序列，提升后续匹配的准确性
-                subseqs.update(sub_result)
 
-            # 可选的模型过滤步骤
-            # from expansion.model_filter import AbbreviationModelFilter
-            # self.model_filter = AbbreviationModelFilter()
-            #
-            # if subseqs:
-            #     filtered_subseqs = self.model_filter.filter_candidates(normalized_kw, list(subseqs))
-            #     # 始终保留原关键词本身，避免因模型阈值过滤掉原词
-            #     if normalized_kw not in filtered_subseqs:
-            #         filtered_subseqs.append(normalized_kw)
-            #     subseqs = set(filtered_subseqs)
+                # 使用 embedding model 对生成的子序列进行过滤。
+                # 只保留得分 >= 0.4 的子序列，避免一些由算法生成但语义不相关的子序列进入后续匹配。
+                # 如果所有候选都低于 0.4，则 fallback 到得分最高的 top3（候选不足 3 个则全保留），避免过度过滤导致召回为空。
+                scored_sub_results = []
+                for sub in sub_result:
+                    if sub == normalized_kw:
+                        # scored_sub_results.append((sub, 1.0))
+                        continue
+                    try:
+                        score_result = score_pair(normalized_kw, sub)
+                        score = float(score_result.get('final_score', 0.0))
+                    except Exception:
+                        score = 0.0
+                    scored_sub_results.append((sub, score))
+
+                filtered_sub_result = {sub for sub, score in scored_sub_results if score >= 0.4}
+                if not filtered_sub_result and scored_sub_results:
+                    top_scored = sorted(scored_sub_results, key=lambda x: x[1], reverse=True)[:3]
+                    filtered_sub_result = {sub for sub, _ in top_scored}
+
+                # 始终保留原始 normalized keyword，避免模型过滤导致原词丢失。
+                filtered_sub_result.add(normalized_kw)
+                subseqs.update(filtered_sub_result)
 
             subtokens = self._resolve_subtoken_candidates(subseqs)
 

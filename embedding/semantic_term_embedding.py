@@ -36,6 +36,7 @@ class SemanticTermEmbedding:
         self.semantic_terms: List[str] = []
         self.semantic_term_to_idx: Dict[str, int] = {}
         self.semantic_embeddings: Optional[np.ndarray] = None
+        self._text_embedding_cache: Dict[str, np.ndarray] = {}
 
     def _ensure_semantic_model(self):
         if self.semantic_model is not None:
@@ -54,6 +55,15 @@ class SemanticTermEmbedding:
             show_progress_bar=False,
         )
         return embeddings.astype(np.float32)
+
+    def _get_text_embedding(self, text: str) -> np.ndarray:
+        normalized = normalize_query_text(text)
+        cached = self._text_embedding_cache.get(normalized)
+        if cached is not None:
+            return cached
+        embedding = self._encode_texts([normalized])[0]
+        self._text_embedding_cache[normalized] = embedding
+        return embedding
 
     def _resolve_project_term(self, text: str) -> Optional[str]:
         tokens = tokenize_text(text)
@@ -134,7 +144,7 @@ class SemanticTermEmbedding:
             return []
 
         normalized_query = normalize_query_text(query)
-        query_vec = self._encode_texts([normalized_query])[0]
+        query_vec = self._get_text_embedding(query)
         scores = np.dot(self.semantic_embeddings, query_vec)
 
         excluded = set(tokenize_text(query))
@@ -158,8 +168,8 @@ class SemanticTermEmbedding:
         return results
 
     def score_pair(self, text_a: str, text_b: str) -> Dict[str, object]:
-        vec_a = self._encode_texts([normalize_query_text(text_a)])[0]
-        vec_b = self._encode_texts([normalize_query_text(text_b)])[0]
+        vec_a = self._get_text_embedding(text_a)
+        vec_b = self._get_text_embedding(text_b)
 
         denom = np.linalg.norm(vec_a) * np.linalg.norm(vec_b)
         if denom <= 0:

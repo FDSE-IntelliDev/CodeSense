@@ -105,7 +105,7 @@ class HybridTermEmbedding:
         if top_k is None:
             top_k = self._compute_top_k(query)
 
-        co_results = self.co_model.find_related_terms(query, top_k=max(20, top_k * 3))
+        co_results = self.co_model.find_related_terms(query, top_k=max(20, top_k * 3))#若query_term不在词表中 共现相关性返回结果为空
         sem_results = self.sem_model.find_related_terms(query, top_k=max(20, top_k * 3))
 
         co_map = {item['term']: item for item in co_results}
@@ -131,6 +131,65 @@ class HybridTermEmbedding:
 
         results.sort(key=lambda item: item['final_score'], reverse=True)
         return results[:top_k]
+
+    def find_related_terms_by_average_vector(self, query: str, top_k: int = None) -> List[Dict[str, object]]:
+        """使用 ICF/FastText 平均向量共现分数 + semantic 分数查找相关 term。
+
+        适用场景：短语/短句 query 的细粒度过滤/排序。
+        """
+        if top_k is None:
+            top_k = self._compute_top_k(query)
+
+        co_results = self.co_model.find_related_terms_by_average_vector(query, top_k=max(20, top_k * 3))
+        sem_results = self.sem_model.find_related_terms(query, top_k=max(20, top_k * 3))
+
+        co_map = {item['term']: item for item in co_results}
+        sem_map = {item['term']: item for item in sem_results}
+
+        all_terms = set(co_map.keys()) | set(sem_map.keys())
+        results = []
+        for term in all_terms:
+            co_score = float(co_map.get(term, {}).get('co_score', 0.0))
+            sem_score = float(sem_map.get(term, {}).get('sem_score', 0.0))
+            final_score, rank_source = self._fuse_scores(co_score, sem_score)
+            if final_score <= 0:
+                continue
+            results.append({
+                'term': term,
+                'co_score': round(co_score, 6),
+                'sem_score': round(sem_score, 6),
+                'final_score': round(final_score, 6),
+                'rank_source': rank_source,
+                'co_rank_source': co_map.get(term, {}).get('rank_source'),
+                'is_high_freq': bool(co_map.get(term, {}).get('is_high_freq', False)),
+                'icf': co_map.get(term, {}).get('icf'),
+            })
+
+        results.sort(key=lambda item: item['final_score'], reverse=True)
+        return results[:top_k]
+
+    def score_pair_by_average_vector(self, text_a: str, text_b: str) -> Dict[str, object]:
+        """使用平均向量共现分数 + semantic 分数比较两个短语/短句。"""
+        co_result = self.co_model.score_pair_by_average_vector(text_a, text_b)
+        sem_result = self.sem_model.score_pair(text_a, text_b)
+
+        co_score = float(co_result.get('co_score', 0.0))
+        sem_score = float(sem_result.get('sem_score', 0.0))
+        final_score, rank_source = self._fuse_scores(co_score, sem_score)
+
+        return {
+            'text_a': text_a,
+            'text_b': text_b,
+            'resolved_term_a': sem_result.get('resolved_term_a'),
+            'resolved_term_b': sem_result.get('resolved_term_b'),
+            'a_in_project_vocab': bool(sem_result.get('a_in_project_vocab')),
+            'b_in_project_vocab': bool(sem_result.get('b_in_project_vocab')),
+            'co_score': round(co_score, 6),
+            'sem_score': round(sem_score, 6),
+            'final_score': round(final_score, 6),
+            'rank_source': rank_source,
+            'co_rank_source': co_result.get('rank_source'),
+        }
 
     def score_pair(self, text_a: str, text_b: str) -> Dict[str, object]:
         co_result = self.co_model.score_pair(text_a, text_b)

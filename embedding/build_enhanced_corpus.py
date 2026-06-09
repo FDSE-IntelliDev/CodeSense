@@ -6,7 +6,7 @@
 增强点：
 1. 保留整条调用链句子
 2. 按函数距离构造局部窗口句子，例如 A B、B C、A B C
-3. 构造相邻调用边句子，例如 A __CALLS__ B
+3. 构造相邻调用边句子，例如 A B
 
 输出：
 - 默认保存为 output/<project>/enhanced_call_chain_corpus.json
@@ -84,10 +84,10 @@ def build_enhanced_corpus(
                     window_profiles = profiles[start:start + window_size]
                     add_repeated(corpus, flatten_profiles(window_profiles), repeat=local_window_repeat)
 
-        # 3. 相邻调用边句子：显式表达 caller -> callee。
+        # 3. 相邻调用边句子：强化 caller 与 callee 的直接共现关系。
         if include_edges and len(profiles) >= 2:
             for i in range(len(profiles) - 1):
-                edge_sentence = profiles[i] + ['__CALLS__'] + profiles[i + 1]
+                edge_sentence = profiles[i] + profiles[i + 1]
                 add_repeated(corpus, edge_sentence, repeat=edge_repeat)
 
     return corpus

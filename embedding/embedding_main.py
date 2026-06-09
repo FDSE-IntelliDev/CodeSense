@@ -19,6 +19,7 @@ Embedding 模块统一入口。
 
 import json
 import sys
+from functools import lru_cache
 from pathlib import Path
 from typing import Dict, List
 
@@ -155,19 +156,57 @@ def init_embedding(
     )
     return embedder
 
+_EMBEDDER = None
+
+
+def get_embedder() -> HybridTermEmbedding:
+    """Lazy-load global embedding model on first use."""
+    global _EMBEDDER
+    if _EMBEDDER is None:
+        _EMBEDDER = init_embedding()
+    return _EMBEDDER
+
+
+@lru_cache(maxsize=20000)
+def _score_pair_cached(text_a: str, text_b: str) -> str:
+    result = get_embedder().score_pair(text_a, text_b)
+    return json.dumps(result, ensure_ascii=False, sort_keys=True)
+
+
 def find_relative_terms(
     query: str,
     top_k: int = None,
-    embedder: HybridTermEmbedding = None,
+    # embedder: HybridTermEmbedding = None,
 ) -> List[Dict[str, object]]:
 
-    return embedder.find_related_terms(query,top_k)
+    return get_embedder().find_related_terms(query,top_k)
+
+
+def find_relative_terms_by_average_vector(
+    query: str,
+    top_k: int = None,
+) -> List[Dict[str, object]]:
+    return get_embedder().find_related_terms_by_average_vector(query, top_k)
+
+
+@lru_cache(maxsize=20000)
+def _score_pair_by_average_vector_cached(text_a: str, text_b: str) -> str:
+    result = get_embedder().score_pair_by_average_vector(text_a, text_b)
+    return json.dumps(result, ensure_ascii=False, sort_keys=True)
+
+
+def score_pair_by_average_vector(
+    text_a: str,
+    text_b: str,
+) -> Dict[str, object]:
+    """对两个短语/短句分别取 FastText 平均向量，再结合 semantic 分数计算相关性。"""
+    return json.loads(_score_pair_by_average_vector_cached(str(text_a), str(text_b)))
 
 
 def score_pair(
     text_a: str,
     text_b: str,
-    embedder: HybridTermEmbedding = None,
+    # embedder: HybridTermEmbedding = None,
 ) -> Dict[str, object]:
     """计算两个单词语义相似度。
 
@@ -179,11 +218,11 @@ def score_pair(
     Returns:
         包含 co_score / sem_score / final_score 等字段的字典
     """
-    return embedder.score_pair(text_a, text_b)
+    return json.loads(_score_pair_cached(str(text_a), str(text_b)))
 
 def main():
     project_name = 'youlai-boot-master'
-    query="auth"#输入用tokenizer分词 然后向量平均 检查co_score=0的case
+    query="save dept"#输入用tokenizer分词 然后向量平均 检查co_score=0的case
 
     # build_corpus(project_name=project_name, num_workers=4)
     #
@@ -196,10 +235,17 @@ def main():
     # )
     embedder = init_embedding(project_name, co_weight=0.2, sem_weight=0.8)
 
+    result = find_relative_terms_by_average_vector(
+        query=query,
+        top_k=None,
+        # embedder=embedder
+    )
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+
     result = find_relative_terms(
         query=query,
         top_k=None,
-        embedder=embedder
+        # embedder=embedder
     )
     print(json.dumps(result, ensure_ascii=False, indent=2))
 
