@@ -1,4 +1,7 @@
-{
+import json
+from parsers.code_element_types import get_common_code_element_types
+
+query_dsl={
   "intent": {
     "action": {
       "term": "<operation or behavior applied to the object>",
@@ -17,8 +20,8 @@
   "exact_code": [
     {
       "text": "<literal code-like string explicitly mentioned by the query>",
-      "kind": "code_element|code_snippet|code_line|path|unknown",
-      "code_element_type": "<when kind is code_element, choose from parsers/code_element_types.py; common options: function|class|variable|file|enum|unknown>",
+      "kind": "code_element|code_snippet|code_line|unknown",
+      "code_element_type": f"<when kind is code_element, choose from : {get_common_code_element_types()}",
       "match_mode": "exact_match|fuzzy_match",
       "source": "<short explanation of where this literal appears in the raw query>"
     }

@@ -15,6 +15,7 @@ from dataclasses import dataclass
 from typing import Any, Dict, Optional
 from utils.llm_api import call_chat_llm
 from definition import BASE_MODEL
+from DSL.query_dsl import query_dsl
 
 @dataclass
 class LLMKeywordExtractorConfig:
@@ -33,9 +34,7 @@ class LLMKeywordExtractor:
     ) -> None:
         self.config = config or LLMKeywordExtractorConfig()
         self.client = client
-        dsl_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "DSL", "query_dsl_new.json")
-        with open(dsl_path, "r", encoding="utf-8") as f:
-            self.dsl = json.load(f)
+        self.dsl = query_dsl
 
     def extract_keywords(self, query: str) -> Dict[str, Any]:
         query = (query or "").strip()
