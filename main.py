@@ -10,9 +10,11 @@ from invert_index import InvertedIndexBuilder
 
 # Online query processing imports
 from query_processing.llm_keyword_extractor import LLMKeywordExtractor
+from query_processing.llm_semCon_extractor import LLMSemConExtractor
+from query_processing.semQL_composer import compose_semQL_from_semCon
 from search.invert_index_search import invert_index_search4symbol
 
-from definition import OUTPUT_DIR,PROJECT_PATH
+from definition import OUTPUT_DIR,PROJECT_PATH,PROJECT_NAME
 from utils.file_utils import save_res
 
 
@@ -48,10 +50,11 @@ def process_offline(project_path: str, output_dir: str):
 
 
 def process_online(query: str):
-    invert_index_path=f'{OUTPUT_DIR}/youlai-boot-master/invert_index.json'
-    ngramed_symbol_path=f'{OUTPUT_DIR}/youlai-boot-master/ngramed_symbol.json'
-    semQL_path=f'{OUTPUT_DIR}/youlai-boot-master/semQL.json'
-    invert_index_search_result_path=f'{OUTPUT_DIR}/youlai-boot-master/invert_index_search_result.json'
+    invert_index_path=f'{OUTPUT_DIR}/{PROJECT_NAME}/invert_index.json'
+    ngramed_symbol_path=f'{OUTPUT_DIR}/{PROJECT_NAME}/ngramed_symbol.json'
+    semQL_path=f'{OUTPUT_DIR}/{PROJECT_NAME}/semQL.json'
+    semCon_path=f'{OUTPUT_DIR}/{PROJECT_NAME}/semCon.json'
+    invert_index_search_result_path=f'{OUTPUT_DIR}/{PROJECT_NAME}/invert_index_search_result.json'
 
     print(f"=== [Online] Processing Search Query ===")
     print(f"User Query: '{query}'")
@@ -63,6 +66,18 @@ def process_online(query: str):
     # print("\n--- Extracted Query DSL ---")
     # print(json.dumps(dsl_result, indent=2, ensure_ascii=False))
     # save_res(semQL_path,dsl_result)
+
+    print("Extracting SemCon using LLM...")
+    extractor = LLMSemConExtractor()
+    semCon_result = extractor.extract_semCon(query)
+    print("\n--- Extracted SemCon ---")
+    print(json.dumps(semCon_result, indent=2, ensure_ascii=False))
+    save_res(semCon_path, semCon_result)
+
+    semQL_result = compose_semQL_from_semCon(semCon_result, raw_query=query)
+    print("\n--- Composed SemQL ---")
+    print(json.dumps(semQL_result, indent=2, ensure_ascii=False))
+    save_res(semQL_path, semQL_result)
 
     print("\n--- Inverted Index Search ---")
     search_results = invert_index_search4symbol(invert_index_path=invert_index_path,ngramed_symbol_path=ngramed_symbol_path,query_dsl_result_path=semQL_path)

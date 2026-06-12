@@ -18,7 +18,7 @@
 Natural Language Query
   ↓
 SemCon Extraction
-  - 抽取 lexical / semantic / structural 等原子条件
+  - 抽取 surface / intention / relation 等原子条件
   ↓
 SemQL Composition
   - 使用 AND / OR / NOT 组合多个 SemCon
@@ -44,33 +44,33 @@ SemCon（Semantic Condition）用于表达一个独立、可执行的搜索或�
 
 | Condition Type | 作用 | 主要执行模块 |
 |---|---|---|
-| `lexical` | 字面量、关键词、代码元素名、代码行、代码片段匹配 | exact search、ngram、倒排索引 |
-| `semantic` | 语义功能、业务职责、领域含义 | cluster filter、embedding filter |
-| `structural` | 代码结构约束，如目标类型、CodeQL 结构查询 | rule filter、CodeQL、call graph |
+| `surface` | 字面量、关键词、代码元素名、代码行、代码片段匹配 | exact search、ngram、倒排索引 |
+| `intention` | 语义功能、业务职责、领域含义 | cluster filter、embedding filter |
+| `relation` | 代码结构约束，如目标类型、CodeQL 结构查询 | rule filter、CodeQL、call graph |
 
 `exclude` / negative 逻辑可以通过 condition 的 `property=exclude` 以及 SemQL 的 NOT 组合表达。
 
 ---
 
-## 3. Lexical Condition Schema
+## 3. Surface Condition Schema
 
 来源文件：
 
 ```text
-DSL/lexical_con.py
+DSL/surface_con.py
 ```
 
 Schema：
 
 ```python
-lexical_condition = {
-    "type": "lexical",
+surface_condition = {
+    "type": "surface",
     "property": "<include|exclude>",
     "keywords": [
         "<literal keyword/code text to match; can be code element name, code line, code snippet, or normal keyword>"
     ],
     "synonyms": [
-        "<optional lexical variants or synonyms; use empty list if not needed>"
+        "<optional surface variants or synonyms; use empty list if not needed>"
     ],
     "match_kind": "<code_element|code_snippet|code_line|unknown>",
     "code_element_type": "<when kind is code_element, choose from parsers/code_element_types.py common types>"
@@ -79,93 +79,125 @@ lexical_condition = {
 
 ### 作用
 
-`lexical` condition 覆盖所有基于字面文本的搜索条件：
+`surface` condition 覆盖所有基于字面文本的搜索条件：
 
 - 普通 keyword / synonym 搜索
 - ngram / abbreviation / subtoken 搜索
 - exact-like code element 搜索
 - code_line / code_snippet 搜索
 
-因此，原先的 `exact_code` 可以理解为 lexical condition 的一种强匹配形式。
+因此，原先的 `exact_code` 可以理解为 surface condition 的一种强匹配形式。
 
 ---
 
-## 4. Semantic Condition Schema
+## 4. Intention Condition Schema
 
 来源文件：
 
 ```text
-DSL/semantic_con.py
+DSL/intention_con.py
 ```
 
 Schema：
 
 ```python
-semantic_condition = {
-    "type": "semantic",
+intention_condition = {
+    "type": "intention",
     "property": "<include|exclude>",
     "intent": {
         "action": "<operation or behavior; may include synonyms or behavior variants if useful>",
         "object": "<entity/resource/domain object; may include synonyms or related entities if useful>"
     },
+    "intent_statement": "<a declarative statement describing the required intent, answerable as Yes/No>",
+    "aspect": "functional | non_functional | domain",
+    "non_functional_type": "performance | security | reliability | maintainability | null",
     "keywords": [
-        "<semantic keyword or phrase describing required behavior/domain meaning>"
+        "<intention keyword or phrase describing required behavior/domain meaning>"
     ],
-    "semantic_labels": [
-        "<optional high-level semantic labels, e.g. user authentication, token refresh>"
-    ],
-    "description": "<brief natural language explanation of this semantic condition>"
+    "description": "<brief natural language explanation of this intention condition>"
 }
 ```
 
 ### 作用
 
-`semantic` condition 描述目标代码元素需要满足的功能、职责、业务含义。
+`intention` condition 描述目标代码元素需要满足的功能、业务职责、领域含义。
 
-例如：
+其中 `intent_statement` 建模为二元判别问题（Yes/No），方便后续 LLM-as-a-Judge 或 Cross-Encoder 做精确判定，而非模糊的余弦相似度排序。
 
-```text
-handles user login authentication
-validates access token
-refreshes role permission cache
-```
+`aspect` 分为三类：
+
+| aspect | 说明 |
+|---|---|
+| `functional` | 代码的功能行为，如 handles user login authentication |
+| `non_functional` | 性能、安全等非功能属性，如 optimizes IO throughput |
+| `domain` | 业务领域归属，如 belongs to payment reconciliation domain |
+
+`non_functional_type` 仅在 `aspect=non_functional` 时有效，取值为 `performance | security | reliability | maintainability | null`。
 
 这些条件会进入：
 
 - Cluster Filter：粗粒度语义过滤
 - Embedding Filter：细粒度 term-level 语义过滤
-- 后续可选的大模型保底验证
+- LLM-as-a-Judge：大模型保底验证
 
 ---
 
-## 5. Structural Condition Schema
+## 5. Relation Condition Schema
 
 来源文件：
 
 ```text
-DSL/structural_con.py
+DSL/relation_con.py
 ```
 
 Schema：
 
 ```python
-structural_condition = {
-    "type": "structural",
-    "property": "<include|exclude>",
+relation_condition = {
+    "type": "relation",
+    "property": "<include|exclude; code elements satisfying the following relation conditions will be included in or excluded from final results>",
     "code_element_type": "<target code element type; choose from common types: function|class|variable|file|enum|unknown>",
-    "code_ql": "<optional CodeQL query if a suitable structural query can be generated; otherwise empty string>",
-    "description": "<brief natural language explanation of this structural condition>"
+    "file_path": "<file path / directory / package path constraint, or None>",
+    "container": "<class/module/package/container constraint, or None>",
+    "graph_constraint": {
+        "anchor": "<anchor symbol, 'main_entry', or 'api_route'>",
+        "relation": "caller_of | callee_of | distance_leq",
+        "value": "<integer hop count or symbol name>"
+    },
+    "caller": "<expected caller code element, or None>",
+    "callee": "<expected callee code element, or None>",
+    "code_ql": "<optional executable CodeQL query. Use this for relation constraints not covered by the explicit fields above, such as annotations/decorators/attributes, signature details, modifiers, entry-point detection, inheritance, framework-specific handlers, or other language-specific structures. Use None if not needed>",
+    "description": "<brief natural language explanation of this relation condition>"
 }
 ```
 
 ### 作用
 
-`structural` condition 用来描述代码结构约束，例如：
+`relation` condition 用来描述代码结构约束。它只把当前比较稳定、可以直接通过静态索引 / 规则处理的结构条件放成显式字段，例如：
 
-- 目标是函数 / 类 / 变量 / 文件
-- 目标是入口函数
-- 目标属于某类容器或路径
-- 可以用 CodeQL 表达的结构查询
+- 目标代码元素类型：`code_element_type`
+- 文件路径 / 目录 / package 约束：`file_path`
+- 所属 class / module / package / container 约束：`container`
+- 调用关系约束：`caller` / `callee`
+
+新增 `graph_constraint` 用于表达调用图上的关系约束（距离、调用者、被调用者），后续由内存调用图（基于 LSP 解析构建的 NetworkX 有向图）通过 BFS/DFS 进行延迟 < 10ms 的毫秒级查询：
+
+| 子字段 | 说明 |
+|---|---|
+| `anchor` | 锚点符号，如 main_entry、api_route |
+| `relation` | `caller_of`（被调用）、`callee_of`（调用）、`distance_leq`（跳数约束） |
+| `value` | 整数跳数或符号名 |
+
+更复杂或强语言相关、框架相关的结构条件不再作为固定字段展开，而是交给 `code_ql` 表达，例如：
+
+- annotation / decorator / attribute
+- signature details
+- modifier
+- entry-point detection
+- inheritance
+- framework-specific handler
+
+`property` 表示满足这些结构条件的代码元素应该进入 include 集合还是 exclude 集合。最终由 SemQL 的 AND / OR / NOT 逻辑决定这些集合如何组合。
 
 `code_element_type` 来自：
 
@@ -198,9 +230,9 @@ Find the login function but not logout
 可以抽出：
 
 ```text
-c1: lexical condition，匹配 login
-c2: structural condition，目标是 function/method
-c3: semantic/lexical exclude condition，排除 logout
+c1: surface condition，匹配 login
+c2: relation condition，目标是 function/method
+c3: intention/surface exclude condition，排除 logout
 ```
 
 SemQL 组合逻辑为：
@@ -214,9 +246,9 @@ SemQL 组合逻辑为：
 ```json
 {
   "conditions": [
-    {"type": "lexical", "property": "include", "keywords": ["login"], "match_kind": "code_element", "code_element_type": "function"},
-    {"type": "structural", "property": "include", "code_element_type": "function", "code_ql": ""},
-    {"type": "semantic", "property": "exclude", "keywords": ["logout"], "description": "Candidate should not be about logout."}
+    {"type": "surface", "property": "include", "keywords": ["login"], "match_kind": "code_element", "code_element_type": "function"},
+    {"type": "relation", "property": "include", "code_element_type": "function", "code_ql": ""},
+    {"type": "intention", "property": "exclude", "keywords": ["logout"], "description": "Candidate should not be about logout."}
   ],
   "logic": {
     "op": "and",
@@ -229,7 +261,7 @@ SemQL 组合逻辑为：
 }
 ```
 
-> SemCon 负责表达“单个条件是什么”，SemQL 负责表达“这些条件如何组合”。
+> SemCon 负责表达"单个条件是什么"，SemQL 负责表达"这些条件如何组合"。
 
 ---
 
@@ -239,14 +271,17 @@ SemQL 组合逻辑为：
 
 | SemCon | 映射到现有执行阶段 |
 |---|---|
-| `lexical.match_kind=code_element` | `search/exact_code_search.py` |
-| `lexical.match_kind=code_line` | `search/exact_code_search.py` |
-| `lexical.keywords/synonyms` | `search/full_term_matcher.py`, `search/invert_index_search.py` |
-| `semantic.intent` | `filters/embedding_filter.py` |
-| `semantic.keywords` | `filters/cluster_pipeline.py`, `filters/embedding_filter.py` |
-| `semantic.semantic_labels` | `filters/cluster_pipeline.py`, `filters/embedding_filter.py` |
-| `structural.code_element_type` | rule-based filter / target filter |
-| `structural.code_ql` | CodeQL executor（后续） |
+| `surface.match_kind=code_element` | `search/exact_code_search.py` |
+| `surface.match_kind=code_line` | `search/exact_code_search.py` |
+| `surface.keywords/synonyms` | `search/full_term_matcher.py`, `search/invert_index_search.py` |
+| `intention.intent` | `filters/embedding_filter.py` |
+| `intention.keywords` | `filters/cluster_pipeline.py`, `filters/embedding_filter.py` |
+| `intention.intent_statement` | `executor/intentional_executor.py`（后续 LLM-as-a-Judge 阶段） |
+| `relation.code_element_type` | rule-based filter / target filter |
+| `relation.file_path` | rule-based filter / path filter |
+| `relation.container` | rule-based filter / container filter |
+| `relation.graph_constraint` | memory call-graph BFS/DFS（Tier 2 后端） |
+| `relation.code_ql` | CodeQL executor（Tier 3 后端） |
 | `property=exclude` | negative filtering / NOT logic |
 
 ---
@@ -257,17 +292,17 @@ SemQL 组合逻辑为：
 Natural Language Query
   ↓
 Step 1. SemCon Extraction
-  - lexical conditions
-  - semantic conditions
-  - structural conditions
+  - surface conditions
+  - intention conditions
+  - relation conditions
   ↓
 Step 2. SemQL Composition
   - AND / OR / NOT
   - 将 SemCon 组合为高层查询计划
   ↓
 Step 3. Search / Candidate Generation
-  - exact-like lexical search
-  - ngram / inverted index lexical search
+  - exact-like surface search
+  - ngram / inverted index surface search
   - 合并多路搜索结果，形成高召回候选集合
   ↓
 Step 4. Rule-based Filtering
@@ -401,7 +436,7 @@ search/fuzzy_matcher.py
 
 ---
 
-## 11. Lexical / Inverted Index Search
+## 11. Surface / Inverted Index Search
 
 对应模块：
 
@@ -412,7 +447,7 @@ search/invert_index_search.py
 
 `full_term_matcher.py` 会：
 
-1. 从 lexical condition / SemQL keywords 中取词
+1. 从 surface condition / SemQL keywords 中取词
 2. 生成 ordered subterms
 3. 调用 abbreviation/subsequence 逻辑
 4. 用 embedding `score_pair` 对生成的 subsequence 做过滤
@@ -430,7 +465,7 @@ search/invert_index_search.py
 
 规则过滤主要消费：
 
-- structural condition 中的 `code_element_type`
+- relation condition 中的 `code_element_type`
 - property=exclude 的条件
 
 典型规则：
@@ -492,10 +527,10 @@ priority_1 + priority_2 + priority_3
 
 从结构化语义条件中抽取：
 
-- semantic.intent.action
-- semantic.intent.object
-- semantic.keywords
-- lexical.keywords（必要时）
+- intention.intent.action
+- intention.intent.object
+- intention.keywords
+- surface.keywords（必要时）
 
 `raw_query` 只作为 fallback。
 
@@ -549,7 +584,7 @@ embedding_score = average(best_score_per_query_term)
 
 每个结果尽量保留来源解释：
 
-- lexical / exact match evidence
+- surface / exact match evidence
 - cluster score / tier / rank
 - embedding score / evidence
 - final score
@@ -561,10 +596,10 @@ embedding_score = average(best_score_per_query_term)
 ```text
 1. SemCon 抽取：得到原子条件
 2. SemQL 组合：用 AND / OR / NOT 形成高层查询计划
-3. Search / Candidate Generation：执行 lexical/exact 条件，形成候选集合
-4. Rule Filtering：执行 structural / exclude 条件
-5. Cluster Filter：粗粒度 semantic 条件过滤
-6. Embedding Filter：细粒度 semantic 条件过滤
+3. Search / Candidate Generation：执行 surface/exact 条件，形成候选集合
+4. Rule Filtering：执行 relation / exclude 条件
+5. Cluster Filter：粗粒度 intention 条件过滤
+6. Embedding Filter：细粒度 intention 条件过滤
 7. Priority 输出：保留证据并分层返回
 ```
 
