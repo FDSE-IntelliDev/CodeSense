@@ -42,11 +42,16 @@ Natural Language Query
 │                            │  CBO = Cost-Based Optimizer 代价优化器
 └──────────────────────────────┘
   │
-  ├── Stage 1: Surface Execution   ←  最快，exact search / inverted index / ngram / term emb
-  │
-  ├── Stage 2: Relation Execution  ←  次快，rule filter / LSP call graph / CodeQL
-  │
-  └── Stage 3: Intention Execution ←  最慢，Cluster Filter / Embedding Filter / LLM Judge
+  ▼
+┌──────────────────────────────────────────────────────────────────────────────┐
+│  Executor                                                                    │
+│                                                                              │
+│  ├── Stage 1: Surface Execution    ←  最快，exact search / inverted index / ngram / term emb
+│  │                                                                           │
+│  ├── Stage 2: Relation Execution   ←  次快，rule filter / LSP call graph / CodeQL
+│  │                                                                           │
+│  └── Stage 3: Intention Execution  ←  最慢，Cluster Filter / Embedding Filter / LLM Judge
+└──────────────────────────────────────────────────────────────────────────────┘
   │
   ▼
 ┌──────────────────────────────┐
