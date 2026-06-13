@@ -1,0 +1,1 @@
+本页是第六章的过渡页。第六章围绕实验与评测展开，介绍评测指标体系（检索质量+执行效率）和三个 Benchmark 数据集：SWE-bench（天然 Agent 检索场景）、CodeSearchNet（标准语义搜索基准）、内部 Agent Benchmark（真实 Agent 任务数据集）。

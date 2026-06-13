@@ -1,0 +1,157 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" width="1280" height="720">
+  <defs>
+    <linearGradient id="gc1" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#1F6FEB" />
+      <stop offset="100%" stop-color="#12B5CB" />
+    </linearGradient>
+  </defs>
+  <rect x="0" y="0" width="1280" height="720" fill="#F7FAFC" />
+
+  
+  <text x="64" y="52" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="36" font-weight="700" fill="#0B1F3A">
+    <tspan>端到端流程：NL → SemCon → SemQL → 分层执行 → Bundle 输出</tspan>
+  </text>
+
+  
+  <path fill="#0B1F3A" d="M72,72 H1208 A8,8 0 0 1 1216,80 V110 A8,8 0 0 1 1208,118 H72 A8,8 0 0 1 64,110 V80 A8,8 0 0 1 72,72 Z" />
+  <text x="640" y="102" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="18" font-weight="700" fill="#FFFFFF" text-anchor="middle">
+    <tspan>Natural Language Query → Final Results（带证据的分层输出）</tspan>
+  </text>
+
+  
+  <polygon points="640,124 634,118 646,118" fill="#1F6FEB" />
+  <line x1="640" y1="122" x2="640" y2="136" stroke="#1F6FEB" stroke-width="2" />
+
+  
+  <path fill="#FFFFFF" stroke="#1F6FEB" stroke-width="2" d="M74,140 H1206 A10,10 0 0 1 1216,150 V216 A10,10 0 0 1 1206,226 H74 A10,10 0 0 1 64,216 V150 A10,10 0 0 1 74,140 Z" />
+  <path fill="#1F6FEB" d="M66,140 H70 A2,2 0 0 1 72,142 V224 A2,2 0 0 1 70,226 H66 A2,2 0 0 1 64,224 V142 A2,2 0 0 1 66,140 Z" />
+  <text x="90" y="170" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="22" font-weight="700" fill="#1F6FEB">
+    <tspan>Query Compiler</tspan>
+  </text>
+  <text x="300" y="170" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="18" fill="#0F172A">
+    <tspan>NL → SemCon → SemQL</tspan>
+  </text>
+  <text x="90" y="200" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="15" fill="#64748B">
+    <tspan>LLM 驱动 SemCon 抽取（Surface / Relation / Intention）→ Agent/人工组织 SemQL</tspan>
+  </text>
+
+  
+  <polygon points="640,232 634,226 646,226" fill="#12B5CB" />
+  <line x1="640" y1="230" x2="640" y2="244" stroke="#12B5CB" stroke-width="2" />
+
+  
+  <path fill="#FFFFFF" stroke="#12B5CB" stroke-width="2" d="M74,248 H1206 A10,10 0 0 1 1216,258 V324 A10,10 0 0 1 1206,334 H74 A10,10 0 0 1 64,324 V258 A10,10 0 0 1 74,248 Z" />
+  <path fill="#12B5CB" d="M66,248 H70 A2,2 0 0 1 72,250 V332 A2,2 0 0 1 70,334 H66 A2,2 0 0 1 64,332 V250 A2,2 0 0 1 66,248 Z" />
+  <text x="90" y="278" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="22" font-weight="700" fill="#12B5CB">
+    <tspan>Query Optimizer (RBO/CBO)</tspan>
+  </text>
+  <text x="90" y="308" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="15" fill="#64748B">
+    <tspan>RBO = Rule-Based Optimizer 规则优化器：Intention-Last / Surface-First / Dangling Ban / NOT-Pushdown</tspan>
+  </text>
+  <text x="740" y="278" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="18" fill="#0F172A">
+    <tspan>逻辑计划 → 物理执行计划</tspan>
+  </text>
+  <text x="740" y="308" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="15" fill="#64748B">
+    <tspan>CBO = Cost-Based Optimizer 代价优化器：选择性优先 · 动态截断</tspan>
+  </text>
+
+  
+  <polygon points="640,340 634,334 646,334" fill="#1F6FEB" />
+  <line x1="640" y1="338" x2="640" y2="352" stroke="#1F6FEB" stroke-width="2" />
+
+  
+  <path fill="#FFFFFF" stroke="#1F6FEB" stroke-width="2" d="M74,356 H1206 A10,10 0 0 1 1216,366 V542 A10,10 0 0 1 1206,552 H74 A10,10 0 0 1 64,542 V366 A10,10 0 0 1 74,356 Z" />
+  <path fill="#1F6FEB" d="M66,356 H70 A2,2 0 0 1 72,358 V550 A2,2 0 0 1 70,552 H66 A2,2 0 0 1 64,550 V358 A2,2 0 0 1 66,356 Z" />
+  <text x="90" y="386" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="22" font-weight="700" fill="#1F6FEB">
+    <tspan>Executor（三级执行引擎）</tspan>
+  </text>
+
+  
+  <path fill="#EAF1F8" d="M98,402 H432 A8,8 0 0 1 440,410 V514 A8,8 0 0 1 432,522 H98 A8,8 0 0 1 90,514 V410 A8,8 0 0 1 98,402 Z" />
+  <text x="265" y="428" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="16" font-weight="700" fill="#1F6FEB" text-anchor="middle">
+    <tspan>Stage 1: Surface Execution</tspan>
+  </text>
+  <text x="265" y="452" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="13" fill="#334155" text-anchor="middle">
+    <tspan>exact search · inverted index</tspan>
+  </text>
+  <text x="265" y="472" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="13" fill="#334155" text-anchor="middle">
+    <tspan>ngram · term embedding</tspan>
+  </text>
+  <text x="265" y="498" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="13" fill="#64748B" text-anchor="middle">
+    <tspan>&lt; 200ms 快速高召回</tspan>
+  </text>
+
+  <polygon points="448,462 454,454 462,462 454,470" fill="#64748B" />
+  <text x="478" y="468" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="13" fill="#64748B">
+    <tspan>≈ 8,000</tspan>
+  </text>
+
+  
+  <path fill="#EAF1F8" d="M498,402 H812 A8,8 0 0 1 820,410 V514 A8,8 0 0 1 812,522 H498 A8,8 0 0 1 490,514 V410 A8,8 0 0 1 498,402 Z" />
+  <text x="655" y="428" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="16" font-weight="700" fill="#12B5CB" text-anchor="middle">
+    <tspan>Stage 2: Relation Execution</tspan>
+  </text>
+  <text x="655" y="452" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="13" fill="#334155" text-anchor="middle">
+    <tspan>rule filter · LSP call graph</tspan>
+  </text>
+  <text x="655" y="472" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="13" fill="#334155" text-anchor="middle">
+    <tspan>BFS/DFS · CodeQL fallback</tspan>
+  </text>
+  <text x="655" y="498" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="13" fill="#64748B" text-anchor="middle">
+    <tspan>&lt; 10ms ~ 秒级 (Tier 1→3)</tspan>
+  </text>
+
+  <polygon points="828,462 834,454 842,462 834,470" fill="#64748B" />
+  <text x="858" y="468" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="13" fill="#64748B">
+    <tspan>≈ 400</tspan>
+  </text>
+
+  
+  <path fill="#EAF1F8" d="M878,402 H1192 A8,8 0 0 1 1200,410 V514 A8,8 0 0 1 1192,522 H878 A8,8 0 0 1 870,514 V410 A8,8 0 0 1 878,402 Z" />
+  <text x="1035" y="428" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="16" font-weight="700" fill="#16A34A" text-anchor="middle">
+    <tspan>Stage 3: Intention Execution</tspan>
+  </text>
+  <text x="1035" y="452" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="13" fill="#334155" text-anchor="middle">
+    <tspan>Cluster Filter · Embedding Filter</tspan>
+  </text>
+  <text x="1035" y="472" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="13" fill="#334155" text-anchor="middle">
+    <tspan>LLM-as-a-Judge</tspan>
+  </text>
+  <text x="1035" y="498" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="13" fill="#64748B" text-anchor="middle">
+    <tspan>&lt; 3s 高成本后置判别</tspan>
+  </text>
+  <text x="1035" y="518" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="13" fill="#DC2626" text-anchor="middle">
+    <tspan>→ 约 15 个最终候选</tspan>
+  </text>
+
+  
+  <polygon points="640,558 634,552 646,552" fill="#1F6FEB" />
+  <line x1="640" y1="556" x2="640" y2="572" stroke="#1F6FEB" stroke-width="2" />
+
+  
+  <path fill="#FFFFFF" stroke="#1F6FEB" stroke-width="2" d="M74,576 H614 A10,10 0 0 1 624,586 V630 A10,10 0 0 1 614,640 H74 A10,10 0 0 1 64,630 V586 A10,10 0 0 1 74,576 Z" />
+  <path fill="#1F6FEB" d="M66,576 H70 A2,2 0 0 1 72,578 V638 A2,2 0 0 1 70,640 H66 A2,2 0 0 1 64,638 V578 A2,2 0 0 1 66,576 Z" />
+  <text x="90" y="604" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="20" font-weight="700" fill="#1F6FEB">
+    <tspan>Bundle Generator</tspan>
+  </text>
+  <text x="320" y="604" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="16" fill="#0F172A">
+    <tspan>候选节点 → 代码子图 (Context Bundles)</tspan>
+  </text>
+  <text x="90" y="628" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="15" fill="#64748B">
+    <tspan>通过 direct_caller / callee / same_class / same_file 合并关联节点</tspan>
+  </text>
+
+  <path fill="#FFFFFF" stroke="#12B5CB" stroke-width="2" d="M666,576 H1206 A10,10 0 0 1 1216,586 V630 A10,10 0 0 1 1206,640 H666 A10,10 0 0 1 656,630 V586 A10,10 0 0 1 666,576 Z" />
+  <path fill="#12B5CB" d="M658,576 H662 A2,2 0 0 1 664,578 V638 A2,2 0 0 1 662,640 H658 A2,2 0 0 1 656,638 V578 A2,2 0 0 1 658,576 Z" />
+  <text x="682" y="604" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="20" font-weight="700" fill="#12B5CB">
+    <tspan>Grouped Reranker</tspan>
+  </text>
+  <text x="900" y="604" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="16" fill="#0F172A">
+    <tspan>Bundle 协同评分与重排</tspan>
+  </text>
+  <text x="682" y="628" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="15" fill="#64748B">
+    <tspan>BundleScore = mean(score_i) + α × synergy_bonus</tspan>
+  </text>
+
+  <text x="1216" y="700" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="16" fill="#CBD5E1" text-anchor="end">12</text>
+</svg>

@@ -1,0 +1,59 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" width="1280" height="720">
+<rect x="0" y="0" width="1280" height="720" fill="#F3F5F8" />
+<text x="80" y="48" font-family="PingFang SC, Microsoft YaHei, Arial, sans-serif" font-size="24" font-weight="700" fill="#223A48">SemQL: 从原子条件到逻辑组合查询计划</text>
+<path fill="#FFFFFF" stroke="#D0D8E0" stroke-width="1" d="M70,72 H590 A10,10 0 0 1 600,82 V672 A10,10 0 0 1 590,682 H70 A10,10 0 0 1 60,672 V82 A10,10 0 0 1 70,72 Z" />
+<path fill="#223A48" d="M70,72 H590 A10,10 0 0 1 600,82 V104 A10,10 0 0 1 590,114 H70 A10,10 0 0 1 60,104 V82 A10,10 0 0 1 70,72 Z" />
+<text x="330" y="100" font-family="PingFang SC, Microsoft YaHei, Arial, sans-serif" font-size="16" font-weight="700" fill="#FFFFFF" text-anchor="middle">Step 1: SemCon 抽取 (LLM 驱动)</text>
+<path fill="#E8EDF2" d="M86,128 H574 A6,6 0 0 1 580,134 V162 A6,6 0 0 1 574,168 H86 A6,6 0 0 1 80,162 V134 A6,6 0 0 1 86,128 Z" />
+<text x="96" y="140" font-family="Consolas, Courier New, monospace" font-size="13" font-weight="700" fill="#223A48">Query: "Find the login function but not logout"</text>
+<path fill="#FFFFFF" stroke="#2E7E94" stroke-width="2" d="M86,182 H574 A6,6 0 0 1 580,188 V286 A6,6 0 0 1 574,292 H86 A6,6 0 0 1 80,286 V188 A6,6 0 0 1 86,182 Z" />
+<path fill="#2E7E94" d="M86,182 H574 A6,6 0 0 1 580,188 V206 A6,6 0 0 1 574,212 H86 A6,6 0 0 1 80,206 V188 A6,6 0 0 1 86,182 Z" />
+<text x="96" y="204" font-family="PingFang SC, Microsoft YaHei, Arial, sans-serif" font-size="14" font-weight="700" fill="#FFFFFF">c1: Surface Condition (include)</text>
+<text x="96" y="232" font-family="Consolas, Courier New, monospace" font-size="11.5" fill="#485D6A">type: "surface", keywords: ["login"], match_kind: "code_element"</text>
+<text x="96" y="260" font-family="PingFang SC, Microsoft YaHei, Arial, sans-serif" font-size="12" fill="#697A84">-&gt; 匹配 login 函数名</text>
+<path fill="#FFFFFF" stroke="#4A90A4" stroke-width="2" d="M86,308 H574 A6,6 0 0 1 580,314 V412 A6,6 0 0 1 574,418 H86 A6,6 0 0 1 80,412 V314 A6,6 0 0 1 86,308 Z" />
+<path fill="#4A90A4" d="M86,308 H574 A6,6 0 0 1 580,314 V332 A6,6 0 0 1 574,338 H86 A6,6 0 0 1 80,332 V314 A6,6 0 0 1 86,308 Z" />
+<text x="96" y="330" font-family="PingFang SC, Microsoft YaHei, Arial, sans-serif" font-size="14" font-weight="700" fill="#FFFFFF">c2: Relation Condition (include)</text>
+<text x="96" y="358" font-family="Consolas, Courier New, monospace" font-size="11.5" fill="#485D6A">type: "relation", code_element_type: "function"</text>
+<text x="96" y="386" font-family="PingFang SC, Microsoft YaHei, Arial, sans-serif" font-size="12" fill="#697A84">-&gt; 限定目标为函数类型</text>
+<path fill="#FFFFFF" stroke="#C0392B" stroke-width="2" d="M86,434 H574 A6,6 0 0 1 580,440 V538 A6,6 0 0 1 574,544 H86 A6,6 0 0 1 80,538 V440 A6,6 0 0 1 86,434 Z" />
+<path fill="#C0392B" d="M86,434 H574 A6,6 0 0 1 580,440 V458 A6,6 0 0 1 574,464 H86 A6,6 0 0 1 80,458 V440 A6,6 0 0 1 86,434 Z" />
+<text x="96" y="456" font-family="PingFang SC, Microsoft YaHei, Arial, sans-serif" font-size="14" font-weight="700" fill="#FFFFFF">c3: Intention Condition (exclude)</text>
+<text x="96" y="484" font-family="Consolas, Courier New, monospace" font-size="11.5" fill="#485D6A">type: "intention", property: "exclude", keywords: ["logout"]</text>
+<text x="96" y="512" font-family="PingFang SC, Microsoft YaHei, Arial, sans-serif" font-size="12" fill="#697A84">-&gt; 排除 logout 相关代码</text>
+<path fill="#E8EDF2" d="M86,558 H574 A6,6 0 0 1 580,564 V660 A6,6 0 0 1 574,666 H86 A6,6 0 0 1 80,660 V564 A6,6 0 0 1 86,558 Z" />
+<text x="96" y="582" font-family="PingFang SC, Microsoft YaHei, Arial, sans-serif" font-size="13" font-weight="700" fill="#223A48">实现文件</text>
+<text x="96" y="606" font-family="Consolas, Courier New, monospace" font-size="12" fill="#485D6A">llm_semCon_extractor.py -&gt; semCon.json</text>
+<text x="96" y="628" font-family="Consolas, Courier New, monospace" font-size="12" fill="#485D6A">semQL_composer.py -&gt; semQL.json</text>
+<text x="96" y="650" font-family="PingFang SC, Microsoft YaHei, Arial, sans-serif" font-size="11" fill="#697A84">执行逻辑由 Optimizer 动态规划，不在此阶段固化</text>
+<path fill="#FFFFFF" stroke="#D0D8E0" stroke-width="1" d="M630,72 H1210 A10,10 0 0 1 1220,82 V672 A10,10 0 0 1 1210,682 H630 A10,10 0 0 1 620,672 V82 A10,10 0 0 1 630,72 Z" />
+<path fill="#2E7E94" d="M630,72 H1210 A10,10 0 0 1 1220,82 V104 A10,10 0 0 1 1210,114 H630 A10,10 0 0 1 620,104 V82 A10,10 0 0 1 630,72 Z" />
+<text x="920" y="100" font-family="PingFang SC, Microsoft YaHei, Arial, sans-serif" font-size="16" font-weight="700" fill="#FFFFFF" text-anchor="middle">Step 2: SemQL 逻辑组合 (Agent/人工)</text>
+<path fill="#223A48" d="M648,128 H1192 A8,8 0 0 1 1200,136 V190 A8,8 0 0 1 1192,198 H648 A8,8 0 0 1 640,190 V136 A8,8 0 0 1 648,128 Z" />
+<text x="920" y="155" font-family="Consolas, Courier New, monospace" font-size="16" font-weight="700" fill="#FFFFFF" text-anchor="middle">Logic: (c1 AND c2) AND NOT c3</text>
+<text x="920" y="185" font-family="PingFang SC, Microsoft YaHei, Arial, sans-serif" font-size="14" fill="#2E7E94" text-anchor="middle">匹配 login 函数，排除 logout</text>
+<text x="690" y="230" font-family="PingFang SC, Microsoft YaHei, Arial, sans-serif" font-size="16" font-weight="700" fill="#223A48">逻辑树结构</text>
+<path fill="#2E7E94" d="M906,248 H934 A16,16 0 0 1 950,264 V264 A16,16 0 0 1 934,280 H906 A16,16 0 0 1 890,264 V264 A16,16 0 0 1 906,248 Z" />
+<text x="920" y="271" font-family="PingFang SC, Microsoft YaHei, Arial, sans-serif" font-size="13" font-weight="700" fill="#FFFFFF" text-anchor="middle">AND</text>
+<line x1="890" y1="280" x2="850" y2="310" stroke="#2E7E94" stroke-width="2" />
+<line x1="920" y1="280" x2="920" y2="310" stroke="#2E7E94" stroke-width="2" />
+<line x1="950" y1="280" x2="990" y2="310" stroke="#2E7E94" stroke-width="2" />
+<path fill="#2E7E94" d="M802,314 H898 A6,6 0 0 1 904,320 V340 A6,6 0 0 1 898,346 H802 A6,6 0 0 1 796,340 V320 A6,6 0 0 1 802,314 Z" />
+<text x="850" y="337" font-family="Consolas, Courier New, monospace" font-size="13" font-weight="700" fill="#FFFFFF" text-anchor="middle">c1: include</text>
+<path fill="#4A90A4" d="M872,314 H968 A6,6 0 0 1 974,320 V340 A6,6 0 0 1 968,346 H872 A6,6 0 0 1 866,340 V320 A6,6 0 0 1 872,314 Z" />
+<text x="920" y="337" font-family="Consolas, Courier New, monospace" font-size="13" font-weight="700" fill="#FFFFFF" text-anchor="middle">c2: include</text>
+<path fill="#C0392B" d="M976,314 H1004 A16,16 0 0 1 1020,330 V330 A16,16 0 0 1 1004,346 H976 A16,16 0 0 1 960,330 V330 A16,16 0 0 1 976,314 Z" />
+<text x="990" y="337" font-family="PingFang SC, Microsoft YaHei, Arial, sans-serif" font-size="13" font-weight="700" fill="#FFFFFF" text-anchor="middle">NOT</text>
+<line x1="990" y1="346" x2="990" y2="376" stroke="#2E7E94" stroke-width="2" />
+<path fill="#C0392B" d="M942,380 H1038 A6,6 0 0 1 1044,386 V406 A6,6 0 0 1 1038,412 H942 A6,6 0 0 1 936,406 V386 A6,6 0 0 1 942,380 Z" />
+<text x="990" y="403" font-family="Consolas, Courier New, monospace" font-size="13" font-weight="700" fill="#FFFFFF" text-anchor="middle">c3: exclude</text>
+<path fill="#E8EDF2" d="M648,440 H1192 A8,8 0 0 1 1200,448 V662 A8,8 0 0 1 1192,670 H648 A8,8 0 0 1 640,662 V448 A8,8 0 0 1 648,440 Z" />
+<text x="660" y="468" font-family="PingFang SC, Microsoft YaHei, Arial, sans-serif" font-size="15" font-weight="700" fill="#223A48">设计原则</text>
+<text x="660" y="498" font-family="PingFang SC, Microsoft YaHei, Arial, sans-serif" font-size="14" fill="#485D6A">  - SemCon 表达单个条件是什么</text>
+<text x="660" y="526" font-family="PingFang SC, Microsoft YaHei, Arial, sans-serif" font-size="14" fill="#485D6A">  - SemQL 表达条件如何组合</text>
+<text x="660" y="554" font-family="PingFang SC, Microsoft YaHei, Arial, sans-serif" font-size="14" fill="#485D6A">  - 编译阶段不固化执行顺序</text>
+<text x="660" y="582" font-family="PingFang SC, Microsoft YaHei, Arial, sans-serif" font-size="14" fill="#485D6A">  - AND / OR / NOT 由后续优化器动态规划</text>
+<text x="660" y="610" font-family="PingFang SC, Microsoft YaHei, Arial, sans-serif" font-size="14" fill="#485D6A">  - 执行逻辑随候选规模自适应调整</text>
+<text x="660" y="650" font-family="PingFang SC, Microsoft YaHei, Arial, sans-serif" font-size="13" font-weight="700" fill="#2E7E94">SemCon 提供可组合性，SemQL 提供可优化性与可解释性</text>
+<text x="1230" y="705" font-family="PingFang SC, Microsoft YaHei, Arial, sans-serif" font-size="15" fill="#697A84" text-anchor="end">10</text>
+</svg>

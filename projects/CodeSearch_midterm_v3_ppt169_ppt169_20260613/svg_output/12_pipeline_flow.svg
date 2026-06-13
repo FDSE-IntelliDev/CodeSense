@@ -1,0 +1,50 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" width="1280" height="720">
+<rect x="0" y="0" width="1280" height="720" fill="#F3F5F8"/>
+<text x="80" y="46" font-family="PingFang SC, Microsoft YaHei, Arial, sans-serif" font-size="24" font-weight="700" fill="#223A48">端到端流程: NL -> SemCon -> SemQL -> 分层执行 -> Bundle 输出</text>
+<rect x="60" y="68" width="1160" height="38" fill="#223A48" rx="6"/>
+<text x="640" y="94" font-family="PingFang SC, Microsoft YaHei, Arial, sans-serif" font-size="15" font-weight="700" fill="#FFFFFF" text-anchor="middle">Natural Language Query -> Final Results (带证据的分层输出)</text>
+<rect x="60" y="125" width="1160" height="70" fill="#FFFFFF" stroke="#2E7E94" stroke-width="2" rx="8"/>
+<rect x="60" y="125" width="8" height="70" fill="#2E7E94" rx="2"/>
+<text x="86" y="153" font-family="PingFang SC, Microsoft YaHei, Arial, sans-serif" font-size="18" font-weight="700" fill="#2E7E94">Query Compiler</text>
+<text x="500" y="153" font-family="PingFang SC, Microsoft YaHei, Arial, sans-serif" font-size="15" fill="#223A48">NL -> SemCon -> SemQL</text>
+<text x="86" y="177" font-family="PingFang SC, Microsoft YaHei, Arial, sans-serif" font-size="12.5" fill="#697A84">LLM 驱动 SemCon 抽取 (Surface / Relation / Intention) -> Agent/人工组织 SemQL</text>
+<polygon points="640,203 634,197 646,197" fill="#2E7E94"/>
+<rect x="60" y="219" width="1160" height="70" fill="#FFFFFF" stroke="#4A90A4" stroke-width="2" rx="8"/>
+<rect x="60" y="219" width="8" height="70" fill="#4A90A4" rx="2"/>
+<text x="86" y="247" font-family="PingFang SC, Microsoft YaHei, Arial, sans-serif" font-size="18" font-weight="700" fill="#4A90A4">Query Optimizer (RBO/CBO)</text>
+<text x="500" y="247" font-family="PingFang SC, Microsoft YaHei, Arial, sans-serif" font-size="15" fill="#223A48">逻辑计划 -> 物理执行计划</text>
+<text x="86" y="271" font-family="PingFang SC, Microsoft YaHei, Arial, sans-serif" font-size="12.5" fill="#697A84">RBO: Intention-Last / Surface-First / Dangling Ban / NOT-Pushdown | CBO: 选择性优先 · 动态截断</text>
+<polygon points="640,297 634,291 646,291" fill="#2E7E94"/>
+<rect x="60" y="313" width="1160" height="200" fill="#FFFFFF" stroke="#2E7E94" stroke-width="2" rx="8"/>
+<rect x="60" y="313" width="8" height="200" fill="#2E7E94" rx="2"/>
+<text x="86" y="343" font-family="PingFang SC, Microsoft YaHei, Arial, sans-serif" font-size="18" font-weight="700" fill="#2E7E94">Executor (三级执行引擎)</text>
+<text x="86" y="367" font-family="PingFang SC, Microsoft YaHei, Arial, sans-serif" font-size="13" fill="#697A84">按 Surface -> Relation -> Intention 代价递增顺序执行 | 每级在前一级结果集上操作</text>
+<rect x="86" y="389" width="360" height="70" fill="#E8EDF2" rx="6"/>
+<text x="96" y="409" font-family="PingFang SC, Microsoft YaHei, Arial, sans-serif" font-size="13" font-weight="700" fill="#2E7E94">Stage 1: Surface Execution</text>
+<text x="96" y="431" font-family="PingFang SC, Microsoft YaHei, Arial, sans-serif" font-size="11" fill="#485D6A">exact search / inverted index / ngram / term emb</text>
+<text x="446" y="423" font-family="PingFang SC, Microsoft YaHei, Arial, sans-serif" font-size="11" font-weight="700" fill="#2E7E94" text-anchor="end">~8,000</text>
+<text x="446" y="443" font-family="PingFang SC, Microsoft YaHei, Arial, sans-serif" font-size="10" fill="#697A84" text-anchor="end">&lt; 200ms 快速高召回</text>
+<polygon points="454,418 460,410 468,418" fill="#697A84"/>
+<rect x="458" y="389" width="360" height="70" fill="#E8EDF2" rx="6"/>
+<text x="468" y="409" font-family="PingFang SC, Microsoft YaHei, Arial, sans-serif" font-size="13" font-weight="700" fill="#4A90A4">Stage 2: Relation Execution</text>
+<text x="468" y="431" font-family="PingFang SC, Microsoft YaHei, Arial, sans-serif" font-size="11" fill="#485D6A">rule filter / LSP call graph BFS/DFS / CodeQL</text>
+<text x="818" y="423" font-family="PingFang SC, Microsoft YaHei, Arial, sans-serif" font-size="11" font-weight="700" fill="#4A90A4" text-anchor="end">~400</text>
+<text x="818" y="443" font-family="PingFang SC, Microsoft YaHei, Arial, sans-serif" font-size="10" fill="#697A84" text-anchor="end">&lt; 10ms~秒级 结构约束</text>
+<polygon points="826,418 832,410 840,418" fill="#697A84"/>
+<rect x="830" y="389" width="360" height="70" fill="#E8EDF2" rx="6"/>
+<text x="840" y="409" font-family="PingFang SC, Microsoft YaHei, Arial, sans-serif" font-size="13" font-weight="700" fill="#4CAF50">Stage 3: Intention Execution</text>
+<text x="840" y="431" font-family="PingFang SC, Microsoft YaHei, Arial, sans-serif" font-size="11" fill="#485D6A">Cluster Filter / Embedding Filter / LLM Judge</text>
+<text x="1190" y="423" font-family="PingFang SC, Microsoft YaHei, Arial, sans-serif" font-size="11" font-weight="700" fill="#4CAF50" text-anchor="end">~15</text>
+<text x="1190" y="443" font-family="PingFang SC, Microsoft YaHei, Arial, sans-serif" font-size="10" fill="#697A84" text-anchor="end">&lt; 3s 高成本后置判别</text>
+<text x="86" y="468" font-family="PingFang SC, Microsoft YaHei, Arial, sans-serif" font-size="13" font-weight="700" fill="#2E7E94">核心思想: 先用低成本条件收缩候选集，再把高成本语义判断用于少量候选</text>
+<polygon points="640,521 634,515 646,515" fill="#2E7E94"/>
+<rect x="60" y="532" width="560" height="70" fill="#FFFFFF" stroke="#2E7E94" stroke-width="2" rx="8"/>
+<rect x="60" y="532" width="8" height="70" fill="#2E7E94" rx="2"/>
+<text x="86" y="558" font-family="PingFang SC, Microsoft YaHei, Arial, sans-serif" font-size="18" font-weight="700" fill="#2E7E94">Bundle Generator</text>
+<text x="300" y="582" font-family="PingFang SC, Microsoft YaHei, Arial, sans-serif" font-size="12" fill="#697A84">通过 direct_caller / callee / same_class / same_file 合并关联节点</text>
+<rect x="660" y="532" width="560" height="70" fill="#FFFFFF" stroke="#2E7E94" stroke-width="2" rx="8"/>
+<rect x="660" y="532" width="8" height="70" fill="#2E7E94" rx="2"/>
+<text x="686" y="558" font-family="PingFang SC, Microsoft YaHei, Arial, sans-serif" font-size="18" font-weight="700" fill="#2E7E94">Grouped Reranker</text>
+<text x="900" y="582" font-family="PingFang SC, Microsoft YaHei, Arial, sans-serif" font-size="12" fill="#697A84">BundleScore = mean(score_i) + alpha x synergy_bonus (alpha=0.3)</text>
+<text x="1230" y="705" font-family="PingFang SC, Microsoft YaHei, Arial, sans-serif" font-size="15" fill="#697A84" text-anchor="end">12</text>
+</svg>

@@ -1,0 +1,76 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" width="1280" height="720">
+  <defs>
+    <linearGradient id="gc1" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#1F6FEB" />
+      <stop offset="100%" stop-color="#0B1F3A" />
+    </linearGradient>
+    <linearGradient id="gc2" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#12B5CB" />
+      <stop offset="100%" stop-color="#1F6FEB" />
+    </linearGradient>
+    <linearGradient id="gc3" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#16A34A" />
+      <stop offset="100%" stop-color="#0B1F3A" />
+    </linearGradient>
+  </defs>
+  <rect x="0" y="0" width="1280" height="720" fill="#F7FAFC" />
+
+  
+  <text x="64" y="68" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="40" font-weight="700" fill="#0B1F3A">
+    <tspan>SemCon：三类原子语义条件</tspan>
+  </text>
+  <text x="64" y="100" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="20" fill="#64748B">
+    <tspan>按执行代价从低到高排列，对应 Surface → Relation → Intention 三级执行阶段</tspan>
+  </text>
+
+  
+  <path fill="#FFFFFF" stroke="#CBD5E1" stroke-width="1" d="M76,130 H420 A12,12 0 0 1 432,142 V628 A12,12 0 0 1 420,640 H76 A12,12 0 0 1 64,628 V142 A12,12 0 0 1 76,130 Z" />
+  <path fill="url(#gc1)" d="M68,130 H428 A4,4 0 0 1 432,134 V134 A4,4 0 0 1 428,138 H68 A4,4 0 0 1 64,134 V134 A4,4 0 0 1 68,130 Z" />
+  <path fill="#EAF1F8" d="M76,130 H420 A12,12 0 0 1 432,142 V178 A12,12 0 0 1 420,190 H76 A12,12 0 0 1 64,178 V142 A12,12 0 0 1 76,130 Z" />
+  <text x="248" y="168" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="28" font-weight="700" fill="#0B1F3A" text-anchor="middle">
+    <tspan>Surface Condition</tspan>
+  </text>
+  <text x="248" y="216" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="18" fill="#64748B" text-anchor="middle">
+    <tspan>表层 / 词法特征 | 低成本优先召回</tspan>
+  </text>
+
+  <text x="88" y="266" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="14" font-weight="700" fill="#1F6FEB">
+    <tspan>关键字段</tspan>
+  </text>
+  <text font-family="Consolas, &quot;Courier New&quot;, monospace" fill="#0F172A" font-size="14" x="88" y="300">type: "surface"</text><text font-family="Consolas, &quot;Courier New&quot;, monospace" fill="#334155" font-size="14" x="88" y="326">property: include | exclude</text><text font-family="Consolas, &quot;Courier New&quot;, monospace" fill="#334155" font-size="14" x="88" y="352">keywords: [...]</text><text font-family="Consolas, &quot;Courier New&quot;, monospace" fill="#334155" font-size="14" x="88" y="378">synonyms: [...]</text><text font-family="Consolas, &quot;Courier New&quot;, monospace" fill="#334155" font-size="14" x="88" y="404">match_kind: code_element |</text><text font-family="Consolas, &quot;Courier New&quot;, monospace" fill="#334155" font-size="14" x="112" y="430">code_snippet | code_line</text><text font-family="Consolas, &quot;Courier New&quot;, monospace" fill="#334155" font-size="14" x="88" y="456">code_element_type: function |</text><text font-family="Consolas, &quot;Courier New&quot;, monospace" fill="#334155" font-size="14" x="112" y="482">class | variable | ...</text><text x="88" y="530" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="14" font-weight="700" fill="#1F6FEB">
+    <tspan>执行后端</tspan>
+  </text>
+  <text font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" fill="#334155" font-size="14" x="88" y="560">exact search · inverted index</text><text font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" fill="#334155" font-size="14" x="88" y="586">ngram · abbreviation · fuzzy matcher</text><text font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" fill="#334155" font-size="14" x="88" y="612">term embedding (FastText + ICF)</text><path fill="#FFFFFF" stroke="#CBD5E1" stroke-width="1" d="M468,130 H812 A12,12 0 0 1 824,142 V628 A12,12 0 0 1 812,640 H468 A12,12 0 0 1 456,628 V142 A12,12 0 0 1 468,130 Z" />
+  <path fill="url(#gc2)" d="M460,130 H820 A4,4 0 0 1 824,134 V134 A4,4 0 0 1 820,138 H460 A4,4 0 0 1 456,134 V134 A4,4 0 0 1 460,130 Z" />
+  <path fill="#EAF1F8" d="M468,130 H812 A12,12 0 0 1 824,142 V178 A12,12 0 0 1 812,190 H468 A12,12 0 0 1 456,178 V142 A12,12 0 0 1 468,130 Z" />
+  <text x="640" y="168" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="28" font-weight="700" fill="#0B1F3A" text-anchor="middle">
+    <tspan>Relation Condition</tspan>
+  </text>
+  <text x="640" y="216" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="18" fill="#64748B" text-anchor="middle">
+    <tspan>关系 / 结构特征 | 中等成本约束收敛</tspan>
+  </text>
+
+  <text x="480" y="266" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="14" font-weight="700" fill="#12B5CB">
+    <tspan>关键字段</tspan>
+  </text>
+  <text font-family="Consolas, &quot;Courier New&quot;, monospace" fill="#0F172A" font-size="14" x="480" y="300">type: "relation"</text><text font-family="Consolas, &quot;Courier New&quot;, monospace" fill="#334155" font-size="14" x="480" y="326">property: include | exclude</text><text font-family="Consolas, &quot;Courier New&quot;, monospace" fill="#334155" font-size="14" x="480" y="352">code_element_type: function |</text><text font-family="Consolas, &quot;Courier New&quot;, monospace" fill="#334155" font-size="14" x="496" y="378">class | variable | ...</text><text font-family="Consolas, &quot;Courier New&quot;, monospace" fill="#334155" font-size="14" x="480" y="404">file_path: "path/*.py"</text><text font-family="Consolas, &quot;Courier New&quot;, monospace" fill="#334155" font-size="14" x="480" y="430">container: "ClassA"</text><text font-family="Consolas, &quot;Courier New&quot;, monospace" fill="#334155" font-size="14" x="480" y="456">graph_constraint: {</text><text font-family="Consolas, &quot;Courier New&quot;, monospace" fill="#334155" font-size="14" x="496" y="482">anchor, relation, value }</text><text font-family="Consolas, &quot;Courier New&quot;, monospace" fill="#334155" font-size="14" x="480" y="508">caller / callee: ...</text><text font-family="Consolas, &quot;Courier New&quot;, monospace" fill="#334155" font-size="14" x="480" y="534">code_ql: "..." | null</text><text x="480" y="580" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="14" font-weight="700" fill="#12B5CB">
+    <tspan>执行后端</tspan>
+  </text>
+  <text font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" fill="#334155" font-size="14" x="480" y="610">Tier 1: Symbol Index (&lt; 1ms)</text><text font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" fill="#334155" font-size="14" x="480" y="630">Tier 2: LSP Call Graph BFS/DFS</text><path fill="#FFFFFF" stroke="#CBD5E1" stroke-width="1" d="M860,130 H1204 A12,12 0 0 1 1216,142 V628 A12,12 0 0 1 1204,640 H860 A12,12 0 0 1 848,628 V142 A12,12 0 0 1 860,130 Z" />
+  <path fill="url(#gc3)" d="M852,130 H1212 A4,4 0 0 1 1216,134 V134 A4,4 0 0 1 1212,138 H852 A4,4 0 0 1 848,134 V134 A4,4 0 0 1 852,130 Z" />
+  <path fill="#EAF1F8" d="M860,130 H1204 A12,12 0 0 1 1216,142 V178 A12,12 0 0 1 1204,190 H860 A12,12 0 0 1 848,178 V142 A12,12 0 0 1 860,130 Z" />
+  <text x="1032" y="168" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="28" font-weight="700" fill="#0B1F3A" text-anchor="middle">
+    <tspan>Intention Condition</tspan>
+  </text>
+  <text x="1032" y="216" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="18" fill="#64748B" text-anchor="middle">
+    <tspan>意图 / 语义特征 | 高成本后置判别</tspan>
+  </text>
+
+  <text x="872" y="266" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="14" font-weight="700" fill="#16A34A">
+    <tspan>关键字段</tspan>
+  </text>
+  <text font-family="Consolas, &quot;Courier New&quot;, monospace" fill="#0F172A" font-size="14" x="872" y="300">type: "intention"</text><text font-family="Consolas, &quot;Courier New&quot;, monospace" fill="#334155" font-size="14" x="872" y="326">property: include | exclude</text><text font-family="Consolas, &quot;Courier New&quot;, monospace" fill="#334155" font-size="14" x="872" y="352">intent: {</text><text font-family="Consolas, &quot;Courier New&quot;, monospace" fill="#334155" font-size="14" x="888" y="378">action: "...",</text><text font-family="Consolas, &quot;Courier New&quot;, monospace" fill="#334155" font-size="14" x="888" y="404">object: "..." }</text><text font-family="Consolas, &quot;Courier New&quot;, monospace" fill="#334155" font-size="14" x="872" y="430">intent_statement: "..."</text><text font-family="Consolas, &quot;Courier New&quot;, monospace" fill="#334155" font-size="14" x="872" y="456">aspect: functional |</text><text font-family="Consolas, &quot;Courier New&quot;, monospace" fill="#334155" font-size="14" x="888" y="482">non_functional | domain</text><text font-family="Consolas, &quot;Courier New&quot;, monospace" fill="#334155" font-size="14" x="872" y="508">non_functional_type: performance</text><text font-family="Consolas, &quot;Courier New&quot;, monospace" fill="#334155" font-size="14" x="888" y="534">| security | ... | null</text><text x="872" y="580" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="14" font-weight="700" fill="#16A34A">
+    <tspan>执行后端</tspan>
+  </text>
+  <text font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" fill="#334155" font-size="14" x="872" y="610">Cluster Filter (粗粒度)</text><text font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" fill="#334155" font-size="14" x="872" y="630">Embedding Filter (细粒度)</text><text x="1216" y="700" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="16" fill="#CBD5E1" text-anchor="end">09</text>
+</svg>

@@ -1,0 +1,1 @@
+展示 SemQL 的逻辑组合机制。查询 "Find the login function but not logout" 被拆解为三个原子条件：c1 Surface include 匹配 login，c2 Relation include 限定 function 类型，c3 Intention exclude 排除 logout。三者通过 AND/NOT 组合为逻辑树：(c1 AND c2) AND NOT c3。SemCon 抽取由 LLM 完成，输出 semCon.json；SemQL 组织按 include/exclude 分组，输出 semQL.json。关键设计原则：编译阶段不固化执行顺序，AND/OR/NOT 由后续 Optimizer 动态规划，执行逻辑随候选规模自适应调整。

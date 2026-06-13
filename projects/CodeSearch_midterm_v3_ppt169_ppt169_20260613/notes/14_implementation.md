@@ -1,0 +1,1 @@
+已完成模块包括离线解析与符号索引、N-gram 拆分+倒排索引、FastText+ICF 共现 Embedding、SentenceTransformer 语义 Embedding、hybrid/pairwise 双通道融合、SemCon 抽取与 SemQL 组织、Surface/Relation/Intention Executor。待实现包括 RBO/CBO 查询优化器、内存调用图 BFS/DFS、CodeQL 后端集成、LLM-as-a-Judge、Bundle Generator+Synergy Scorer 和 Benchmark 评测。研发路径分四个 Phase：概念建模与 DSL 设计（当前）、查询优化器（近期）、执行引擎完善（中期）、Bundle 重排与 Benchmark（后期）。

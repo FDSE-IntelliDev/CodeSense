@@ -1,0 +1,134 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" width="1280" height="720">
+  <defs>
+    <linearGradient id="gc1" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#1F6FEB" />
+      <stop offset="100%" stop-color="#0B1F3A" />
+    </linearGradient>
+  </defs>
+  <rect x="0" y="0" width="1280" height="720" fill="#F7FAFC" />
+
+  
+  <text x="64" y="56" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="40" font-weight="700" fill="#0B1F3A">
+    <tspan>SemQL：从原子条件到逻辑组合查询计划</tspan>
+  </text>
+
+  
+  <path fill="#FFFFFF" stroke="#CBD5E1" stroke-width="1" d="M76,80 H600 A12,12 0 0 1 612,92 V658 A12,12 0 0 1 600,670 H76 A12,12 0 0 1 64,658 V92 A12,12 0 0 1 76,80 Z" />
+  <path fill="#0B1F3A" d="M76,80 H600 A12,12 0 0 1 612,92 V116 A12,12 0 0 1 600,128 H76 A12,12 0 0 1 64,116 V92 A12,12 0 0 1 76,80 Z" />
+  <text x="338" y="112" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="22" font-weight="700" fill="#FFFFFF" text-anchor="middle">
+    <tspan>Step 1: SemCon 抽取（LLM 驱动）</tspan>
+  </text>
+
+  
+  <path fill="#EAF1F8" d="M96,148 H580 A8,8 0 0 1 588,156 V192 A8,8 0 0 1 580,200 H96 A8,8 0 0 1 88,192 V156 A8,8 0 0 1 96,148 Z" />
+  <text x="104" y="160" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="14" fill="#64748B">
+    <tspan>Query</tspan>
+  </text>
+  <text x="104" y="186" font-family="Consolas, &quot;Courier New&quot;, monospace" font-size="16" font-weight="700" fill="#0F172A">
+    <tspan>"Find the login function but not logout"</tspan>
+  </text>
+
+  
+  <path fill="#FFFFFF" stroke="#1F6FEB" stroke-width="2" d="M96,220 H580 A8,8 0 0 1 588,228 V342 A8,8 0 0 1 580,350 H96 A8,8 0 0 1 88,342 V228 A8,8 0 0 1 96,220 Z" />
+  <path fill="#1F6FEB" d="M96,220 H580 A8,8 0 0 1 588,228 V248 A8,8 0 0 1 580,256 H96 A8,8 0 0 1 88,248 V228 A8,8 0 0 1 96,220 Z" />
+  <text x="104" y="245" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="18" font-weight="700" fill="#FFFFFF">
+    <tspan>c1: Surface Condition (include)</tspan>
+  </text>
+  <text x="104" y="278" font-family="Consolas, &quot;Courier New&quot;, monospace" font-size="13" fill="#0F172A">
+    <tspan>"type": "surface",</tspan>
+  </text>
+  <text x="104" y="298" font-family="Consolas, &quot;Courier New&quot;, monospace" font-size="13" fill="#0F172A">
+    <tspan>"keywords": ["login"], "match_kind": "code_element"</tspan>
+  </text>
+  <text x="104" y="322" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="14" fill="#64748B">
+    <tspan>→ 匹配 login 函数名</tspan>
+  </text>
+
+  
+  <path fill="#FFFFFF" stroke="#12B5CB" stroke-width="2" d="M96,365 H580 A8,8 0 0 1 588,373 V487 A8,8 0 0 1 580,495 H96 A8,8 0 0 1 88,487 V373 A8,8 0 0 1 96,365 Z" />
+  <path fill="#12B5CB" d="M96,365 H580 A8,8 0 0 1 588,373 V393 A8,8 0 0 1 580,401 H96 A8,8 0 0 1 88,393 V373 A8,8 0 0 1 96,365 Z" />
+  <text x="104" y="390" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="18" font-weight="700" fill="#FFFFFF">
+    <tspan>c2: Relation Condition (include)</tspan>
+  </text>
+  <text x="104" y="423" font-family="Consolas, &quot;Courier New&quot;, monospace" font-size="13" fill="#0F172A">
+    <tspan>"type": "relation",</tspan>
+  </text>
+  <text x="104" y="443" font-family="Consolas, &quot;Courier New&quot;, monospace" font-size="13" fill="#0F172A">
+    <tspan>"code_element_type": "function"</tspan>
+  </text>
+  <text x="104" y="467" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="14" fill="#64748B">
+    <tspan>→ 限定目标为函数类型</tspan>
+  </text>
+
+  
+  <path fill="#FFFFFF" stroke="#DC2626" stroke-width="2" d="M96,510 H580 A8,8 0 0 1 588,518 V632 A8,8 0 0 1 580,640 H96 A8,8 0 0 1 88,632 V518 A8,8 0 0 1 96,510 Z" />
+  <path fill="#DC2626" d="M96,510 H580 A8,8 0 0 1 588,518 V538 A8,8 0 0 1 580,546 H96 A8,8 0 0 1 88,538 V518 A8,8 0 0 1 96,510 Z" />
+  <text x="104" y="535" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="18" font-weight="700" fill="#FFFFFF">
+    <tspan>c3: Intention Condition (exclude)</tspan>
+  </text>
+  <text x="104" y="568" font-family="Consolas, &quot;Courier New&quot;, monospace" font-size="13" fill="#0F172A">
+    <tspan>"type": "intention", "property": "exclude",</tspan>
+  </text>
+  <text x="104" y="588" font-family="Consolas, &quot;Courier New&quot;, monospace" font-size="13" fill="#0F172A">
+    <tspan>"keywords": ["logout"]</tspan>
+  </text>
+  <text x="104" y="612" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="14" fill="#64748B">
+    <tspan>→ 排除 logout 相关代码</tspan>
+  </text>
+
+  
+  <path fill="#FFFFFF" stroke="#CBD5E1" stroke-width="1" d="M648,80 H1204 A12,12 0 0 1 1216,92 V658 A12,12 0 0 1 1204,670 H648 A12,12 0 0 1 636,658 V92 A12,12 0 0 1 648,80 Z" />
+  <path fill="url(#gc1)" d="M648,80 H1204 A12,12 0 0 1 1216,92 V116 A12,12 0 0 1 1204,128 H648 A12,12 0 0 1 636,116 V92 A12,12 0 0 1 648,80 Z" />
+  <text x="926" y="112" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="22" font-weight="700" fill="#FFFFFF" text-anchor="middle">
+    <tspan>Step 2: SemQL 逻辑组合 (Agent/人工)</tspan>
+  </text>
+
+  
+  <path fill="#0B1F3A" d="M668,150 H1184 A8,8 0 0 1 1192,158 V218 A8,8 0 0 1 1184,226 H668 A8,8 0 0 1 660,218 V158 A8,8 0 0 1 668,150 Z" />
+  <text x="926" y="172" font-family="Consolas, &quot;Courier New&quot;, monospace" font-size="14" fill="#12B5CB" text-anchor="middle">
+    <tspan>Logic: (c1 AND c2) AND NOT c3</tspan>
+  </text>
+  <text x="926" y="210" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="18" fill="#FFFFFF" text-anchor="middle">
+    <tspan>匹配 login 函数，排除 logout</tspan>
+  </text>
+
+  
+  <text x="726" y="270" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="18" font-weight="700" fill="#0B1F3A">
+    <tspan>逻辑树结构</tspan>
+  </text>
+
+  
+  <path fill="#1F6FEB" d="M884,288 H908 A18,18 0 0 1 926,306 V306 A18,18 0 0 1 908,324 H884 A18,18 0 0 1 866,306 V306 A18,18 0 0 1 884,288 Z" />
+  <text x="896" y="313" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="16" font-weight="700" fill="#FFFFFF" text-anchor="middle">AND</text>
+
+  
+  <line x1="880" y1="324" x2="830" y2="360" stroke="#1F6FEB" stroke-width="2" />
+  <line x1="896" y1="324" x2="896" y2="360" stroke="#1F6FEB" stroke-width="2" />
+  <line x1="930" y1="324" x2="980" y2="360" stroke="#1F6FEB" stroke-width="2" />
+
+  
+  <path fill="#1F6FEB" d="M784,365 H876 A8,8 0 0 1 884,373 V393 A8,8 0 0 1 876,401 H784 A8,8 0 0 1 776,393 V373 A8,8 0 0 1 784,365 Z" />
+  <text x="830" y="389" font-family="Consolas, &quot;Courier New&quot;, monospace" font-size="16" font-weight="700" fill="#FFFFFF" text-anchor="middle">c1: include</text>
+
+  
+  <path fill="#12B5CB" d="M850,365 H942 A8,8 0 0 1 950,373 V393 A8,8 0 0 1 942,401 H850 A8,8 0 0 1 842,393 V373 A8,8 0 0 1 850,365 Z" />
+  <text x="896" y="389" font-family="Consolas, &quot;Courier New&quot;, monospace" font-size="16" font-weight="700" fill="#FFFFFF" text-anchor="middle">c2: include</text>
+
+  
+  <path fill="#DC2626" d="M968,365 H992 A18,18 0 0 1 1010,383 V383 A18,18 0 0 1 992,401 H968 A18,18 0 0 1 950,383 V383 A18,18 0 0 1 968,365 Z" />
+  <text x="980" y="389" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="14" font-weight="700" fill="#FFFFFF" text-anchor="middle">NOT</text>
+
+  
+  <line x1="980" y1="401" x2="980" y2="436" stroke="#DC2626" stroke-width="2" />
+
+  <path fill="#DC2626" d="M934,441 H1026 A8,8 0 0 1 1034,449 V469 A8,8 0 0 1 1026,477 H934 A8,8 0 0 1 926,469 V449 A8,8 0 0 1 934,441 Z" />
+  <text x="980" y="465" font-family="Consolas, &quot;Courier New&quot;, monospace" font-size="16" font-weight="700" fill="#FFFFFF" text-anchor="middle">c3: exclude</text>
+
+  
+  <text x="660" y="528" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="18" font-weight="700" fill="#0B1F3A">
+    <tspan>输出结构</tspan>
+  </text>
+
+  <path fill="#EAF1F8" d="M668,544 H1184 A8,8 0 0 1 1192,552 V652 A8,8 0 0 1 1184,660 H668 A8,8 0 0 1 660,652 V552 A8,8 0 0 1 668,544 Z" />
+  <text font-family="Consolas, &quot;Courier New&quot;, monospace" fill="#0F172A" font-size="13" x="678" y="568">semCon.json (LLM 抽取) → semQL.json (按 include/exclude 组织)</text><text font-family="Consolas, &quot;Courier New&quot;, monospace" fill="#334155" font-size="13" x="678" y="594">输出至 output/{project}/semCon.json, output/{project}/semQL.json</text><text font-family="Consolas, &quot;Courier New&quot;, monospace" fill="#334155" font-size="13" x="678" y="620">后续由优化器 (RBO/CBO) 动态规划执行顺序</text><text font-family="Consolas, &quot;Courier New&quot;, monospace" fill="#64748B" font-size="13" x="678" y="646">实现: query_processing/llm_semCon_extractor.py + semQL_composer.py</text><text x="1216" y="700" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="16" fill="#CBD5E1" text-anchor="end">10</text>
+</svg>

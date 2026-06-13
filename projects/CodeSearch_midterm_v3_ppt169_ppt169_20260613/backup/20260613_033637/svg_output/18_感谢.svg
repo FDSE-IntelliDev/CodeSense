@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" width="1280" height="720">
+<rect x="0" y="0" width="1280" height="720" fill="#223A48"/>
+<text x="640" y="260" font-family="PingFang SC, Microsoft YaHei, Arial, sans-serif" font-size="48" font-weight="700" fill="#FFFFFF" text-anchor="middle">感谢聆听</text>
+<text x="640" y="340" font-family="PingFang SC, Microsoft YaHei, Arial, sans-serif" font-size="24" fill="#2E7E94" text-anchor="middle">敬请各位老师批评指正!</text>
+<text x="640" y="430" font-family="PingFang SC, Microsoft YaHei, Arial, sans-serif" font-size="18" fill="#FFFFFF" text-anchor="middle">汇报人: 黄卓谌    指导老师: 彭鑫</text>
+<text x="640" y="500" font-family="PingFang SC, Microsoft YaHei, Arial, sans-serif" font-size="16" fill="#485D6A" text-anchor="middle">后续将围绕查询优化器、执行引擎、Bundle 重排与系统化评测继续推进。</text>
+<text x="1230" y="705" font-family="PingFang SC, Microsoft YaHei, Arial, sans-serif" font-size="15" fill="#697A84" text-anchor="end">18</text>
+</svg>

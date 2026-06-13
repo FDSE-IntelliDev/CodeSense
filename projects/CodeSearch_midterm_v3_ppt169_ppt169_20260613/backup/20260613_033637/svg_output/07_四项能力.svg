@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" width="1280" height="720">
+<rect x="0" y="0" width="1280" height="720" fill="#F3F5F8"/>
+<text x="80" y="50" font-family="PingFang SC, Microsoft YaHei, Arial, sans-serif" font-size="24" font-weight="700" fill="#223A48">研究内容与目标：SemQL 2.0 的四项能力</text>
+<text x="80" y="78" font-family="PingFang SC, Microsoft YaHei, Arial, sans-serif" font-size="14.5" font-weight="700" fill="#223A48">设计并实现面向代码智能体的高级查询语言与执行引擎，使自然语言 Query 能够被结构化、优化、执行并解释。</text>
+<rect x="80" y="110" width="270" height="240" fill="#FFFFFF" stroke="#D0D8E0" stroke-width="1" rx="8"/>
+<rect x="80" y="110" width="270" height="6" fill="#2E7E94"/>
+<text x="215" y="150" font-family="PingFang SC, Microsoft YaHei, Arial, sans-serif" font-size="16" font-weight="700" fill="#2E7E94" text-anchor="middle">可组合性</text>
+<text x="100" y="190" font-family="PingFang SC, Microsoft YaHei, Arial, sans-serif" font-size="13" fill="#485D6A">支持 Surface、Relation、</text>
+<text x="100" y="216" font-family="PingFang SC, Microsoft YaHei, Arial, sans-serif" font-size="13" fill="#485D6A">Intention 等多类型条件</text>
+<text x="100" y="242" font-family="PingFang SC, Microsoft YaHei, Arial, sans-serif" font-size="13" fill="#485D6A">通过布尔逻辑组合，</text>
+<text x="100" y="268" font-family="PingFang SC, Microsoft YaHei, Arial, sans-serif" font-size="13" fill="#485D6A">表达复杂检索意图。</text>
+<rect x="375" y="110" width="270" height="240" fill="#FFFFFF" stroke="#D0D8E0" stroke-width="1" rx="8"/>
+<rect x="375" y="110" width="270" height="6" fill="#2E7E94"/>
+<text x="510" y="150" font-family="PingFang SC, Microsoft YaHei, Arial, sans-serif" font-size="16" font-weight="700" fill="#2E7E94" text-anchor="middle">可优化性</text>
+<text x="395" y="190" font-family="PingFang SC, Microsoft YaHei, Arial, sans-serif" font-size="13" fill="#485D6A">引入规则优化与代价优化，</text>
+<text x="395" y="216" font-family="PingFang SC, Microsoft YaHei, Arial, sans-serif" font-size="13" fill="#485D6A">在候选集规模和语义判断</text>
+<text x="395" y="242" font-family="PingFang SC, Microsoft YaHei, Arial, sans-serif" font-size="13" fill="#485D6A">成本之间取得平衡。</text>
+<rect x="670" y="110" width="270" height="240" fill="#FFFFFF" stroke="#D0D8E0" stroke-width="1" rx="8"/>
+<rect x="670" y="110" width="270" height="6" fill="#2E7E94"/>
+<text x="805" y="150" font-family="PingFang SC, Microsoft YaHei, Arial, sans-serif" font-size="16" font-weight="700" fill="#2E7E94" text-anchor="middle">可解释性</text>
+<text x="690" y="190" font-family="PingFang SC, Microsoft YaHei, Arial, sans-serif" font-size="13" fill="#485D6A">每个匹配结果携带词法、</text>
+<text x="690" y="216" font-family="PingFang SC, Microsoft YaHei, Arial, sans-serif" font-size="13" fill="#485D6A">结构、语义等多维证据，</text>
+<text x="690" y="242" font-family="PingFang SC, Microsoft YaHei, Arial, sans-serif" font-size="13" fill="#485D6A">便于 Agent 继续推理。</text>
+<rect x="80" y="370" width="270" height="240" fill="#FFFFFF" stroke="#D0D8E0" stroke-width="1" rx="8"/>
+<rect x="80" y="370" width="270" height="6" fill="#2E7E94"/>
+<text x="215" y="410" font-family="PingFang SC, Microsoft YaHei, Arial, sans-serif" font-size="16" font-weight="700" fill="#2E7E94" text-anchor="middle">上下文感知</text>
+<text x="100" y="450" font-family="PingFang SC, Microsoft YaHei, Arial, sans-serif" font-size="13" fill="#485D6A">从单点代码块扩展到</text>
+<text x="100" y="476" font-family="PingFang SC, Microsoft YaHei, Arial, sans-serif" font-size="13" fill="#485D6A">代码子图和 Context Bundle，</text>
+<text x="100" y="502" font-family="PingFang SC, Microsoft YaHei, Arial, sans-serif" font-size="13" fill="#485D6A">提高 Top-K 可用性。</text>
+<rect x="80" y="640" width="1120" height="40" fill="#E8EDF2" rx="6"/>
+<text x="640" y="666" font-family="PingFang SC, Microsoft YaHei, Arial, sans-serif" font-size="13" font-weight="700" fill="#2E7E94" text-anchor="middle">最终目标：形成高召回、高精度、低成本、可解释的 Agent-Oriented Code Search 方法。</text>
+<text x="1230" y="705" font-family="PingFang SC, Microsoft YaHei, Arial, sans-serif" font-size="15" fill="#697A84" text-anchor="end">7</text>
+</svg>

@@ -1,0 +1,149 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" width="1280" height="720">
+  <defs>
+    <linearGradient id="gc1" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1F6FEB"/>
+      <stop offset="100%" stop-color="#12B5CB"/>
+    </linearGradient>
+  </defs>
+  <rect x="0" y="0" width="1280" height="720" fill="#F7FAFC"/>
+
+  <text x="64" y="56" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="40" font-weight="700" fill="#0B1F3A">
+    <tspan>评测指标体系</tspan>
+  </text>
+
+  <!-- Left: Quality metrics -->
+  <rect x="64" y="80" width="568" height="28" rx="6" fill="#1F6FEB"/>
+  <text x="348" y="100" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="18" font-weight="700" fill="#FFFFFF" text-anchor="middle">
+    <tspan>检索质量指标</tspan>
+  </text>
+
+  <!-- Metric rows -->
+  <rect x="64" y="118" width="568" height="52" rx="6" fill="#FFFFFF" stroke="#CBD5E1" stroke-width="1"/>
+  <text x="88" y="140" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="18" font-weight="700" fill="#1F6FEB">
+    <tspan>Recall@K</tspan>
+  </text>
+  <text x="240" y="140" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="18" fill="#0F172A">
+    <tspan>前 K 个结果覆盖真实答案的比率</tspan>
+  </text>
+  <text x="88" y="162" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="14" fill="#64748B">
+    <tspan>衡量召回能力 — 能否找到所有相关代码元素</tspan>
+  </text>
+
+  <rect x="64" y="178" width="568" height="38" rx="6" fill="#FFFFFF" stroke="#CBD5E1" stroke-width="1"/>
+  <text x="88" y="203" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="18" font-weight="700" fill="#1F6FEB">
+    <tspan>Precision@K</tspan>
+  </text>
+  <text x="240" y="203" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="18" fill="#0F172A">
+    <tspan>前 K 个结果中真实答案的比率 — 衡量精度</tspan>
+  </text>
+
+  <rect x="64" y="224" width="568" height="38" rx="6" fill="#FFFFFF" stroke="#CBD5E1" stroke-width="1"/>
+  <text x="88" y="249" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="18" font-weight="700" fill="#1F6FEB">
+    <tspan>MRR</tspan>
+  </text>
+  <text x="240" y="249" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="18" fill="#0F172A">
+    <tspan>第一个正确结果位置的倒数均值 — Mean Reciprocal Rank</tspan>
+  </text>
+
+  <rect x="64" y="270" width="568" height="38" rx="6" fill="#FFFFFF" stroke="#CBD5E1" stroke-width="1"/>
+  <text x="88" y="295" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="18" font-weight="700" fill="#1F6FEB">
+    <tspan>nDCG@K</tspan>
+  </text>
+  <text x="240" y="295" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="18" fill="#0F172A">
+    <tspan>考虑结果位置权重的排序质量指标</tspan>
+  </text>
+
+  <rect x="64" y="316" width="568" height="38" rx="6" fill="#FFFFFF" stroke="#CBD5E1" stroke-width="1"/>
+  <text x="88" y="341" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="18" font-weight="700" fill="#12B5CB">
+    <tspan>Bundle Relevance</tspan>
+  </text>
+  <text x="240" y="341" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="18" fill="#0F172A">
+    <tspan>Bundle 内所有节点对 Query 的平均相关性（人工标注）</tspan>
+  </text>
+
+  <rect x="64" y="362" width="568" height="38" rx="6" fill="#FFFFFF" stroke="#CBD5E1" stroke-width="1"/>
+  <text x="88" y="387" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="18" font-weight="700" fill="#12B5CB">
+    <tspan>Bundle Hit Rate</tspan>
+  </text>
+  <text x="240" y="387" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="18" fill="#0F172A">
+    <tspan>正确 Bundle（含全部必要节点）出现在 Top-K 的比率</tspan>
+  </text>
+
+  <!-- Right: Efficiency metrics -->
+  <rect x="660" y="80" width="556" height="28" rx="6" fill="#16A34A"/>
+  <text x="938" y="100" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="18" font-weight="700" fill="#FFFFFF" text-anchor="middle">
+    <tspan>执行效率指标</tspan>
+  </text>
+
+  <rect x="660" y="118" width="556" height="52" rx="6" fill="#FFFFFF" stroke="#CBD5E1" stroke-width="1"/>
+  <text x="684" y="140" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="18" font-weight="700" fill="#16A34A">
+    <tspan>P50 / P99 端到端延迟</tspan>
+  </text>
+  <text x="900" y="140" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="18" fill="#0F172A">
+    <tspan>Surface &lt; 200ms</tspan>
+  </text>
+  <text x="684" y="162" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="14" fill="#64748B">
+    <tspan>含 Intention 阶段 &lt; 3s</tspan>
+  </text>
+
+  <rect x="660" y="178" width="556" height="38" rx="6" fill="#FFFFFF" stroke="#CBD5E1" stroke-width="1"/>
+  <text x="684" y="203" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="18" font-weight="700" fill="#16A34A">
+    <tspan>Intention 命中缓存率</tspan>
+  </text>
+  <text x="900" y="203" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="18" fill="#0F172A">
+    <tspan>&gt; 60%（重复查询场景）</tspan>
+  </text>
+
+  <rect x="660" y="224" width="556" height="38" rx="6" fill="#FFFFFF" stroke="#CBD5E1" stroke-width="1"/>
+  <text x="684" y="249" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="18" font-weight="700" fill="#16A34A">
+    <tspan>LLM API 调用次数/查询</tspan>
+  </text>
+  <text x="900" y="249" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="18" fill="#0F172A">
+    <tspan>大型项目平均 &lt; 50 次</tspan>
+  </text>
+
+  <rect x="660" y="270" width="556" height="52" rx="6" fill="#FFFFFF" stroke="#CBD5E1" stroke-width="1"/>
+  <text x="684" y="292" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="18" font-weight="700" fill="#16A34A">
+    <tspan>候选集截断率</tspan>
+  </text>
+  <text x="900" y="292" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="18" fill="#0F172A">
+    <tspan>Intention 阶段候选 &lt; 100</tspan>
+  </text>
+  <text x="684" y="314" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="14" fill="#64748B">
+    <tspan>大型项目 &lt; 0.2% 全库代码元素</tspan>
+  </text>
+
+  <!-- Benchmark section at bottom -->
+  <rect x="64" y="416" width="1152" height="170" rx="8" fill="#FFFFFF" stroke="#CBD5E1" stroke-width="1"/>
+  <rect x="64" y="416" width="1152" height="40" rx="8" fill="url(#gc1)"/>
+  <text x="640" y="442" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="20" font-weight="700" fill="#FFFFFF" text-anchor="middle">
+    <tspan>Benchmark 数据集</tspan>
+  </text>
+
+  <text x="88" y="486" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="20" font-weight="700" fill="#1F6FEB">
+    <tspan>SWE-bench</tspan>
+  </text>
+  <text x="88" y="516" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="16" fill="#334155">
+    <tspan>从 GitHub Issue 到代码定位，天然 Agent 检索场景</tspan>
+  </text>
+
+  <text x="460" y="486" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="20" font-weight="700" fill="#12B5CB">
+    <tspan>CodeSearchNet</tspan>
+  </text>
+  <text x="460" y="516" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="16" fill="#334155">
+    <tspan>标准代码语义搜索基准</tspan>
+  </text>
+
+  <text x="860" y="486" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="20" font-weight="700" fill="#16A34A">
+    <tspan>内部 Agent Benchmark</tspan>
+  </text>
+  <text x="860" y="516" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="16" fill="#334155">
+    <tspan>从真实 Agent 任务收集 NL Query 与正确代码对</tspan>
+  </text>
+
+  <text x="88" y="560" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="16" fill="#64748B">
+    <tspan>通过消融实验验证各执行阶段 (Surface / Relation / Intention / Bundle Rerank) 的贡献</tspan>
+  </text>
+
+  <text x="1216" y="700" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="16" fill="#CBD5E1" text-anchor="end">16</text>
+</svg>

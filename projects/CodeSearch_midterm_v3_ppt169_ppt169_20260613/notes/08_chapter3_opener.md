@@ -1,0 +1,1 @@
+第三章过渡页。SemCon 是原子级语义条件，每条 SemCon 代表一个独立可执行的搜索或过滤条件。三类条件按执行代价从低到高排列：Surface 覆盖文本匹配、Relation 覆盖结构约束、Intention 覆盖语义判别。SemQL 负责将这些原子条件通过 AND/OR/NOT 组装为可执行的高层查询计划。

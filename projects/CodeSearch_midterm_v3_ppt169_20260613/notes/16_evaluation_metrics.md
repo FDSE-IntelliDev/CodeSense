@@ -1,0 +1,1 @@
+本页展示评测指标体系。检索质量六大指标：Recall@K（召回能力）、Precision@K（精度）、MRR（首个正确位置倒数均值）、nDCG@K（排序质量）、Bundle Relevance（Bundle 平均相关性）、Bundle Hit Rate（正确 Bundle Top-K 比率）。执行效率四大指标：P50/P99 延迟（Surface &lt;200ms, 含 Intention &lt;3s）、Intention 缓存命中率 &gt;60%、LLM API 调用 &lt;50次/查询、候选集截断 &lt;100（大型项目 &lt;0.2% 全库）。三个 Benchmark 数据集：SWE-bench、CodeSearchNet 和内部 Agent Benchmark。后续通过消融实验验证各阶段的贡献。
