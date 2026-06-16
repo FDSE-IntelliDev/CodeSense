@@ -196,6 +196,122 @@ class ParallelJavaCallChainExtractor:
             tree.append({"caller": caller, "ranges": call["fromRanges"], "callers_tree": self._get_incoming(caller, next_depth, visited)})
         return tree
 
+    def get_callers(self, filepath: str, func_name: str, layer: Optional[int] = None) -> List[dict]:
+        """
+        Get all callers of a function.
+
+        Args:
+            filepath: absolute path to the source file.
+            func_name: function name (e.g. 'addUser').
+            layer: max depth of caller hierarchy (None = unlimited).
+
+        Returns:
+            Flat list of all caller items (deduplicated by uri:line:character).
+        """
+        pos = get_function_position(filepath, func_name)
+        if not pos:
+            return []
+
+        line, character = pos
+        file_uri = f"file://{os.path.abspath(filepath)}"
+        prep_res = self.lsp_client._send_request(
+            "textDocument/prepareCallHierarchy",
+            {"textDocument": {"uri": file_uri}, "position": {"line": line, "character": character}},
+        )
+
+        if not prep_res.get("result"):
+            return []
+
+        target_item = prep_res["result"][0]
+        visited = set()
+        visited.add(self._make_item_key(target_item))
+        tree = self._get_incoming(target_item, layer, visited)
+
+        return self._flatten_callers(tree)
+
+    @staticmethod
+    def _flatten_callers(tree: List[dict]) -> List[dict]:
+        """Flatten a caller tree into a deduplicated flat list."""
+        result: List[dict] = []
+        seen: set = set()
+
+        def _walk(nodes: List[dict]):
+            for node in nodes:
+                caller = node.get("caller")
+                if not caller:
+                    continue
+                uri = caller.get("uri", "")
+                rng = caller.get("range", {})
+                start = rng.get("start", {})
+                key = f"{uri}:{start.get('line', 0)}:{start.get('character', 0)}"
+                if key in seen:
+                    _walk(node.get("callers_tree", []))
+                    continue
+                seen.add(key)
+                result.append(caller)
+                _walk(node.get("callers_tree", []))
+
+        _walk(tree)
+        return result
+
+    def get_callees(self, filepath: str, func_name: str, layer: Optional[int] = None) -> List[dict]:
+        """
+        Get all callees of a function.
+
+        Args:
+            filepath: absolute path to the source file.
+            func_name: function name (e.g. 'addUser').
+            layer: max depth of callee hierarchy (None = unlimited).
+
+        Returns:
+            Flat list of all callee items (deduplicated by uri:line:character).
+        """
+        pos = get_function_position(filepath, func_name)
+        if not pos:
+            return []
+
+        line, character = pos
+        file_uri = f"file://{os.path.abspath(filepath)}"
+        prep_res = self.lsp_client._send_request(
+            "textDocument/prepareCallHierarchy",
+            {"textDocument": {"uri": file_uri}, "position": {"line": line, "character": character}},
+        )
+
+        if not prep_res.get("result"):
+            return []
+
+        target_item = prep_res["result"][0]
+        visited = set()
+        visited.add(self._make_item_key(target_item))
+        tree = self._get_outgoing(target_item, layer, visited)
+
+        return self._flatten_callees(tree)
+
+    @staticmethod
+    def _flatten_callees(tree: List[dict]) -> List[dict]:
+        """Flatten a callee tree into a deduplicated flat list."""
+        result: List[dict] = []
+        seen: set = set()
+
+        def _walk(nodes: List[dict]):
+            for node in nodes:
+                callee = node.get("callee")
+                if not callee:
+                    continue
+                uri = callee.get("uri", "")
+                rng = callee.get("range", {})
+                start = rng.get("start", {})
+                key = f"{uri}:{start.get('line', 0)}:{start.get('character', 0)}"
+                if key in seen:
+                    _walk(node.get("callees_tree", []))
+                    continue
+                seen.add(key)
+                result.append(callee)
+                _walk(node.get("callees_tree", []))
+
+        _walk(tree)
+        return result
+
     def _get_outgoing(self, item: dict, depth: Optional[int], visited: set) -> List[dict]:
         if depth is not None and depth <= 0:
             return []

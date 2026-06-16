@@ -16,9 +16,7 @@ COMMON_CODE_ELEMENT_TYPES: List[str] = [
     "function",
     "class",
     "variable",
-    "file",
-    "enum",
-    "unknown",
+    "file_path"
 ]
 
 

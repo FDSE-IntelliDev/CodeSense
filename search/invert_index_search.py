@@ -2,9 +2,11 @@ import json
 from search.full_term_matcher import FullTermMatcher
 from definition import OUTPUT_DIR
 
-def invert_index_search4symbol(invert_index_path: str, ngramed_symbol_path: str, query_dsl_result_path: str) -> list:
+def invert_index_search4symbol(invert_index_path: str, ngramed_symbol_path: str, query_dsl_result_path: str, properties: tuple = ("include",)) -> list:
     """
     根据倒排索引和拆词符号进行检索，返回匹配的完整代码元素。
+
+    properties: which property groups to match ("include",) or ("exclude",).
     """
     # 1. 初始化匹配器
     matcher = FullTermMatcher(
@@ -17,7 +19,7 @@ def invert_index_search4symbol(invert_index_path: str, ngramed_symbol_path: str,
         semQL = json.load(f)
 
     # 3. 执行匹配
-    result = matcher.match_ngram(semQL)
+    result = matcher.match_ngram(semQL, properties)
     matched_subtokens = result.get('matched_subtokens', {})
 
     # 4. 读取 ngramed_symbols 以便查找完整信息

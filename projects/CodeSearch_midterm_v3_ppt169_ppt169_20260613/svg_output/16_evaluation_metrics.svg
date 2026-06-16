@@ -28,23 +28,25 @@
 <text x="656" y="148" font-family="PingFang SC, Microsoft YaHei, Arial, sans-serif" font-size="11.5" fill="#485D6A">Surface-only &lt; 200ms | 含 Intention 阶段 &lt; 3s</text>
 <rect x="640" y="160" width="580" height="44" fill="#FFFFFF" stroke="#D0D8E0" stroke-width="1"/>
 <text x="656" y="174" font-family="PingFang SC, Microsoft YaHei, Arial, sans-serif" font-size="13" font-weight="700" fill="#223A48">Intention 命中缓存率</text>
-<text x="656" y="196" font-family="PingFang SC, Microsoft YaHei, Arial, sans-serif" font-size="11.5" fill="#485D6A">> 60% (重复查询场景)</text>
+<text x="656" y="196" font-family="PingFang SC, Microsoft YaHei, Arial, sans-serif" font-size="11.5" fill="#485D6A">&gt; 60% (重复查询场景)</text>
 <rect x="640" y="208" width="580" height="44" fill="#FFFFFF" stroke="#D0D8E0" stroke-width="1"/>
 <text x="656" y="222" font-family="PingFang SC, Microsoft YaHei, Arial, sans-serif" font-size="13" font-weight="700" fill="#223A48">LLM API 调用次数 / 查询</text>
 <text x="656" y="244" font-family="PingFang SC, Microsoft YaHei, Arial, sans-serif" font-size="11.5" fill="#485D6A">大型项目平均 &lt; 50 次 (依赖前置过滤)</text>
 <rect x="640" y="256" width="580" height="44" fill="#FFFFFF" stroke="#D0D8E0" stroke-width="1"/>
 <text x="656" y="270" font-family="PingFang SC, Microsoft YaHei, Arial, sans-serif" font-size="13" font-weight="700" fill="#223A48">候选集截断率</text>
 <text x="656" y="292" font-family="PingFang SC, Microsoft YaHei, Arial, sans-serif" font-size="11.5" fill="#485D6A">进入 Intention 阶段候选 &lt; 100 (大型项目 &lt; 0.2% 全库)</text>
-<rect x="60" y="362" width="1160" height="150" fill="#FFFFFF" stroke="#D0D8E0" stroke-width="1" rx="8"/>
+<rect x="60" y="362" width="1160" height="180" fill="#FFFFFF" stroke="#D0D8E0" stroke-width="1" rx="8"/>
 <rect x="60" y="362" width="1160" height="36" fill="#2E7E94" rx="8"/>
 <text x="640" y="388" font-family="PingFang SC, Microsoft YaHei, Arial, sans-serif" font-size="16" font-weight="700" fill="#FFFFFF" text-anchor="middle">Benchmark 数据集</text>
-<text x="100" y="428" font-family="PingFang SC, Microsoft YaHei, Arial, sans-serif" font-size="15" font-weight="700" fill="#2E7E94">SWE-bench</text>
-<text x="100" y="456" font-family="PingFang SC, Microsoft YaHei, Arial, sans-serif" font-size="13" fill="#485D6A">从 GitHub Issue 到代码定位，天然 Agent 检索场景，覆盖多跳推理和调用链发现</text>
-<text x="480" y="428" font-family="PingFang SC, Microsoft YaHei, Arial, sans-serif" font-size="15" font-weight="700" fill="#2E7E94">CodeSearchNet</text>
-<text x="480" y="456" font-family="PingFang SC, Microsoft YaHei, Arial, sans-serif" font-size="13" fill="#485D6A">标准代码语义搜索基准，用于 Surface + Intention 联合评测</text>
-<text x="920" y="428" font-family="PingFang SC, Microsoft YaHei, Arial, sans-serif" font-size="15" font-weight="700" fill="#2E7E94">内部 Agent Benchmark</text>
-<text x="920" y="456" font-family="PingFang SC, Microsoft YaHei, Arial, sans-serif" font-size="13" fill="#485D6A">从真实 Agent 任务 (Debug / Feature addition / Refactor) 收集 NL Query 与正确代码元素对</text>
-<rect x="60" y="530" width="1160" height="40" fill="#E8EDF2" rx="6"/>
-<text x="640" y="556" font-family="PingFang SC, Microsoft YaHei, Arial, sans-serif" font-size="13" font-weight="700" fill="#2E7E94" text-anchor="middle">通过消融实验验证各执行阶段 (Surface / Relation / Intention / Bundle Rerank) 的贡献</text>
+<text x="100" y="430" font-family="PingFang SC, Microsoft YaHei, Arial, sans-serif" font-size="15" font-weight="700" fill="#2E7E94">内部 Agent Benchmark (主要)</text>
+<text x="100" y="456" font-family="PingFang SC, Microsoft YaHei, Arial, sans-serif" font-size="13" fill="#485D6A">从真实 Agent 任务 (Debug / Feature Addition / Refactor) 中收集自然语言 Query 与对应正确代码元素对</text>
+<text x="100" y="476" font-family="PingFang SC, Microsoft YaHei, Arial, sans-serif" font-size="13" fill="#697A84">重点覆盖 Bundle 召回场景与非功能性 Query (如 performance / security)</text>
+<rect x="620" y="412" width="2" height="100" fill="#D0D8E0"/>
+<text x="640" y="430" font-family="PingFang SC, Microsoft YaHei, Arial, sans-serif" font-size="15" font-weight="700" fill="#2E7E94">SWE-bench / CodeSearchNet (辅助)</text>
+<text x="640" y="456" font-family="PingFang SC, Microsoft YaHei, Arial, sans-serif" font-size="13" fill="#485D6A">SWE-bench: 从 GitHub Issue 到代码定位，天然 Agent 检索场景</text>
+<text x="640" y="476" font-family="PingFang SC, Microsoft YaHei, Arial, sans-serif" font-size="13" fill="#485D6A">CodeSearchNet: 标准代码语义搜索基准，用于联合评测</text>
+<text x="640" y="500" font-family="PingFang SC, Microsoft YaHei, Arial, sans-serif" font-size="13" fill="#C0392B">局限: 公开 Benchmark 训练集可能已被 Backbone 模型预训练时见过，存在数据泄露风险</text>
+<rect x="60" y="558" width="1160" height="40" fill="#E8EDF2" rx="6"/>
+<text x="640" y="584" font-family="PingFang SC, Microsoft YaHei, Arial, sans-serif" font-size="13" font-weight="700" fill="#2E7E94" text-anchor="middle">通过消融实验验证各执行阶段 (Surface / Relation / Intention / Bundle Rerank) 的贡献</text>
 <text x="1230" y="705" font-family="PingFang SC, Microsoft YaHei, Arial, sans-serif" font-size="15" fill="#697A84" text-anchor="end">16</text>
 </svg>

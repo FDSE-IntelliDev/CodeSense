@@ -14,6 +14,7 @@ from definition import BASE_MODEL
 from DSL.surface_con import surface_condition
 from DSL.intention_con import intention_condition
 from DSL.relation_con import relation_condition
+from parsers.code_element_types import get_common_code_element_types
 from utils.llm_api import call_chat_llm
 
 
@@ -46,6 +47,7 @@ class LLMSemConExtractor:
 
         raw_text = self._call_llm(query)
         parsed = self._parse_json(raw_text)
+        self._fill_unknown_code_element_type(parsed)
         return self._normalize_semCon(parsed)
 
     def _call_llm(self, query: str) -> str:
@@ -92,6 +94,7 @@ Use the following imported schemas as the exact output format for each condition
 6. If a category has no conditions, use an empty list.
 7. Use property="include" for required conditions and property="exclude" for negative conditions.
 8. Use surface for literal/code-text matching, intention for behavior/intent/domain meaning, and relation for code structure constraints.
+9. CRITICAL — match_kind atomicity: Each surface condition must have exactly ONE match_kind value (code_element / code_snippet / code_line / unknown). Do NOT combine multiple match_kinds into a single surface condition. If the query involves matching more than one kind (e.g., both a code element name and a code line), split them into separate surface conditions, each with its own match_kind and corresponding keywords.
 
 ## Query
 {query}
@@ -142,6 +145,20 @@ Use the following imported schemas as the exact output format for each condition
             result[condition_type] = normalized_items
 
         return result
+
+    @staticmethod
+    def _fill_unknown_code_element_type(payload: Dict[str, Any]) -> None:
+        surface_items = payload.get("surface", [])
+        if not isinstance(surface_items, list):
+            return
+
+        all_types = get_common_code_element_types()
+        for item in surface_items:
+            if not isinstance(item, dict):
+                continue
+            match_kind = str(item.get("match_kind", "")).strip().lower()
+            if match_kind == "unknown":
+                item["code_element_type"] = all_types
 
     @staticmethod
     def _empty_semCon() -> Dict[str, Any]:

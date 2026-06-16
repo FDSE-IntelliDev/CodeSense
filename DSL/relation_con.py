@@ -16,16 +16,16 @@ from parsers.code_element_types import get_common_code_element_types
 relation_condition = {
     "type": "relation",
     "property": "<include|exclude; code elements satisfying the following relation conditions will be included in or excluded from final results>",
-    "code_element_type": f"<target code element type; choose from common types: {get_common_code_element_types()}>",
+    # "code_element_type": f"<target code element type; choose from common types: {get_common_code_element_types()}>",
     "file_path": "<file path / directory / package path constraint, or None>",
-    "container": "<class/module/package/container constraint, or None>",
+    # "container": "<class/module/package/container constraint, or None>", todo 后续优化一下container relation的设计
     "graph_constraint": {
         "anchor": "<anchor symbol, 'main_entry', or 'api_route'>",
         "relation": "caller_of | callee_of | distance_leq",
         "value": "<integer hop count or symbol name>"
     },
-    "caller": "<expected caller code element, or None>",
-    "callee": "<expected callee code element, or None>",
+    "caller": "<expected caller code element; format: 'path:name' if filepath is specified in the query (e.g. 'xxxController.java:addUser'), otherwise just the name (e.g. 'addUser'). Use None if not applicable>",
+    "callee": "<expected callee code element; format: 'path:name' if filepath is specified in the query (e.g. 'UserService.java:findById'), otherwise just the name (e.g. 'findById'). Use None if not applicable>",
     "code_ql": "<optional executable CodeQL query. Use this for relation constraints not covered by the explicit fields above, such as annotations/decorators/attributes, signature details, modifiers, entry-point detection, inheritance, framework-specific handlers, or other language-specific structures. Use None if not needed>",
     "description": "<brief natural language explanation of this relation condition>"
 }

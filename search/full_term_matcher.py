@@ -61,22 +61,25 @@ class FullTermMatcher:
         return " ".join(str(text).strip().lower().split())
 
     @staticmethod
-    def _to_keyword_list(keyword_payload: Any) -> List[str]:
+    def _to_keyword_list(keyword_payload: Any, properties: tuple = ("include",)) -> List[str]:
         """
-        Parse query DSL/SemQL payload and extract searchable include terms.
+        Parse query DSL/SemQL payload and extract searchable terms.
         Returns a deduplicated list while preserving order.
+
+        properties: which property groups to extract from (default include only;
+                    pass ("exclude",) to extract exclude terms).
         """
         terms: List[str] = []
         for condition_type, term_name in (
             ("surface", "keywords"),
             ("surface", "synonyms"),
-            ("intention", "keywords"),
-            ("intention", "intent"),
+            # ("intention", "keywords"),
+            # ("intention", "intent"),
         ):
             terms.extend(
                 extract_semql_text_terms(
                     keyword_payload,
-                    properties=("include",),
+                    properties=properties,
                     condition_type=condition_type,
                     term_name=term_name,
                 )
@@ -171,12 +174,12 @@ class FullTermMatcher:
 
         return symbols
 
-    def match_keywords(self, keyword_payload: Any) -> Dict[str, Any]:
+    def match_keywords(self, keyword_payload: Any, properties: tuple = ("include",)) -> Dict[str, Any]:
         """
         End-to-end matching:
         keyword -> subsequences -> invert_index subtokens -> ngramed_symbol symbols
         """
-        keywords = self._to_keyword_list(keyword_payload)
+        keywords = self._to_keyword_list(keyword_payload, properties)
 
         all_symbols: Set[str] = set()
         detail: List[Dict[str, Any]] = []
@@ -215,12 +218,12 @@ class FullTermMatcher:
             "detail": detail,
         }
 
-    def match_ngram(self, keyword_payload: Any) -> Dict[str, Any]:
+    def match_ngram(self, keyword_payload: Any, properties: tuple = ("include",)) -> Dict[str, Any]:
         """
         Aggregate subtokens across all keywords:
         keyword -> subsequences -> invert_index subtokens
         """
-        initial_keywords = self._to_keyword_list(keyword_payload)
+        initial_keywords = self._to_keyword_list(keyword_payload, properties)
 
         # keywords按照空格拆分有序子词进行扩展
         keywords: List[str] = []

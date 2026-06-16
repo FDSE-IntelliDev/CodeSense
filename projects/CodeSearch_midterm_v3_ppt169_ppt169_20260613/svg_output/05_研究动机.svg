@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" width="1280" height="720">
 <rect x="0" y="0" width="1280" height="720" fill="#F3F5F8"/>
-<text x="80" y="50" font-family="PingFang SC, Microsoft YaHei, Arial, sans-serif" font-size="24" font-weight="700" fill="#223A48">研究动机：面向 Agent 的查询更接近数据库查询</text>
+<text x="80" y="50" font-family="PingFang SC, Microsoft YaHei, Arial, sans-serif" font-size="24" font-weight="700" fill="#223A48">研究动机：Agent 需要一种多维条件化查询范式</text>
 <text x="80" y="82" font-family="PingFang SC, Microsoft YaHei, Arial, sans-serif" font-size="15" font-weight="700" fill="#223A48">本研究将自然语言检索请求从</text>
 <text x="580" y="82" font-family="PingFang SC, Microsoft YaHei, Arial, sans-serif" font-size="15" font-weight="700" fill="#223A48">"相似度排序问题"重新建模为"条件化查询计划执行问题"。</text>
 <rect x="80" y="110" width="1120" height="36" fill="#2E7E94" rx="4"/>
