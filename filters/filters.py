@@ -5,6 +5,7 @@ from utils.llm_api import call_chat_llm
 import re
 from typing import Any
 from parsers.read_tools import get_symbol_code
+from query_processing.semql_utils import extract_semql_terms, extract_semql_text_terms
 
 def filter_symbols_by_type(search_result_path: str, semQL_path: str) -> list:
     """
@@ -20,17 +21,27 @@ def filter_symbols_by_type(search_result_path: str, semQL_path: str) -> list:
     # 2. 从文件读取 semQL 字典对象
     semql_query = load_res(semQL_path)
 
-    target = semql_query.get("target")
+    target = []
+    for condition_type in ("surface", "relation"):
+        target.extend(
+            extract_semql_text_terms(
+                semql_query,
+                properties=("include",),
+                condition_type=condition_type,
+                term_name="code_element_type",
+            )
+        )
+    if not target:
+        target = extract_semql_text_terms(semql_query, term_name="target")
 
     # 如果 semQL 中没有指定 target，或者 target 是空的，直接返回全量结果
     if not target:
         return search_results
 
-    if isinstance(target, str):
-        allowed_types = {target.lower().strip()}
-    elif isinstance(target, list):
-        allowed_types = {str(t).lower().strip() for t in target}
-    else:
+    allowed_types = {str(t).lower().strip() for t in target if str(t).strip()}
+    allowed_types.discard("any")
+    allowed_types.discard("null")
+    if not allowed_types:
         return search_results
 
     filtered_results = []
@@ -61,10 +72,25 @@ def filter_symbols_semantically(search_result_path: str, semQL_path: str) -> lis
 
     # 提取有用的约束信息给 LLM，防止提示词过长
     constraints = {
-        "intent": semql_query.get("intent"),
-        "filters": semql_query.get("filters"),
-        "exclude": semql_query.get("exclude"),
-        "raw_query": semql_query.get("raw_query")
+        "intent": extract_semql_terms(
+            semql_query,
+            properties=("include",),
+            condition_type="intention",
+            term_name="intent",
+        ),
+        "filters": extract_semql_terms(
+            semql_query,
+            properties=("include",),
+            condition_type=("surface", "relation"),
+            term_name=("keywords", "synonyms", "description", "code_element_type"),
+        ),
+        "exclude": extract_semql_terms(
+            semql_query,
+            properties=("exclude",),
+            condition_type=("surface", "intention", "relation"),
+            term_name=("keywords", "synonyms", "intent", "description", "code_element_type"),
+        ),
+        "raw_query": extract_semql_terms(semql_query, term_name="raw_query"),
     }
 
     filtered_results = []

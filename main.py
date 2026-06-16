@@ -67,17 +67,17 @@ def process_online(query: str):
     # print(json.dumps(dsl_result, indent=2, ensure_ascii=False))
     # save_res(semQL_path,dsl_result)
 
-    print("Extracting SemCon using LLM...")
-    extractor = LLMSemConExtractor()
-    semCon_result = extractor.extract_semCon(query)
-    print("\n--- Extracted SemCon ---")
-    print(json.dumps(semCon_result, indent=2, ensure_ascii=False))
-    save_res(semCon_path, semCon_result)
-
-    semQL_result = compose_semQL_from_semCon(semCon_result, raw_query=query)
-    print("\n--- Composed SemQL ---")
-    print(json.dumps(semQL_result, indent=2, ensure_ascii=False))
-    save_res(semQL_path, semQL_result)
+    # print("Extracting SemCon using LLM...")
+    # extractor = LLMSemConExtractor()
+    # semCon_result = extractor.extract_semCon(query)
+    # print("\n--- Extracted SemCon ---")
+    # print(json.dumps(semCon_result, indent=2, ensure_ascii=False))
+    # save_res(semCon_path, semCon_result)
+    #
+    # semQL_result = compose_semQL_from_semCon(semCon_result, raw_query=query)
+    # print("\n--- Composed SemQL ---")
+    # print(json.dumps(semQL_result, indent=2, ensure_ascii=False))
+    # save_res(semQL_path, semQL_result)
 
     print("\n--- Inverted Index Search ---")
     search_results = invert_index_search4symbol(invert_index_path=invert_index_path,ngramed_symbol_path=ngramed_symbol_path,query_dsl_result_path=semQL_path)

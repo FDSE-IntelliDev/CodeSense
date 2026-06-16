@@ -7,6 +7,7 @@ from parsers.read_tools import get_symbol_code
 from sklearn.cluster import AgglomerativeClustering
 from sklearn.metrics.pairwise import cosine_similarity
 from definition import OUTPUT_DIR
+from query_processing.semql_utils import extract_semql_text_terms
 
 from pathlib import Path
 
@@ -122,8 +123,22 @@ class FiltrationDispatcher:
 
         # 1. 构建 Query 向量
         # 使用 raw_query 和 keyword 的组合，加强意图
-        raw_query = semql_query.get("raw_query", "")
-        keywords = [k.get("term", "") for k in semql_query.get("keywords", [])]
+        raw_query = " ".join(extract_semql_text_terms(semql_query, term_name="raw_query"))
+        keywords = []
+        for condition_type, term_name in (
+            ("surface", "keywords"),
+            ("surface", "synonyms"),
+            ("intention", "keywords"),
+            ("intention", "intent"),
+        ):
+            keywords.extend(
+                extract_semql_text_terms(
+                    semql_query,
+                    properties=("include",),
+                    condition_type=condition_type,
+                    term_name=term_name,
+                )
+            )
         query_text = raw_query + " " + " ".join(keywords)
         query_embedding = self.embedder.encode([query_text])[0]
 

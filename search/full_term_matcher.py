@@ -6,6 +6,7 @@ from typing import Any, Dict, Iterable, List, Set
 from expansion.abbreviate import abbreviate,normalize_entity
 from definition import OUTPUT_DIR
 from embedding.embedding_main import score_pair
+from query_processing.semql_utils import extract_semql_text_terms
 
 import itertools
 
@@ -62,40 +63,31 @@ class FullTermMatcher:
     @staticmethod
     def _to_keyword_list(keyword_payload: Any) -> List[str]:
         """
-        Parse query DSL payload and extract keywords from:
-        - keywords[].term
-        - keywords[].synonyms[]
+        Parse query DSL/SemQL payload and extract searchable include terms.
         Returns a deduplicated list while preserving order.
         """
-        if not isinstance(keyword_payload, dict):
-            return []
-
-        keywords = keyword_payload.get("keywords", [])
-        if not isinstance(keywords, list):
-            return []
-
-        out: List[str] = []
+        terms: List[str] = []
+        for condition_type, term_name in (
+            ("surface", "keywords"),
+            ("surface", "synonyms"),
+            ("intention", "keywords"),
+            ("intention", "intent"),
+        ):
+            terms.extend(
+                extract_semql_text_terms(
+                    keyword_payload,
+                    properties=("include",),
+                    condition_type=condition_type,
+                    term_name=term_name,
+                )
+            )
         seen: Set[str] = set()
-
-        for item in keywords:
-            if not isinstance(item, dict):
+        out: List[str] = []
+        for term in terms:
+            if term in seen:
                 continue
-
-            # 1) term
-            term = str(item.get("term", "")).strip()
-            if term and term not in seen:
-                seen.add(term)
-                out.append(term)
-
-            # 2) synonyms
-            synonyms = item.get("synonyms", [])
-            if isinstance(synonyms, list):
-                for syn in synonyms:
-                    syn_s = str(syn).strip()
-                    if syn_s and syn_s not in seen:
-                        seen.add(syn_s)
-                        out.append(syn_s)
-
+            seen.add(term)
+            out.append(term)
         return out
 
     def _keyword_subsequences(self, keyword: str) -> Set[str]:

@@ -25,6 +25,7 @@ sys.path.append(str(Path(__file__).parent.parent))
 from definition import OUTPUT_DIR
 from embedding.embedding_main import score_pair_by_average_vector as score_pair
 from embedding.project_term_vocab import tokenize_text
+from query_processing.semql_utils import extract_semql_text_terms
 import numpy as np
 import re
 
@@ -63,30 +64,23 @@ class EmbeddingFilter:
             for token in tokenize_text(str(text)):
                 terms.append(token)
 
-        intent = semql_query.get("intent", {}) or {}
-        if isinstance(intent, dict):
-            for slot in ("action", "object"):
-                item = intent.get(slot, {}) or {}
-                if isinstance(item, dict):
-                    add_text(item.get("term", ""))
-                    for syn in item.get("synonyms", []) or []:
-                        add_text(syn)
-
-        for item in semql_query.get("keywords", []) or []:
-            if not isinstance(item, dict):
-                continue
-            add_text(item.get("term", ""))
-            for syn in item.get("synonyms", []) or []:
-                add_text(syn)
-
-        # for item in semql_query.get("filters", []) or []:
-        #     if not isinstance(item, dict):
-        #         continue
-        #     add_text(item.get("concept", ""))
-        #     add_text(item.get("relation", ""))
+        for condition_type, term_name in (
+            ("surface", "keywords"),
+            ("surface", "synonyms"),
+            ("intention", "keywords"),
+            ("intention", "intent"),
+        ):
+            for term in extract_semql_text_terms(
+                semql_query,
+                properties=("include",),
+                condition_type=condition_type,
+                term_name=term_name,
+            ):
+                add_text(term)
 
         if not terms:
-            add_text(semql_query.get("raw_query", ""))
+            for term in extract_semql_text_terms(semql_query, term_name="raw_query"):
+                add_text(term)
 
         # Preserve order while deduplicating.
         seen = set()
