@@ -111,7 +111,7 @@ def get_function_position(filepath: str, function_name: str) -> Optional[Tuple[i
                 return exact
 
     # 3) Fallback regex to find a method definition-like signature.
-    pattern = re.compile(r'\b' + re.escape(function_name) + r'\s*\(')
+    pattern = re.compile(r'\s' + re.escape(function_name) + r'\s*\(')
     for line_idx, line in enumerate(lines):
         match = pattern.search(line)
         if match:

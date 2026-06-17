@@ -24,8 +24,8 @@ relation_condition = {
         "relation": "caller_of | callee_of | distance_leq",
         "value": "<integer hop count or symbol name>"
     },
-    "caller": "<expected caller code element; format: 'path:name' if filepath is specified in the query (e.g. 'xxxController.java:addUser'), otherwise just the name (e.g. 'addUser'). Use None if not applicable>",
-    "callee": "<expected callee code element; format: 'path:name' if filepath is specified in the query (e.g. 'UserService.java:findById'), otherwise just the name (e.g. 'findById'). Use None if not applicable>",
+    "caller": "<expected caller code element; format: 'file_name:func_name' if caller's file_name is specified in the query (e.g. 'xxxController.java:addUser'), otherwise just the func_name (e.g. 'addUser'). Use None if not applicable>",
+    "callee": "<expected callee code element; format: 'file_name:func_name' if callee's file_name is specified in the query (e.g. 'UserService.java:findById'), otherwise just the func_name (e.g. 'findById'). Use None if not applicable>",
     "code_ql": "<optional executable CodeQL query. Use this for relation constraints not covered by the explicit fields above, such as annotations/decorators/attributes, signature details, modifiers, entry-point detection, inheritance, framework-specific handlers, or other language-specific structures. Use None if not needed>",
     "description": "<brief natural language explanation of this relation condition>"
 }
