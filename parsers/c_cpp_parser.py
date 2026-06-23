@@ -37,6 +37,9 @@ def parse_c_cpp(file_rel: str, source: str, language: str):
     def node_text(n):
         return src_bytes[n.start_byte:n.end_byte].decode("utf-8", errors="ignore")
 
+    def node_name_pos(n):
+        return [n.start_point[0] + 1, n.start_point[1]]
+
     def get_identifier(n):
         if n.type in ("identifier", "field_identifier", "type_identifier"):
             return n
@@ -78,6 +81,7 @@ def parse_c_cpp(file_rel: str, source: str, language: str):
                             type=stype,
                             file=file_rel,
                             range=RangeInfo(node.start_point[0] + 1, node.end_point[0] + 1),
+                            name_pos=node_name_pos(id_node) if id_node else [node.start_point[0] + 1, node.start_point[1]],
                             signature=node_text(decl_node)[:100] if decl_node else name,
                             language=language,
                             doc="",
@@ -106,6 +110,7 @@ def parse_c_cpp(file_rel: str, source: str, language: str):
                     type=ntype.split("_")[0],
                     file=file_rel,
                     range=RangeInfo(node.start_point[0] + 1, node.end_point[0] + 1),
+                    name_pos=node_name_pos(name_node) if name_node else [node.start_point[0] + 1, node.start_point[1]],
                     signature=f"{ntype.split('_')[0]} {cname}",
                     language=language,
                     doc="",

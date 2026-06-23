@@ -9,7 +9,7 @@ TOKENIZER_DIR=str(Path(ROOT_DIR) / "tokenizer")
 EMBEDDING_DIR=str(Path(ROOT_DIR) / "embedding")
 EXPANSION_DIR=str(Path(ROOT_DIR) / "expansion")
 
-PROJECT_PATH="/Users/bytedance/old6ma/projects/youlai-boot-master"
+PROJECT_PATH="/Users/huangzhuochen/IdeaProjects/youlai-boot-master"
 PROJECT_NAME="youlai-boot-master"
 
 CORPUS="enhanced_call_chain_corpus.json"

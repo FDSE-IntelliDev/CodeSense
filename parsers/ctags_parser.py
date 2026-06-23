@@ -63,12 +63,15 @@ def parse_c_cpp_ctags(file_rel: str, source: str, lang: str = "c") -> Tuple[
 
                     # ctags 行号是 1-based
                     line_idx = record.get("line", 1)
+                    source_line = lines[line_idx - 1] if 1 <= line_idx <= len(lines) else ""
+                    name_col = source_line.find(name)
 
                     symbols.append(SymbolItem(
                         name=name,
                         type=kind,
                         file=file_rel,
                         range=RangeInfo(line_idx, line_idx),
+                        name_pos=[line_idx, name_col if name_col >= 0 else 0],
                         signature=record.get("pattern", name).strip("/^$ \n\r\t.;"),
                         language=lang,
                         doc="",

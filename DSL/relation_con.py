@@ -20,12 +20,10 @@ relation_condition = {
     "file_path": "<file path / directory / package path constraint, or None>",
     # "container": "<class/module/package/container constraint, or None>", todo 后续优化一下container relation的设计
     "graph_constraint": {
-        "anchor": "<anchor symbol, 'main_entry', or 'api_route'>",
-        "relation": "caller_of | callee_of | distance_leq",
-        "value": "<integer hop count or symbol name>"
+        "role": "<entrypoint | leaf | isolated | None,entrypoint means in_degree = 0 and out_degree > 0; leaf means in_degree > 0 and out_degree = 0; isolated means in_degree = 0 and out_degree = 0. Use None if no graph-role constraint is needed.>"
     },
-    "caller": "<expected caller code element; format: 'file_name:func_name' if caller's file_name is specified in the query (e.g. 'xxxController.java:addUser'), otherwise just the func_name (e.g. 'addUser'). Use None if not applicable>",
-    "callee": "<expected callee code element; format: 'file_name:func_name' if callee's file_name is specified in the query (e.g. 'UserService.java:findById'), otherwise just the func_name (e.g. 'findById'). Use None if not applicable>",
+    "caller": "<expected caller code element and call-chain depth, or None; format: 'file_name:func_name:hop_count'. If any component is unspecified, put None in that position, e.g. 'AuthController.java:login:None', 'None:login:None', or 'None:login:2'. Use None if not applicable>",
+    "callee": "<expected callee code element and call-chain depth, or None; format: 'file_name:func_name:hop_count'. If any component is unspecified, put None in that position, e.g. 'AuthService.java:login:None', 'None:login:None', or 'None:login:2'. Use None if not applicable>",
     "code_ql": "<optional executable CodeQL query. Use this for relation constraints not covered by the explicit fields above, such as annotations/decorators/attributes, signature details, modifiers, entry-point detection, inheritance, framework-specific handlers, or other language-specific structures. Use None if not needed>",
     "description": "<brief natural language explanation of this relation condition>"
 }

@@ -66,8 +66,11 @@ class ParallelJavaLSPClient:
         self._initialize()
 
     def _read_loop(self):
-        while self._process and self._process.poll() is None:
-            header = self._process.stdout.readline().decode("utf-8")
+        while True:
+            process = self._process
+            if not process or process.poll() is not None:
+                return
+            header = process.stdout.readline().decode("utf-8")
             if not header.startswith("Content-Length:"):
                 continue
             try:
@@ -75,8 +78,8 @@ class ParallelJavaLSPClient:
             except Exception:
                 continue
             # skip empty line
-            self._process.stdout.readline()
-            body = self._process.stdout.read(length).decode("utf-8")
+            process.stdout.readline()
+            body = process.stdout.read(length).decode("utf-8")
             try:
                 data = json.loads(body)
             except Exception:
@@ -139,12 +142,18 @@ class ParallelJavaLSPClient:
         self._opened_documents.add(file_path)
 
     def stop(self):
-        if self._process:
+        process = self._process
+        if process:
             try:
-                self._process.terminate()
+                process.terminate()
+                process.wait(timeout=5)
             except Exception:
-                pass
-            self._process = None
+                try:
+                    process.kill()
+                except Exception:
+                    pass
+            finally:
+                self._process = None
 
 
 class ParallelJavaCallChainExtractor:
@@ -224,7 +233,6 @@ class ParallelJavaCallChainExtractor:
 
         target_item = prep_res["result"][0]
         visited = set()
-        visited.add(self._make_item_key(target_item))
         tree = self._get_incoming(target_item, layer, visited)
 
         return self._flatten_callers(tree)
@@ -282,7 +290,6 @@ class ParallelJavaCallChainExtractor:
 
         target_item = prep_res["result"][0]
         visited = set()
-        visited.add(self._make_item_key(target_item))
         tree = self._get_outgoing(target_item, layer, visited)
 
         return self._flatten_callees(tree)

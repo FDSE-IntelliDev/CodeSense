@@ -21,6 +21,15 @@ class PythonAnalyzer(ast.NodeVisitor):
     def _curr_func(self) -> str:
         return ".".join(self.scope_stack) if self.scope_stack else "<module>"
 
+    def _name_pos(self, node, name: str) -> List[int]:
+        line_no = getattr(node, "lineno", 1)
+        line = self.source[line_no - 1] if 1 <= line_no <= len(self.source) else ""
+        start_col = getattr(node, "col_offset", 0)
+        found_col = line.find(name, start_col)
+        if found_col < 0:
+            found_col = line.find(name)
+        return [line_no, found_col if found_col >= 0 else start_col]
+
     def visit_ClassDef(self, node: ast.ClassDef):
         self.scope_stack.append(node.name)
         self.symbols.append(
@@ -29,6 +38,7 @@ class PythonAnalyzer(ast.NodeVisitor):
                 type="class",
                 file=self.file_rel,
                 range=RangeInfo(node.lineno, getattr(node, "end_lineno", node.lineno)),
+                name_pos=self._name_pos(node, node.name),
                 signature=f"class {node.name}",
                 language="python",
                 doc=ast.get_docstring(node) or "",
@@ -48,6 +58,7 @@ class PythonAnalyzer(ast.NodeVisitor):
                 type=stype,
                 file=self.file_rel,
                 range=RangeInfo(node.lineno, getattr(node, "end_lineno", node.lineno)),
+                name_pos=self._name_pos(node, node.name),
                 signature=f"def {node.name}({', '.join(args)})",
                 language="python",
                 doc=ast.get_docstring(node) or "",
@@ -71,6 +82,7 @@ class PythonAnalyzer(ast.NodeVisitor):
                         type="variable",
                         file=self.file_rel,
                         range=RangeInfo(node.lineno, getattr(node, "end_lineno", node.lineno)),
+                        name_pos=[getattr(t, "lineno", node.lineno), getattr(t, "col_offset", 0)],
                         signature=t.id,
                         language="python",
                         doc="",

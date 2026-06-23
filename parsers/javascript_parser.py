@@ -42,6 +42,9 @@ def parse_javascript_typescript(file_rel: str, source: str, language: str):
     def node_text(n):
         return src_bytes[n.start_byte:n.end_byte].decode("utf-8", errors="ignore")
 
+    def node_name_pos(n):
+        return [n.start_point[0] + 1, n.start_point[1]]
+
     def walk(node, container=""):
         ntype = node.type
 
@@ -57,6 +60,7 @@ def parse_javascript_typescript(file_rel: str, source: str, language: str):
                         type="method" if is_method else "function",
                         file=file_rel,
                         range=RangeInfo(node.start_point[0] + 1, node.end_point[0] + 1),
+                        name_pos=node_name_pos(name_node),
                         signature=f"{name}{node_text(params_node) if params_node else '()'}",
                         language=language,
                         doc="",
@@ -79,6 +83,7 @@ def parse_javascript_typescript(file_rel: str, source: str, language: str):
                     type="class",
                     file=file_rel,
                     range=RangeInfo(node.start_point[0] + 1, node.end_point[0] + 1),
+                    name_pos=node_name_pos(name_node) if name_node else [node.start_point[0] + 1, node.start_point[1]],
                     signature=f"class {cname}",
                     language=language,
                     doc="",
@@ -99,6 +104,10 @@ def parse_javascript_typescript(file_rel: str, source: str, language: str):
                         type="variable",
                         file=file_rel,
                         range=RangeInfo(node.start_point[0] + 1, node.end_point[0] + 1),
+                        name_pos=[
+                            node.start_point[0] + 1,
+                            lines[node.start_point[0]].find(vn) if node.start_point[0] < len(lines) else node.start_point[1],
+                        ],
                         signature=vn,
                         language=language,
                         doc="",

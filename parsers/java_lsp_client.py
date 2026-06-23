@@ -58,16 +58,19 @@ class JavaLSPClient:
         self._initialize()
 
     def _read_loop(self):
-        while self._process and self._process.poll() is None:
+        while True:
+            process = self._process
+            if not process or process.poll() is not None:
+                return
             # Read Content-Length: ...
-            header = self._process.stdout.readline().decode('utf-8')
+            header = process.stdout.readline().decode('utf-8')
             if not header.startswith("Content-Length:"):
                 continue
             length = int(header.split(":")[1].strip())
             # Skip empty line
-            self._process.stdout.readline()
+            process.stdout.readline()
             # Read body
-            body = self._process.stdout.read(length).decode('utf-8')
+            body = process.stdout.read(length).decode('utf-8')
             data = json.loads(body)
 
             # Print raw server status/progress notifications
@@ -145,8 +148,18 @@ class JavaLSPClient:
         self._send_notification("initialized", {})
 
     def stop(self):
-        if self._process:
-            self._process.terminate()
+        process = self._process
+        if process:
+            try:
+                process.terminate()
+                process.wait(timeout=5)
+            except Exception:
+                try:
+                    process.kill()
+                except Exception:
+                    pass
+            finally:
+                self._process = None
 
 class JavaCallChainExtractor:
     def __init__(self, lsp_client: JavaLSPClient):
@@ -239,7 +252,6 @@ class JavaCallChainExtractor:
 
         target_item = prep_res["result"][0]
         visited = set()
-        visited.add(self._make_item_key(target_item))
         tree = self._get_incoming(target_item, layer, visited)
 
         return self._flatten_callers(tree)
@@ -269,7 +281,6 @@ class JavaCallChainExtractor:
 
         target_item = prep_res["result"][0]
         visited = set()
-        visited.add(self._make_item_key(target_item))
         tree = self._get_outgoing(target_item, layer, visited)
 
         return self._flatten_callees(tree)

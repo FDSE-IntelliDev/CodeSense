@@ -11,6 +11,7 @@ SemQL relation condition 中的 caller/callee 字段支持两种格式：
 """
 
 import os
+import re
 import sys
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -18,7 +19,7 @@ from typing import Dict, Any, List, Optional, Set, Tuple
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from definition import PROJECT_PATH, JDTLS_PATH
+from definition import PROJECT_PATH, JDTLS_PATH,OUTPUT_DIR,PROJECT_NAME
 from parsers.java_lsp_client import JavaLSPClient, JavaCallChainExtractor
 from parsers.parallel_java_lsp_client import ParallelJavaLSPClient, ParallelJavaCallChainExtractor
 from parsers.registry import parse_file_with_registry
@@ -29,27 +30,108 @@ from utils.file_utils import load_res
 DEFAULT_WORKER_COUNT = 4
 
 
-def _parse_caller_field(raw: str) -> Tuple[Optional[str], Optional[str]]:
+def _parse_call_field(raw: str) -> Tuple[Optional[str], Optional[str], Optional[int]]:
     """
-    Parse a caller/callee field value into (file_name, func_name).
+    Parse a caller/callee field value into (file_name, func_name, hop_count).
 
-    Format "file_name:func_name"  → (file_name, func_name)
-    Format "func_name"            → (None, func_name)
-    Format "None" / ""            → (None, None)
+    Preferred format "file_name:func_name:hop_count" -> (file_name, func_name, hop_count)
+    Missing components should be written as "None", e.g. "None:login:2".
+    Legacy formats "file_name:func_name" and "func_name" are still accepted.
     """
     raw = str(raw).strip()
     if not raw or raw.lower() == "none":
-        return None, None
-    if ":" in raw:
-        file_name, func_name = raw.rsplit(":", 1)
-        return file_name.strip(), func_name.strip()
-    return None, raw
+        return None, None, None
+
+    def _none_if_empty(value: str) -> Optional[str]:
+        value = value.strip()
+        if not value or value.lower() == "none":
+            return None
+        return value
+
+    def _parse_hop_count(value: Optional[str]) -> Optional[int]:
+        if value is None:
+            return None
+        value = value.strip()
+        if not value or value.lower() == "none":
+            return None
+        try:
+            return int(value)
+        except ValueError:
+            return None
+
+    parts = raw.split(":")
+    if len(parts) >= 3:
+        file_name = _none_if_empty(parts[0])
+        func_name = _none_if_empty(parts[1])
+        hop_count = _parse_hop_count(parts[2])
+        return file_name, func_name, hop_count
+    if len(parts) == 2:
+        file_name = _none_if_empty(parts[0])
+        func_name = _none_if_empty(parts[1])
+        return file_name, func_name, None
+    return None, _none_if_empty(raw), None
+
+
+def _base_func_name(name: Any) -> str:
+    """Normalize LSP/candidate method names to the bare function name."""
+    return str(name or "").strip().split("(", 1)[0].strip()
+
+
+def _uri_to_path(uri: Any) -> str:
+    uri = str(uri or "").strip()
+    if uri.startswith("file://"):
+        return uri[len("file://"):]
+    return uri
+
+
+def _symbol_key(symbol_id: Any) -> str:
+    return str(symbol_id)
+
+
+def _load_symbols_by_id(candidate_path: str) -> Dict[str, Dict[str, Any]]:
+    """Load sibling symbols_index.json and index symbols by symbol_id."""
+    symbols_path=Path(f"{OUTPUT_DIR}/{PROJECT_NAME}/symbols_index.json")
+    if not symbols_path.exists():
+        return {}
+
+    symbols = load_res(str(symbols_path))
+    if not isinstance(symbols, list):
+        return {}
+
+    return {
+        _symbol_key(sym.get("symbol_id")): sym
+        for sym in symbols
+        if isinstance(sym, dict) and sym.get("symbol_id") is not None
+    }
+
+
+def _to_symbols_index_schema(
+    candidates: List[Dict[str, Any]],
+    candidate_path: str,
+) -> List[Dict[str, Any]]:
+    """
+    Return symbols using the original symbols_index.json records.
+
+    Candidate files may add transient fields such as matched_subtokens and may
+    omit fields such as name_pos. The public filter output should match the
+    project symbol index schema.
+    """
+    symbols_by_id = _load_symbols_by_id(candidate_path)
+    if not symbols_by_id:
+        return candidates
+
+    normalized: List[Dict[str, Any]] = []
+    for candidate in candidates:
+        sid = candidate.get("symbol_id")
+        symbol = symbols_by_id.get(_symbol_key(sid))
+        normalized.append(symbol if symbol is not None else candidate)
+    return normalized
 
 
 def _extract_callers_from_semql(
     semQL: Dict[str, Any],
     property_name: str,
-) -> List[Tuple[Optional[str], str]]:
+) -> List[Tuple[Optional[str], str, Optional[int]]]:
     """Extract all caller field values from relation conditions."""
     raw_values = extract_semql_text_terms(
         semQL,
@@ -57,11 +139,30 @@ def _extract_callers_from_semql(
         condition_type="relation",
         term_name="caller",
     )
-    result: List[Tuple[Optional[str], str]] = []
+    result: List[Tuple[Optional[str], str, Optional[int]]] = []
     for raw in raw_values:
-        fn, func = _parse_caller_field(raw)
+        fn, func, hop_count = _parse_call_field(raw)
         if func:
-            result.append((fn, func))
+            result.append((fn, func, hop_count))
+    return result
+
+
+def _extract_callees_from_semql(
+    semQL: Dict[str, Any],
+    property_name: str,
+) -> List[Tuple[Optional[str], str, Optional[int]]]:
+    """Extract all callee field values from relation conditions."""
+    raw_values = extract_semql_text_terms(
+        semQL,
+        properties=(property_name,),
+        condition_type="relation",
+        term_name="callee",
+    )
+    result: List[Tuple[Optional[str], str, Optional[int]]] = []
+    for raw in raw_values:
+        fn, func, hop_count = _parse_call_field(raw)
+        if func:
+            result.append((fn, func, hop_count))
     return result
 
 
@@ -100,7 +201,9 @@ def _file_contains_func(file_path: str, func_name: str) -> bool:
     for sym in symbols:
         if sym.name == func_name:
             return True
-    return False
+
+    method_pattern = re.compile(r"\b" + re.escape(func_name) + r"\s*\(")
+    return method_pattern.search(source) is not None
 
 
 def _can_resolve_to_unique_file(
@@ -135,7 +238,7 @@ def _can_resolve_to_unique_file(
 
 def _filter_by_caller_with_path(
     candidates: List[Dict[str, Any]],
-    callers_with_path: List[Tuple[str, str]],
+    callers_with_path: List[Tuple[str, str, Optional[int]]],
     layer: Optional[int],
 ) -> Set[str]:
     """
@@ -143,22 +246,27 @@ def _filter_by_caller_with_path(
     then collect candidate symbol_ids whose name appears in the callee set.
     """
     kept: Set[str] = set()
-    lsp_client = JavaLSPClient(project_root=PROJECT_PATH, jdtls_path=JDTLS_PATH)
+    lsp_client = JavaLSPClient(project_root=PROJECT_PATH, jdtls_path=JDTLS_PATH, verbose=False)
     lsp_client.start()
     try:
         extractor = JavaCallChainExtractor(lsp_client)
-        for abs_path, func_name in callers_with_path:
-            callees = extractor.get_callees(abs_path, func_name, layer=layer)
-            callee_names: Set[str] = {
-                str(c.get("name", "")).strip()
+        for abs_path, func_name, hop_count in callers_with_path:
+            query_layer = hop_count if hop_count is not None else layer
+            callees = extractor.get_callees(abs_path, func_name, layer=query_layer)
+            callee_keys: Set[Tuple[str, str]] = {
+                (_base_func_name(c.get("name")), _uri_to_path(c.get("uri")))
                 for c in callees
-                if c.get("name")
+                if c.get("name") and c.get("uri")
             }
             for sym in candidates:
                 sid = sym.get("symbol_id")
                 if not sid:
                     continue
-                if str(sym.get("name", "")).strip() in callee_names:
+                sym_key = (
+                    _base_func_name(sym.get("name")),
+                    str(sym.get("file", "")).strip(),
+                )
+                if sym_key in callee_keys:
                     kept.add(sid)
     finally:
         lsp_client.stop()
@@ -171,7 +279,7 @@ def _filter_by_caller_with_path(
 
 def _filter_by_caller_without_path(
     candidates: List[Dict[str, Any]],
-    caller_names: List[str],
+    caller_entries: List[Tuple[str, Optional[int]]],
     layer: Optional[int],
     worker_count: int = DEFAULT_WORKER_COUNT,
 ) -> Set[str]:
@@ -180,7 +288,10 @@ def _filter_by_caller_without_path(
     Uses a thread pool of ParallelJavaLSPClient instances for concurrency.
     """
     kept: Set[str] = set()
-    target_set = set(caller_names)
+    targets_by_layer: Dict[Optional[int], Set[str]] = {}
+    for name, hop_count in caller_entries:
+        query_layer = hop_count if hop_count is not None else layer
+        targets_by_layer.setdefault(query_layer, set()).add(_base_func_name(name))
 
     def _query_one(sym: Dict[str, Any]) -> Optional[str]:
         sym_file = str(sym.get("file", "")).strip()
@@ -194,14 +305,111 @@ def _filter_by_caller_without_path(
         client.start()
         try:
             extractor = ParallelJavaCallChainExtractor(client)
-            callers = extractor.get_callers(abs_path, sym_name, layer=layer)
-            caller_name_set: Set[str] = {
-                str(c.get("name", "")).strip()
+            for query_layer, target_set in targets_by_layer.items():
+                callers = extractor.get_callers(abs_path, sym_name, layer=query_layer)
+                caller_name_set: Set[str] = {
+                    _base_func_name(c.get("name"))
+                    for c in callers
+                    if c.get("name")
+                }
+                if caller_name_set & target_set:
+                    return sid
+        finally:
+            client.stop()
+        return None
+
+    with ThreadPoolExecutor(max_workers=worker_count) as executor:
+        futures = {executor.submit(_query_one, sym): sym for sym in candidates}
+        for future in as_completed(futures):
+            sid = future.result()
+            if sid:
+                kept.add(sid)
+
+    return kept
+
+
+# ---------------------------------------------------------------------------
+# Case 1: callee can be uniquely resolved — single LSP query
+# ---------------------------------------------------------------------------
+
+def _filter_by_callee_with_path(
+    candidates: List[Dict[str, Any]],
+    callees_with_path: List[Tuple[str, str, Optional[int]]],
+    layer: Optional[int],
+) -> Set[str]:
+    """
+    For each (abs_path, func_name), call get_callers once,
+    then collect candidate symbol_ids whose name appears in the caller set.
+    """
+    kept: Set[str] = set()
+    lsp_client = JavaLSPClient(project_root=PROJECT_PATH, jdtls_path=JDTLS_PATH, verbose=False)
+    lsp_client.start()
+    try:
+        extractor = JavaCallChainExtractor(lsp_client)
+        for abs_path, func_name, hop_count in callees_with_path:
+            query_layer = hop_count if hop_count is not None else layer
+            callers = extractor.get_callers(abs_path, func_name, layer=query_layer)
+            caller_keys: Set[Tuple[str, str]] = {
+                (_base_func_name(c.get("name")), _uri_to_path(c.get("uri")))
                 for c in callers
-                if c.get("name")
+                if c.get("name") and c.get("uri")
             }
-            if caller_name_set & target_set:
-                return sid
+            for sym in candidates:
+                sid = sym.get("symbol_id")
+                if not sid:
+                    continue
+                sym_key = (
+                    _base_func_name(sym.get("name")),
+                    str(sym.get("file", "")).strip(),
+                )
+                if sym_key in caller_keys:
+                    kept.add(sid)
+    finally:
+        lsp_client.stop()
+    return kept
+
+
+# ---------------------------------------------------------------------------
+# Case 2: callee cannot be uniquely resolved — concurrent LSP queries
+# ---------------------------------------------------------------------------
+
+def _filter_by_callee_without_path(
+    candidates: List[Dict[str, Any]],
+    callee_entries: List[Tuple[str, Optional[int]]],
+    layer: Optional[int],
+    worker_count: int = DEFAULT_WORKER_COUNT,
+) -> Set[str]:
+    """
+    For each candidate symbol, check whether its callees contain the target name.
+    Uses a thread pool of ParallelJavaLSPClient instances for concurrency.
+    """
+    kept: Set[str] = set()
+    targets_by_layer: Dict[Optional[int], Set[str]] = {}
+    for name, hop_count in callee_entries:
+        query_layer = hop_count if hop_count is not None else layer
+        targets_by_layer.setdefault(query_layer, set()).add(_base_func_name(name))
+
+    def _query_one(sym: Dict[str, Any]) -> Optional[str]:
+        sym_file = str(sym.get("file", "")).strip()
+        sym_name = str(sym.get("name", "")).strip()
+        sid = sym.get("symbol_id")
+        if not sym_file or not sym_name or not sid:
+            return None
+
+        abs_path = _resolve_abs_path(sym_file)
+        client = ParallelJavaLSPClient(project_root=PROJECT_PATH, jdtls_path=JDTLS_PATH)
+        client.start()
+        try:
+            extractor = ParallelJavaCallChainExtractor(client)
+            for query_layer, target_set in targets_by_layer.items():
+                callees = extractor.get_callees(abs_path, sym_name, layer=query_layer)
+                callee_name_set: Set[str] = {
+                    _base_func_name(c.get("name"))
+                    for c in callees
+                    if c.get("name")
+                }
+                if callee_name_set & target_set:
+                    return sid
         finally:
             client.stop()
         return None
@@ -224,7 +432,7 @@ def caller_filter(
     semQL_path: str,
     candidate_path: str,
     property_name: str = "include",
-    layer: Optional[int] = None,
+    layer: Optional[int] = 1,
     worker_count: int = DEFAULT_WORKER_COUNT,
 ) -> List[Dict[str, Any]]:
     """
@@ -248,23 +456,24 @@ def caller_filter(
     semQL = load_res(semQL_path)
     caller_entries = _extract_callers_from_semql(semQL, property_name)
     if not caller_entries:
-        return load_res(candidate_path)
+        candidates = load_res(candidate_path)
+        return _to_symbols_index_schema(candidates, candidate_path)
 
     candidates = load_res(candidate_path)
     if not candidates:
         return []
 
     # Separate entries that can be uniquely resolved from those that cannot
-    callers_with_path: List[Tuple[str, str]] = []
-    callers_without_path: List[str] = []
+    callers_with_path: List[Tuple[str, str, Optional[int]]] = []
+    callers_without_path: List[Tuple[str, Optional[int]]] = []
 
-    for file_name, func_name in caller_entries:
+    for file_name, func_name, hop_count in caller_entries:
         if file_name:
             abs_path = _can_resolve_to_unique_file(file_name, func_name)
             if abs_path:
-                callers_with_path.append((abs_path, func_name))
+                callers_with_path.append((abs_path, func_name, hop_count))
                 continue
-        callers_without_path.append(func_name)
+        callers_without_path.append((func_name, hop_count))
 
     kept_ids: Set[str] = set()
 
@@ -279,15 +488,84 @@ def caller_filter(
         )
 
     if kept_ids:
-        return [sym for sym in candidates if sym.get("symbol_id") in kept_ids]
-    return candidates
+        filtered = [sym for sym in candidates if sym.get("symbol_id") in kept_ids]
+        return _to_symbols_index_schema(filtered, candidate_path)
+    return _to_symbols_index_schema(candidates, candidate_path)
 
 
-import json 
-print(json.dumps(caller_filter(
-    semQL_path="/Users/bytedance/old6ma/CodeSearch/output/youlai-boot-master/semQL_test.json",
-    candidate_path="/Users/bytedance/old6ma/CodeSearch/output/youlai-boot-master/filtered_by_type.json",
-    property_name="include",
-    layer=1,
-    worker_count=4,
-)))
+def callee_filter(
+    semQL_path: str,
+    candidate_path: str,
+    property_name: str = "include",
+    layer: Optional[int] = 1,
+    worker_count: int = DEFAULT_WORKER_COUNT,
+) -> List[Dict[str, Any]]:
+    """
+    Filter candidates by callee constraints from SemQL relation conditions.
+
+    Steps:
+    1. Load semQL from file, extract callee field values from relation conditions.
+    2. If callee has file_name → try to resolve to unique file + single LSP get_callers.
+    3. If callee has NO file_name OR cannot be uniquely resolved → concurrent LSP get_callees per candidate.
+
+    Args:
+        semQL_path: path to the semQL.json file.
+        candidate_path: path to the JSON file containing candidate symbols.
+        property_name: "include" or "exclude".
+        layer: max call hierarchy depth (None = unlimited).
+        worker_count: concurrent workers for no-file_path queries.
+
+    Returns:
+        Filtered list of candidate symbols that satisfy the callee constraints,
+        normalized to the symbols_index.json schema.
+    """
+    semQL = load_res(semQL_path)
+    callee_entries = _extract_callees_from_semql(semQL, property_name)
+    if not callee_entries:
+        candidates = load_res(candidate_path)
+        return _to_symbols_index_schema(candidates, candidate_path)
+
+    candidates = load_res(candidate_path)
+    if not candidates:
+        return []
+
+    callees_with_path: List[Tuple[str, str, Optional[int]]] = []
+    callees_without_path: List[Tuple[str, Optional[int]]] = []
+
+    for file_name, func_name, hop_count in callee_entries:
+        if file_name:
+            abs_path = _can_resolve_to_unique_file(file_name, func_name)
+            if abs_path:
+                callees_with_path.append((abs_path, func_name, hop_count))
+                continue
+        callees_without_path.append((func_name, hop_count))
+
+    kept_ids: Set[str] = set()
+
+    # Case 1: single LSP query per callee
+    if callees_with_path:
+        kept_ids |= _filter_by_callee_with_path(candidates, callees_with_path, layer)
+
+    # Case 2: concurrent queries per candidate
+    if callees_without_path:
+        kept_ids |= _filter_by_callee_without_path(
+            candidates, callees_without_path, layer, worker_count=worker_count
+        )
+
+    if kept_ids:
+        filtered = [sym for sym in candidates if sym.get("symbol_id") in kept_ids]
+        return _to_symbols_index_schema(filtered, candidate_path)
+    return _to_symbols_index_schema(candidates, candidate_path)
+
+
+if __name__ == "__main__":
+    import json
+
+    print(json.dumps(callee_filter(
+        semQL_path="/Users/huangzhuochen/PycharmProjects/CodeSearch/output/youlai-boot-master/semQL_test.json",
+        candidate_path="/Users/huangzhuochen/PycharmProjects/CodeSearch/output/youlai-boot-master/filtered_by_type.json",
+        property_name="include",
+        layer=1,
+        worker_count=4,
+    ),
+    indent=4 ))
