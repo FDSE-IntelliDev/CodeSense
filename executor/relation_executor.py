@@ -68,7 +68,7 @@ def _has_callee_condition(semQL: Dict[str, Any], property_name: str) -> bool:
     return bool(_extract_callees_from_semql(semQL, property_name))
 
 
-def relation_execute(
+def relation_caller_callee_execute(
     semQL_path: str,
     surface_search_result_path: str,
     output_path: Optional[str] = DEFAULT_RELATION_RESULT_PATH,
@@ -165,7 +165,7 @@ def run_relation_executor(
     worker_count: int = 4,
 ) -> List[Dict[str, Any]]:
     """Convenience wrapper around relation_execute."""
-    return relation_execute(
+    return relation_caller_callee_execute(
         semQL_path=semQL_path,
         surface_search_result_path=surface_search_result_path,
         output_path=output_path,
@@ -187,7 +187,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     print(json.dumps(
-        relation_execute(
+        relation_caller_callee_execute(
             semQL_path=args.semQL_path,
             surface_search_result_path=args.surface_search_result_path,
             output_path=args.output_path,

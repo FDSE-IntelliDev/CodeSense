@@ -6,8 +6,8 @@ import json
 import os
 import pathlib
 import sys
-from dataclasses import asdict
-from typing import Dict, List, Optional
+from dataclasses import asdict, dataclass
+from typing import Dict, Iterator, List, Optional, Tuple
 
 from parsers import (
     DependencyItem,
@@ -22,6 +22,14 @@ sys.setrecursionlimit(10000)
 
 TEXT_FILE_SIZE_LIMIT = 2 * 1024 * 1024
 BATCH_SIZE = 50
+
+
+@dataclass
+class ParsedProject:
+    files: List[str]
+    symbols: List[SymbolItem]
+    calls_by_file: List[Tuple[str, list]]
+    dependencies: List[DependencyItem]
 
 
 def relpath(path: str, root: str) -> str:
@@ -104,23 +112,27 @@ def build_symbol_lookup(symbols: List[SymbolItem]) -> Dict[str, List[SymbolItem]
     return d
 
 
-def run(project_path: str, output_dir: str):
+def iter_project_analysis(project_path: str) -> Iterator[Tuple[str, List[SymbolItem], list, List[DependencyItem]]]:
     files = list_source_files(project_path)
-
-    all_symbols: List[SymbolItem] = []
-    all_deps: List[DependencyItem] = []
 
     for i in range(0, len(files), BATCH_SIZE):
         batch = files[i:i + BATCH_SIZE]
         for fp in batch:
-            # if fp=="/Users/huangzhuochen/IdeaProjects/youlai-boot-master/src/main/java/com/youlai/boot/core/validator/FieldValidator.java":
-            #     a=1
-            symbols, _calls, deps = analyze_file_ast(project_path, fp)
-            fr = relpath(fp, project_path)
-            all_symbols.extend(symbols)
-            all_deps.extend(deps)
+            symbols, calls, deps = analyze_file_ast(project_path, fp)
+            yield os.path.abspath(fp), symbols, calls, deps
 
-    symbols_lookup = build_symbol_lookup(all_symbols)
+
+def parse_project(project_path: str) -> ParsedProject:
+    files = list_source_files(project_path)
+
+    all_symbols: List[SymbolItem] = []
+    all_calls_by_file: List[Tuple[str, list]] = []
+    all_deps: List[DependencyItem] = []
+
+    for fp, symbols, calls, deps in iter_project_analysis(project_path):
+        all_symbols.extend(symbols)
+        all_calls_by_file.append((fp, calls))
+        all_deps.extend(deps)
 
     dep_seen = set()
     deps_uniq = []
@@ -130,13 +142,19 @@ def run(project_path: str, output_dir: str):
             dep_seen.add(k)
             deps_uniq.append(d)
 
+    return ParsedProject(files=files, symbols=all_symbols, calls_by_file=all_calls_by_file, dependencies=deps_uniq)
+
+
+def run(project_path: str, output_dir: str):
+    parsed = parse_project(project_path)
+
     os.makedirs(output_dir, exist_ok=True)
 
     with open(os.path.join(output_dir, "symbols_index.json"), "w", encoding="utf-8") as f:
         json.dump(
             [
                 {"symbol_id": idx, **asdict(s), "range": asdict(s.range)}
-                for idx, s in enumerate(all_symbols, start=1)
+                for idx, s in enumerate(parsed.symbols, start=1)
             ],
             f,
             ensure_ascii=False,
@@ -144,9 +162,9 @@ def run(project_path: str, output_dir: str):
         )
 
     with open(os.path.join(output_dir, "dependency_graph.json"), "w", encoding="utf-8") as f:
-        json.dump([asdict(d) for d in deps_uniq], f, ensure_ascii=False, indent=2)
+        json.dump([asdict(d) for d in parsed.dependencies], f, ensure_ascii=False, indent=2)
 
-    print(f"Done. symbols={len(all_symbols)}, deps={len(deps_uniq)}")
+    print(f"Done. symbols={len(parsed.symbols)}, deps={len(parsed.dependencies)}")
     print(f"Output dir: {output_dir}")
 
 

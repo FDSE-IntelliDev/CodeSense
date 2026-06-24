@@ -25,6 +25,7 @@ from parsers.parallel_java_lsp_client import ParallelJavaLSPClient, ParallelJava
 from parsers.registry import parse_file_with_registry
 from query_processing.semql_utils import extract_semql_text_terms
 from utils.file_utils import load_res
+from filters.relation_graph_store import filter_candidates_with_edges
 
 # 并发查询时的 worker 数量
 DEFAULT_WORKER_COUNT = 4
@@ -463,6 +464,16 @@ def caller_filter(
     if not candidates:
         return []
 
+    edge_kept_ids = filter_candidates_with_edges(
+        candidates=candidates,
+        relation_entries=caller_entries,
+        relation_kind="caller",
+        layer=layer,
+    )
+    if edge_kept_ids is not None:
+        filtered = [sym for sym in candidates if _symbol_key(sym.get("symbol_id")) in edge_kept_ids]
+        return _to_symbols_index_schema(filtered, candidate_path)
+
     # Separate entries that can be uniquely resolved from those that cannot
     callers_with_path: List[Tuple[str, str, Optional[int]]] = []
     callers_without_path: List[Tuple[str, Optional[int]]] = []
@@ -528,6 +539,16 @@ def callee_filter(
     candidates = load_res(candidate_path)
     if not candidates:
         return []
+
+    edge_kept_ids = filter_candidates_with_edges(
+        candidates=candidates,
+        relation_entries=callee_entries,
+        relation_kind="callee",
+        layer=layer,
+    )
+    if edge_kept_ids is not None:
+        filtered = [sym for sym in candidates if _symbol_key(sym.get("symbol_id")) in edge_kept_ids]
+        return _to_symbols_index_schema(filtered, candidate_path)
 
     callees_with_path: List[Tuple[str, str, Optional[int]]] = []
     callees_without_path: List[Tuple[str, Optional[int]]] = []

@@ -3,7 +3,10 @@ import sqlite3
 from pathlib import Path
 from typing import Any, Dict, Iterable, List
 
-from schema import dependency_row_to_json, symbol_row_to_json
+try:
+    from .schema import dependency_row_to_json, symbol_row_to_json
+except ImportError:
+    from schema import dependency_row_to_json, symbol_row_to_json
 
 
 class CodeDatabase:
@@ -62,6 +65,22 @@ class CodeDatabase:
               code TEXT
             );
 
+            CREATE TABLE IF NOT EXISTS code_edges (
+              edge_id INTEGER PRIMARY KEY AUTOINCREMENT,
+              source_symbol_id INTEGER NOT NULL,
+              target_symbol_id INTEGER NOT NULL,
+              kind TEXT NOT NULL,
+              source_name TEXT,
+              target_name TEXT,
+              source_file TEXT,
+              target_file TEXT,
+              call_line INTEGER,
+              call_col INTEGER,
+              confidence REAL,
+              provenance TEXT,
+              raw_lsp TEXT
+            );
+
             CREATE INDEX IF NOT EXISTS idx_symbols_name ON code_symbols(name);
             CREATE INDEX IF NOT EXISTS idx_symbols_type ON code_symbols(type);
             CREATE INDEX IF NOT EXISTS idx_symbols_file ON code_symbols(file);
@@ -70,6 +89,9 @@ class CodeDatabase:
             CREATE INDEX IF NOT EXISTS idx_deps_source ON code_dependencies(source_file);
             CREATE INDEX IF NOT EXISTS idx_calls_caller ON unresolved_calls(caller);
             CREATE INDEX IF NOT EXISTS idx_calls_callee ON unresolved_calls(callee);
+            CREATE INDEX IF NOT EXISTS idx_edges_source_kind ON code_edges(source_symbol_id, kind);
+            CREATE INDEX IF NOT EXISTS idx_edges_target_kind ON code_edges(target_symbol_id, kind);
+            CREATE INDEX IF NOT EXISTS idx_edges_source_target ON code_edges(source_symbol_id, target_symbol_id);
             """
         )
         self.conn.commit()
@@ -78,10 +100,11 @@ class CodeDatabase:
         self.conn.executescript(
             """
             DELETE FROM unresolved_calls;
+            DELETE FROM code_edges;
             DELETE FROM code_dependencies;
             DELETE FROM code_symbols;
             DELETE FROM code_files;
-            DELETE FROM sqlite_sequence WHERE name IN ('code_files', 'code_dependencies', 'unresolved_calls');
+            DELETE FROM sqlite_sequence WHERE name IN ('code_files', 'code_dependencies', 'unresolved_calls', 'code_edges');
             """
         )
         self.conn.commit()
@@ -128,11 +151,26 @@ class CodeDatabase:
             list(rows),
         )
 
+    def insert_edges(self, rows: Iterable[Dict[str, Any]]) -> None:
+        self.conn.executemany(
+            """
+            INSERT INTO code_edges(
+              source_symbol_id, target_symbol_id, kind, source_name, target_name,
+              source_file, target_file, call_line, call_col, confidence, provenance, raw_lsp
+            )
+            VALUES (
+              :source_symbol_id, :target_symbol_id, :kind, :source_name, :target_name,
+              :source_file, :target_file, :call_line, :call_col, :confidence, :provenance, :raw_lsp
+            )
+            """,
+            list(rows),
+        )
+
     def commit(self) -> None:
         self.conn.commit()
 
     def count(self, table: str) -> int:
-        allowed = {"code_files", "code_symbols", "code_dependencies", "unresolved_calls"}
+        allowed = {"code_files", "code_symbols", "code_dependencies", "unresolved_calls", "code_edges"}
         if table not in allowed:
             raise ValueError(f"unsupported table: {table}")
         row = self.conn.execute(f"SELECT COUNT(*) AS n FROM {table}").fetchone()

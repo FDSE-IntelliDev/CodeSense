@@ -1,4 +1,5 @@
 import hashlib
+import json
 import os
 from dataclasses import asdict, is_dataclass
 from pathlib import Path
@@ -147,6 +148,26 @@ def normalize_call(call: Any, caller_file: str) -> Dict[str, Any]:
         "caller_file": caller_file,
         "line": int(line or 0),
         "code": str(code or ""),
+    }
+
+
+def normalize_edge(edge: Any) -> Dict[str, Any]:
+    raw_lsp = edge.get("raw_lsp", "") if isinstance(edge, MutableMapping) else ""
+    if raw_lsp and not isinstance(raw_lsp, str):
+        raw_lsp = json.dumps(raw_lsp, ensure_ascii=False)
+    return {
+        "source_symbol_id": int(edge["source_symbol_id"]),
+        "target_symbol_id": int(edge["target_symbol_id"]),
+        "kind": str(edge.get("kind") or "calls"),
+        "source_name": str(edge.get("source_name") or ""),
+        "target_name": str(edge.get("target_name") or ""),
+        "source_file": str(edge.get("source_file") or ""),
+        "target_file": str(edge.get("target_file") or ""),
+        "call_line": int(edge.get("call_line") or 0),
+        "call_col": int(edge.get("call_col") or 0),
+        "confidence": float(edge.get("confidence") or 1.0),
+        "provenance": str(edge.get("provenance") or "java_lsp_call_hierarchy"),
+        "raw_lsp": raw_lsp,
     }
 
 
