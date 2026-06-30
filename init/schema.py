@@ -167,6 +167,28 @@ def normalize_edge(edge: Any) -> Dict[str, Any]:
         "call_col": int(edge.get("call_col") or 0),
         "confidence": float(edge.get("confidence") or 1.0),
         "provenance": str(edge.get("provenance") or "java_lsp_call_hierarchy"),
+        "source_impl_symbol_id": edge.get("source_impl_symbol_id"),
+        "target_impl_symbol_id": edge.get("target_impl_symbol_id"),
+        "source_impl_owner_symbol_id": edge.get("source_impl_owner_symbol_id"),
+        "target_impl_owner_symbol_id": edge.get("target_impl_owner_symbol_id"),
+        "impl_resolution_status": str(edge.get("impl_resolution_status") or "unresolved"),
+        "raw_lsp": raw_lsp,
+    }
+
+
+def normalize_implementation(implementation: Any) -> Dict[str, Any]:
+    raw_lsp = implementation.get("raw_lsp", "") if isinstance(implementation, MutableMapping) else ""
+    if raw_lsp and not isinstance(raw_lsp, str):
+        raw_lsp = json.dumps(raw_lsp, ensure_ascii=False)
+    return {
+        "abstract_symbol_id": int(implementation["abstract_symbol_id"]),
+        "implementation_symbol_id": int(implementation["implementation_symbol_id"]),
+        "abstract_owner_symbol_id": implementation.get("abstract_owner_symbol_id"),
+        "implementation_owner_symbol_id": implementation.get("implementation_owner_symbol_id"),
+        "relation_kind": str(implementation.get("relation_kind") or "implements"),
+        "confidence": float(implementation.get("confidence") or 1.0),
+        "provenance": str(implementation.get("provenance") or "java_lsp_textDocument_implementation"),
+        "is_ambiguous": int(bool(implementation.get("is_ambiguous"))),
         "raw_lsp": raw_lsp,
     }
 

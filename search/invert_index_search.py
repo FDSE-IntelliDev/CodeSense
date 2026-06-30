@@ -2,21 +2,42 @@ import json
 from search.full_term_matcher import FullTermMatcher
 from definition import OUTPUT_DIR
 
+
+def _has_requested_conditions(semql: dict, properties: tuple) -> bool:
+    """Return whether grouped SemQL contains any requested property entries."""
+    conditions = semql.get("conditions")
+    if not isinstance(conditions, dict):
+        return True
+
+    for condition_group in conditions.values():
+        if not isinstance(condition_group, dict):
+            continue
+        for property_name in properties:
+            property_conditions = condition_group.get(property_name)
+            if isinstance(property_conditions, (list, dict)) and property_conditions:
+                return True
+    return False
+
+
 def invert_index_search4symbol(invert_index_path: str, ngramed_symbol_path: str, query_dsl_result_path: str, properties: tuple = ("include",)) -> list:
     """
     根据倒排索引和拆词符号进行检索，返回匹配的完整代码元素。
 
     properties: which property groups to match ("include",) or ("exclude",).
     """
-    # 1. 初始化匹配器
+    # 1. 从文件读取查询条件 (semQL)
+    with open(query_dsl_result_path, 'r', encoding='utf-8') as f:
+        semQL = json.load(f)
+
+    # 请求的 include/exclude 没有任何条件时，无需加载索引和执行匹配。
+    if not _has_requested_conditions(semQL, properties):
+        return []
+
+    # 2. 初始化匹配器
     matcher = FullTermMatcher(
         invert_index_path=invert_index_path,
         ngramed_symbol_path=ngramed_symbol_path,
     )
-
-    # 2. 从文件读取查询条件 (semQL)
-    with open(query_dsl_result_path, 'r', encoding='utf-8') as f:
-        semQL = json.load(f)
 
     # 3. 执行匹配
     result = matcher.match_ngram(semQL, properties)

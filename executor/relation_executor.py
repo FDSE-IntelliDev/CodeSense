@@ -3,7 +3,7 @@ Relation Executor — apply relation filters to surface-search results.
 
 This executor combines caller/callee relation filters with include/exclude
 SemQL properties:
-- include relation results are unioned into the current result set
+- include relation results are intersected with the current result set
 - exclude relation results are removed from the current result set
 """
 
@@ -14,8 +14,10 @@ from definition import OUTPUT_DIR, PROJECT_NAME
 from filters.relation_filter import (
     _extract_callees_from_semql,
     _extract_callers_from_semql,
+    _extract_roles_from_semql,
     callee_filter,
     caller_filter,
+    role_filter,
 )
 from utils.file_utils import load_res, save_res
 
@@ -49,6 +51,17 @@ def _merge_symbols(
     return merged
 
 
+def _intersect_symbols(
+    old_results: List[Dict[str, Any]],
+    include_results: List[Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    include_keys = {_symbol_key(symbol) for symbol in include_results}
+    return [
+        symbol for symbol in old_results
+        if _symbol_key(symbol) in include_keys
+    ]
+
+
 def _remove_symbols(
     old_results: List[Dict[str, Any]],
     exclude_results: List[Dict[str, Any]],
@@ -68,6 +81,10 @@ def _has_callee_condition(semQL: Dict[str, Any], property_name: str) -> bool:
     return bool(_extract_callees_from_semql(semQL, property_name))
 
 
+def _has_role_condition(semQL: Dict[str, Any], property_name: str) -> bool:
+    return bool(_extract_roles_from_semql(semQL, property_name))
+
+# 传入semQL时 会自动解析semQL中的caller、callee所要求的layer count数 此时不会使用函数入参中的layer参数
 def relation_caller_callee_execute(
     semQL_path: str,
     surface_search_result_path: str,
@@ -95,6 +112,10 @@ def relation_caller_callee_execute(
 
     include_results: List[Dict[str, Any]] = []
     exclude_results: List[Dict[str, Any]] = []
+    has_include_condition = (
+        _has_caller_condition(semQL, "include")
+        or _has_callee_condition(semQL, "include")
+    )
 
     if _has_caller_condition(semQL, "include"):
         include_results = _merge_symbols(
@@ -120,8 +141,8 @@ def relation_caller_callee_execute(
             ),
         )
 
-    if include_results:
-        current_results = _merge_symbols(current_results, include_results)
+    if has_include_condition:
+        current_results = _intersect_symbols(current_results, include_results)
 
     if _has_caller_condition(semQL, "exclude"):
         exclude_results = _merge_symbols(
@@ -157,6 +178,111 @@ def relation_caller_callee_execute(
     return current_results
 
 
+def relation_filter_execute(
+    semQL_path: str,
+    surface_search_result_path: str,
+    output_path: Optional[str] = DEFAULT_RELATION_RESULT_PATH,
+    layer: Optional[int] = 1,
+    worker_count: int = 4,
+) -> List[Dict[str, Any]]:
+    """
+    Apply all relation filters to surface-search results.
+
+    Current relation filters:
+    - caller / callee constraints
+    - graph_constraint.role constraints: entry_point / leaf / isolate
+    """
+    semQL = load_res(semQL_path)
+    current_results = load_res(surface_search_result_path)
+
+    include_results: List[Dict[str, Any]] = []
+    exclude_results: List[Dict[str, Any]] = []
+    has_caller_callee_include = (
+        _has_caller_condition(semQL, "include")
+        or _has_callee_condition(semQL, "include")
+    )
+
+    if _has_caller_condition(semQL, "include"):
+        include_results = _merge_symbols(
+            include_results,
+            caller_filter(
+                semQL_path=semQL_path,
+                candidate_path=surface_search_result_path,
+                property_name="include",
+                layer=layer,
+                worker_count=worker_count,
+            ),
+        )
+
+    if _has_callee_condition(semQL, "include"):
+        include_results = _merge_symbols(
+            include_results,
+            callee_filter(
+                semQL_path=semQL_path,
+                candidate_path=surface_search_result_path,
+                property_name="include",
+                layer=layer,
+                worker_count=worker_count,
+            ),
+        )
+
+    if has_caller_callee_include:
+        current_results = _intersect_symbols(current_results, include_results)
+
+    if _has_role_condition(semQL, "include"):
+        current_results = _intersect_symbols(
+            current_results,
+            role_filter(
+                semQL_path=semQL_path,
+                candidate_path=surface_search_result_path,
+                property_name="include",
+            ),
+        )
+
+    if _has_caller_condition(semQL, "exclude"):
+        exclude_results = _merge_symbols(
+            exclude_results,
+            caller_filter(
+                semQL_path=semQL_path,
+                candidate_path=surface_search_result_path,
+                property_name="exclude",
+                layer=layer,
+                worker_count=worker_count,
+            ),
+        )
+
+    if _has_callee_condition(semQL, "exclude"):
+        exclude_results = _merge_symbols(
+            exclude_results,
+            callee_filter(
+                semQL_path=semQL_path,
+                candidate_path=surface_search_result_path,
+                property_name="exclude",
+                layer=layer,
+                worker_count=worker_count,
+            ),
+        )
+
+    if _has_role_condition(semQL, "exclude"):
+        exclude_results = _merge_symbols(
+            exclude_results,
+            role_filter(
+                semQL_path=semQL_path,
+                candidate_path=surface_search_result_path,
+                property_name="exclude",
+            ),
+        )
+
+    if exclude_results:
+        current_results = _remove_symbols(current_results, exclude_results)
+
+    if output_path:
+        Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+        save_res(output_path, current_results)
+
+    return current_results
+
+
 def run_relation_executor(
     semQL_path: str,
     surface_search_result_path: str,
@@ -164,8 +290,8 @@ def run_relation_executor(
     layer: Optional[int] = 1,
     worker_count: int = 4,
 ) -> List[Dict[str, Any]]:
-    """Convenience wrapper around relation_execute."""
-    return relation_caller_callee_execute(
+    """Convenience wrapper around relation_filter_execute."""
+    return relation_filter_execute(
         semQL_path=semQL_path,
         surface_search_result_path=surface_search_result_path,
         output_path=output_path,
@@ -178,21 +304,21 @@ if __name__ == "__main__":
     import argparse
     import json
 
-    parser = argparse.ArgumentParser(description="Run relation executor.")
-    parser.add_argument("semQL_path")
-    parser.add_argument("surface_search_result_path")
-    parser.add_argument("--output", dest="output_path", default=DEFAULT_RELATION_RESULT_PATH)
-    parser.add_argument("--layer", dest="layer", type=int, default=1)
-    parser.add_argument("--worker-count", dest="worker_count", type=int, default=4)
-    args = parser.parse_args()
+    # parser = argparse.ArgumentParser(description="Run relation executor.")
+    # parser.add_argument("semQL_path")
+    # parser.add_argument("surface_search_result_path")
+    # parser.add_argument("--output", dest="output_path", default=DEFAULT_RELATION_RESULT_PATH)
+    # parser.add_argument("--layer", dest="layer", type=int, default=1)
+    # parser.add_argument("--worker-count", dest="worker_count", type=int, default=4)
+    # args = parser.parse_args()
 
     print(json.dumps(
-        relation_caller_callee_execute(
-            semQL_path=args.semQL_path,
-            surface_search_result_path=args.surface_search_result_path,
-            output_path=args.output_path,
-            layer=args.layer,
-            worker_count=args.worker_count,
+        relation_filter_execute(
+            semQL_path=OUTPUT_DIR+'/'+PROJECT_NAME+'/'+'SemQL_test.json',
+            surface_search_result_path="/Users/huangzhuochen/PycharmProjects/CodeSearch/output/youlai-boot-master/filtered_by_type.json",
+            output_path=f"{OUTPUT_DIR}/{PROJECT_NAME}/filtered_by_relation.json",
+            # layer=args.layer,
+            # worker_count=args.worker_count,
         ),
         ensure_ascii=False,
         indent=2,

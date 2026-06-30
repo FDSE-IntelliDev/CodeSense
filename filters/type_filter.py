@@ -7,12 +7,17 @@ from typing import Any
 from parsers.read_tools import get_symbol_code
 from query_processing.semql_utils import extract_semql_terms, extract_semql_text_terms
 
-def filter_symbols_by_type(search_result_path: str, semQL_path: str) -> list:
+def filter_symbols_by_type(
+    search_result_path: str,
+    semQL_path: str,
+    exclude_output_path: str = None,
+) -> list:
     """
     根据 semQL 中的 target 字段对代码元素的结果进行类型过滤。
 
     :param search_result_path: 搜索结果列表文件的路径 (例如 invert_index_search_result.json)
     :param semQL_path: semQL 查询文件的路径 (例如 query_dsl_result.json)
+    :param exclude_output_path: 可选，被类型过滤排除的结果保存路径
     :return: 过滤后的结果列表
     """
     # 1. 从文件读取已获的搜索结果
@@ -39,12 +44,16 @@ def filter_symbols_by_type(search_result_path: str, semQL_path: str) -> list:
 
     # 如果 semQL 中没有指定 target，或者 target 是空的，直接返回全量结果
     if not target:
+        if exclude_output_path:
+            save_res(exclude_output_path, [])
         return search_results
 
     allowed_types = {str(t).lower().strip() for t in target if str(t).strip()}
     allowed_types.discard("any")
     allowed_types.discard("null")
     if not allowed_types:
+        if exclude_output_path:
+            save_res(exclude_output_path, [])
         return search_results
 
     if 'function' in allowed_types:
@@ -65,8 +74,8 @@ def filter_symbols_by_type(search_result_path: str, semQL_path: str) -> list:
         else:
             exclude_results.append(symbol)
 
-    # save_res(f'{OUTPUT_DIR}/youlai-boot-master/filtered_by_type.json', filtered_results)
-    # save_res(f'{OUTPUT_DIR}/youlai-boot-master/exclude_by_type.json', exclude_results)
+    if exclude_output_path:
+        save_res(exclude_output_path, exclude_results)
 
     return filtered_results
 

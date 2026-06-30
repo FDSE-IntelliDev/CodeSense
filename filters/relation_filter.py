@@ -25,7 +25,7 @@ from parsers.parallel_java_lsp_client import ParallelJavaLSPClient, ParallelJava
 from parsers.registry import parse_file_with_registry
 from query_processing.semql_utils import extract_semql_text_terms
 from utils.file_utils import load_res
-from filters.relation_graph_store import filter_candidates_with_edges
+from filters.relation_graph_store import RelationGraphStore, filter_candidates_with_edges
 
 # 并发查询时的 worker 数量
 DEFAULT_WORKER_COUNT = 4
@@ -165,6 +165,36 @@ def _extract_callees_from_semql(
         if func:
             result.append((fn, func, hop_count))
     return result
+
+
+def _extract_roles_from_semql(
+    semQL: Dict[str, Any],
+    property_name: str,
+) -> List[str]:
+    """Extract supported graph_constraint.role values from relation conditions."""
+    conditions = semQL.get("conditions")
+    if not isinstance(conditions, dict):
+        return []
+
+    relation_conditions = conditions.get("relation")
+    if not isinstance(relation_conditions, dict):
+        return []
+
+    property_conditions = relation_conditions.get(property_name)
+    if not isinstance(property_conditions, list):
+        return []
+
+    roles: List[str] = []
+    for condition in property_conditions:
+        if not isinstance(condition, dict):
+            continue
+        graph_constraint = condition.get("graph_constraint")
+        if not isinstance(graph_constraint, dict):
+            continue
+        role = str(graph_constraint.get("role") or "").strip().lower()
+        if role in {"entry_point", "leaf", "isolate"} and role not in roles:
+            roles.append(role)
+    return roles
 
 
 def _resolve_abs_path(file_path: str) -> str:
@@ -429,6 +459,65 @@ def _filter_by_callee_without_path(
 # Public API
 # ---------------------------------------------------------------------------
 
+def role_filter(
+    semQL_path: str,
+    candidate_path: str,
+    property_name: str = "include",
+) -> List[Dict[str, Any]]:
+    """
+    Filter function candidates by graph_constraint.role using direct call edges.
+
+    Roles:
+      - entry_point: in_degree == 0 and out_degree > 0
+      - leaf: out_degree == 0 and in_degree > 0
+      - isolate: in_degree == 0 and out_degree == 0
+
+    Non-function candidates are left unchanged because call-graph roles do not
+    apply to them. Interface and implementation symbols are treated as one
+    logical function when calculating degrees.
+    """
+    semQL = load_res(semQL_path)
+    candidates = load_res(candidate_path)
+    if not candidates:
+        return []
+
+    roles = _extract_roles_from_semql(semQL, property_name)
+    if not roles:
+        return _to_symbols_index_schema(candidates, candidate_path)
+
+    store = RelationGraphStore.open_if_ready()
+    if store is None:
+        return _to_symbols_index_schema(candidates, candidate_path)
+
+    try:
+        filtered: List[Dict[str, Any]] = []
+        for candidate in candidates:
+            symbol_type = str(candidate.get("type") or "").strip().lower()
+            if symbol_type not in {"function", "method"}:
+                filtered.append(candidate)
+                continue
+
+            symbol_id = candidate.get("symbol_id")
+            if symbol_id is None:
+                continue
+
+            in_degree, out_degree = store.symbol_degrees(
+                int(symbol_id),
+                func_name=candidate.get("name") or candidate.get("signature"),
+            )
+            role_matches = {
+                "entry_point": in_degree == 0 and out_degree > 0,
+                "leaf": out_degree == 0 and in_degree > 0,
+                "isolate": in_degree == 0 and out_degree == 0,
+            }
+            if any(role_matches[role] for role in roles):
+                filtered.append(candidate)
+
+        return _to_symbols_index_schema(filtered, candidate_path)
+    finally:
+        store.close()
+
+
 def caller_filter(
     semQL_path: str,
     candidate_path: str,
@@ -582,11 +671,11 @@ def callee_filter(
 if __name__ == "__main__":
     import json
 
-    print(json.dumps(callee_filter(
+    print(json.dumps(role_filter(
         semQL_path="/Users/huangzhuochen/PycharmProjects/CodeSearch/output/youlai-boot-master/semQL_test.json",
         candidate_path="/Users/huangzhuochen/PycharmProjects/CodeSearch/output/youlai-boot-master/filtered_by_type.json",
         property_name="include",
-        layer=1,
-        worker_count=4,
+        # layer=1,
+        # worker_count=4,
     ),
     indent=4 ))

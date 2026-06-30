@@ -78,6 +78,24 @@ class CodeDatabase:
               call_col INTEGER,
               confidence REAL,
               provenance TEXT,
+              source_impl_symbol_id INTEGER,
+              target_impl_symbol_id INTEGER,
+              source_impl_owner_symbol_id INTEGER,
+              target_impl_owner_symbol_id INTEGER,
+              impl_resolution_status TEXT,
+              raw_lsp TEXT
+            );
+
+            CREATE TABLE IF NOT EXISTS code_implementations (
+              impl_id INTEGER PRIMARY KEY AUTOINCREMENT,
+              abstract_symbol_id INTEGER NOT NULL,
+              implementation_symbol_id INTEGER NOT NULL,
+              abstract_owner_symbol_id INTEGER,
+              implementation_owner_symbol_id INTEGER,
+              relation_kind TEXT NOT NULL,
+              confidence REAL,
+              provenance TEXT,
+              is_ambiguous INTEGER,
               raw_lsp TEXT
             );
 
@@ -92,19 +110,32 @@ class CodeDatabase:
             CREATE INDEX IF NOT EXISTS idx_edges_source_kind ON code_edges(source_symbol_id, kind);
             CREATE INDEX IF NOT EXISTS idx_edges_target_kind ON code_edges(target_symbol_id, kind);
             CREATE INDEX IF NOT EXISTS idx_edges_source_target ON code_edges(source_symbol_id, target_symbol_id);
+            CREATE INDEX IF NOT EXISTS idx_impls_abstract ON code_implementations(abstract_symbol_id);
+            CREATE INDEX IF NOT EXISTS idx_impls_implementation ON code_implementations(implementation_symbol_id);
             """
         )
+        self._ensure_column("code_edges", "source_impl_symbol_id", "INTEGER")
+        self._ensure_column("code_edges", "target_impl_symbol_id", "INTEGER")
+        self._ensure_column("code_edges", "source_impl_owner_symbol_id", "INTEGER")
+        self._ensure_column("code_edges", "target_impl_owner_symbol_id", "INTEGER")
+        self._ensure_column("code_edges", "impl_resolution_status", "TEXT")
         self.conn.commit()
+
+    def _ensure_column(self, table: str, column: str, definition: str) -> None:
+        columns = {row["name"] for row in self.conn.execute(f"PRAGMA table_info({table})")}
+        if column not in columns:
+            self.conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
 
     def reset(self) -> None:
         self.conn.executescript(
             """
             DELETE FROM unresolved_calls;
+            DELETE FROM code_implementations;
             DELETE FROM code_edges;
             DELETE FROM code_dependencies;
             DELETE FROM code_symbols;
             DELETE FROM code_files;
-            DELETE FROM sqlite_sequence WHERE name IN ('code_files', 'code_dependencies', 'unresolved_calls', 'code_edges');
+            DELETE FROM sqlite_sequence WHERE name IN ('code_files', 'code_dependencies', 'unresolved_calls', 'code_edges', 'code_implementations');
             """
         )
         self.conn.commit()
@@ -156,12 +187,49 @@ class CodeDatabase:
             """
             INSERT INTO code_edges(
               source_symbol_id, target_symbol_id, kind, source_name, target_name,
-              source_file, target_file, call_line, call_col, confidence, provenance, raw_lsp
+              source_file, target_file, call_line, call_col, confidence, provenance,
+              source_impl_symbol_id, target_impl_symbol_id,
+              source_impl_owner_symbol_id, target_impl_owner_symbol_id,
+              impl_resolution_status, raw_lsp
             )
             VALUES (
               :source_symbol_id, :target_symbol_id, :kind, :source_name, :target_name,
-              :source_file, :target_file, :call_line, :call_col, :confidence, :provenance, :raw_lsp
+              :source_file, :target_file, :call_line, :call_col, :confidence, :provenance,
+              :source_impl_symbol_id, :target_impl_symbol_id,
+              :source_impl_owner_symbol_id, :target_impl_owner_symbol_id,
+              :impl_resolution_status, :raw_lsp
             )
+            """,
+            list(rows),
+        )
+
+    def insert_implementations(self, rows: Iterable[Dict[str, Any]]) -> None:
+        self.conn.executemany(
+            """
+            INSERT INTO code_implementations(
+              abstract_symbol_id, implementation_symbol_id,
+              abstract_owner_symbol_id, implementation_owner_symbol_id,
+              relation_kind, confidence, provenance, is_ambiguous, raw_lsp
+            )
+            VALUES (
+              :abstract_symbol_id, :implementation_symbol_id,
+              :abstract_owner_symbol_id, :implementation_owner_symbol_id,
+              :relation_kind, :confidence, :provenance, :is_ambiguous, :raw_lsp
+            )
+            """,
+            list(rows),
+        )
+
+    def update_edge_implementation_resolution(self, rows: Iterable[Dict[str, Any]]) -> None:
+        self.conn.executemany(
+            """
+            UPDATE code_edges
+            SET source_impl_symbol_id = :source_impl_symbol_id,
+                target_impl_symbol_id = :target_impl_symbol_id,
+                source_impl_owner_symbol_id = :source_impl_owner_symbol_id,
+                target_impl_owner_symbol_id = :target_impl_owner_symbol_id,
+                impl_resolution_status = :impl_resolution_status
+            WHERE edge_id = :edge_id
             """,
             list(rows),
         )
@@ -170,7 +238,14 @@ class CodeDatabase:
         self.conn.commit()
 
     def count(self, table: str) -> int:
-        allowed = {"code_files", "code_symbols", "code_dependencies", "unresolved_calls", "code_edges"}
+        allowed = {
+            "code_files",
+            "code_symbols",
+            "code_dependencies",
+            "unresolved_calls",
+            "code_edges",
+            "code_implementations",
+        }
         if table not in allowed:
             raise ValueError(f"unsupported table: {table}")
         row = self.conn.execute(f"SELECT COUNT(*) AS n FROM {table}").fetchone()

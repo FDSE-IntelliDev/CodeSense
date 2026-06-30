@@ -19,7 +19,6 @@ def _load_symbols(conn: sqlite3.Connection) -> Dict[int, Dict]:
                start_line, end_line, name_line, name_col,
                signature, language, doc, container
         FROM code_symbols
-        WHERE type IN ('method', 'function')
         """
     ).fetchall()
     symbols: Dict[int, Dict] = {}
@@ -42,10 +41,16 @@ def _load_symbols(conn: sqlite3.Connection) -> Dict[int, Dict]:
 def _load_adjacency(conn: sqlite3.Connection) -> Dict[int, List[int]]:
     rows = conn.execute(
         """
-        SELECT source_symbol_id, target_symbol_id
+        SELECT
+          source_symbol_id,
+          CASE
+            WHEN impl_resolution_status = 'resolved' AND target_impl_symbol_id IS NOT NULL
+            THEN target_impl_symbol_id
+            ELSE target_symbol_id
+          END AS resolved_target_symbol_id
         FROM code_edges
         WHERE kind = 'calls'
-        ORDER BY source_symbol_id, call_line, call_col, target_symbol_id
+        ORDER BY source_symbol_id, call_line, call_col, resolved_target_symbol_id
         """
     ).fetchall()
     adjacency: Dict[int, List[int]] = {}
@@ -63,8 +68,9 @@ def _entrypoints(adjacency: Dict[int, List[int]]) -> List[int]:
 
 
 def _chain_item(project_root: str, symbol: Dict) -> Dict:
+    func_name = symbol.get("signature") or symbol.get("name", "")
     return {
-        "func_name": symbol.get("name", ""),
+        "func_name": func_name,
         "code": get_symbol_code(project_root, symbol) or "",
     }
 
@@ -134,15 +140,9 @@ def default_paths(project_name: str = PROJECT_NAME) -> Dict[str, str]:
 
 def main() -> None:
     paths = default_paths()
-    parser = argparse.ArgumentParser(description="Build word2vec call chains from code_edges.")
-    parser.add_argument("--db", default=paths["db"], help="Path to codegraph.sqlite.")
-    parser.add_argument("--project-root", default=PROJECT_PATH, help="Project root for reading symbol code.")
-    parser.add_argument("--output", default=paths["output"], help="Output JSON path.")
-    parser.add_argument("--max-depth", type=int, default=20, help="Maximum chain length.")
-    args = parser.parse_args()
 
-    chains = build_call_chains_from_edges(args.db, args.project_root, max_depth=args.max_depth)
-    out = Path(args.output)
+    chains = build_call_chains_from_edges(paths["db"], PROJECT_PATH, max_depth=20)
+    out = Path(paths["output"])
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(chains, ensure_ascii=False, indent=2), encoding="utf-8")
     print(json.dumps({"chains": len(chains), "output": str(out)}, ensure_ascii=False, indent=2))
