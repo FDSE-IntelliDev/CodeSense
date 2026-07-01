@@ -1,58 +1,147 @@
-# Code Indexer (LSP-first, AST fallback)
+# CodeSearch
 
-给定项目路径，生成：
+基于语义查询语言（SemQL）的代码搜索系统。给定自然语言查询，通过 LLM 提取结构化语义条件，经由倒排索引 + 缩写扩展 + embedding 匹配生成候选集，再通过类型过滤、聚类过滤、embedding 过滤、调用关系过滤等多阶段精排，返回最相关的代码元素。
 
-- `symbols_index.json`
-- `call_graph.json`
-- `dependency_graph.json`
+## 系统架构
 
-## 特性
+系统分为 **离线索引** 和 **在线查询** 两大阶段：
 
-- 优先使用 LSP 思路（当前版本预留了 LSP 客户端扩展空间）
-- LSP 信息不足时使用 AST 兜底
-  - Python: 内置 `ast`
-  - JS/TS: `tree-sitter`
-- 支持多文件、跨文件符号关联（基于符号名匹配）
-- 分批处理文件，避免一次性加载
+### 离线索引（Offline Indexing）
+
+将源代码解析为结构化索引，供在线检索使用：
+
+1. **代码解析** (`code_parser.py`) — 解析源文件，提取符号表、依赖图
+2. **子词分词** (`ngram_split.py`) — 对符号名进行分词，构建 `子词 -> [代码元素]` 的 ngram 索引
+3. **倒排索引** (`invert_index.py`) — 基于缩写扩展，构建 `标识符 -> [缩写子词]` 的倒排索引
+
+### 在线查询（Online Search）
+
+将自然语言查询转化为结构化检索条件并执行搜索：
+
+1. **查询理解**
+   - `query_processing/llm_keyword_extractor.py` — LLM 提取关键词、意图、目标类型
+   - `query_processing/llm_semCon_extractor.py` — LLM 提取 SemCon 原子条件（surface / intention / relation）
+   - `query_processing/semQL_composer.py` — 将 SemCon 组合为 SemQL 结构化查询
+2. **候选召回** (`executor/surface_executor.py`)
+   - 倒排索引 + 缩写扩展召回（`search/`）
+   - 类型过滤（`filters/type_filter.py`）
+3. **精排过滤**
+   - 聚类过滤（`filters/cluster_pipeline.py`）— 基于语义向量聚类，按簇相关性分层
+   - Embedding 过滤（`filters/embedding_filter.py`）— 基于训练好的 term embedding 细粒度打分
+   - 调用关系过滤（`filters/relation_filter.py`）— 基于 LSP 查询 caller/callee 约束
+
+## 支持的语言
+
+| 语言 | 解析方式 |
+|------|---------|
+| Python | 内置 `ast` |
+| Java | `javalang` AST + JDT.LS (LSP) |
+| JavaScript / TypeScript | `tree-sitter` |
+| C / C++ | `ctags` |
+
+## 项目结构
+
+```
+CodeSearch/
+├── main.py                    # 主入口（离线 + 在线 pipeline）
+├── code_parser.py             # 代码解析：提取符号表与依赖图
+├── ngram_split.py             # 符号名分词 & ngram 索引构建
+├── invert_index.py            # 倒排索引构建（缩写扩展）
+├── definition.py              # 全局常量与配置
+├── parsers/                   # 多语言代码解析器
+│   ├── registry.py            # 语言注册 & 路由
+│   ├── python_parser.py
+│   ├── java_parser.py
+│   ├── javascript_parser.py
+│   ├── c_cpp_parser.py
+│   ├── ctags_parser.py
+│   ├── java_lsp_client.py     # Java LSP 客户端
+│   ├── parallel_java_lsp_client.py
+│   └── code_element_types.py  # 代码元素类型注册表
+├── query_processing/          # 查询理解
+│   ├── llm_keyword_extractor.py   # LLM 关键词提取
+│   ├── llm_semCon_extractor.py    # LLM SemCon 条件提取
+│   └── semQL_composer.py          # SemQL 组合器
+├── DSL/                       # 查询 DSL 定义
+│   ├── query_dsl.py           # 原始查询 DSL schema
+│   ├── surface_con.py         # Surface 条件 schema
+│   ├── intention_con.py       # Intention 条件 schema
+│   └── relation_con.py        # Relation 条件 schema
+├── search/                    # 候选召回
+│   ├── invert_index_search.py     # 倒排索引搜索入口
+│   ├── full_term_matcher.py       # 关键词 -> 缩写 -> 子词 -> 符号匹配
+│   ├── fuzzy_matcher.py
+│   └── regex_search.py
+├── filters/                   # 精排过滤
+│   ├── type_filter.py         # 代码元素类型过滤
+│   ├── cluster_pipeline.py    # 语义聚类过滤
+│   ├── embedding_filter.py    # Term embedding 过滤
+│   └── relation_filter.py     # 调用关系过滤（LSP）
+├── executor/                  # 执行器
+│   ├── surface_executor.py    # Stage 1: 召回 + 类型过滤
+│   └── relation_engine.py
+├── embedding/                 # Term Embedding 模型
+│   ├── embedding_main.py      # 统一入口（训练 / 查询）
+│   ├── hybrid_term_embedding.py
+│   ├── semantic_term_embedding.py
+│   ├── icf_term_embedding.py
+│   └── pairwise_term_reranker.py
+├── expansion/                 # 缩写扩展
+│   ├── abbreviate.py          # 缩写生成（前缀 / 辅音骨架 / 子序列）
+│   └── NameHandler.py
+├── tokenizer/                 # 分词器
+│   ├── tokenizer_core.py      # 分词入口（camel + BPE / unigram）
+│   ├── sentencepiece_bpe_tokenizer.py
+│   └── sentencepiece_unigram_tokenizer.py
+├── utils/
+│   ├── file_utils.py
+│   └── llm_api.py             # LLM API 调用封装
+└── output/                    # 索引与搜索结果输出
+```
 
 ## 安装
 
-### Python 依赖
-
 ```bash
-python3 -m pip install -r requirements.txt
+pip install -r requirements.txt
 ```
 
 ### 系统依赖 (LSP 支持)
 
-如果你需要分析 Java 项目代码的调用链，请确保本地环境中安装了 JDT.LS (Java Language Server)：
+分析 Java 项目调用链需要安装 JDT.LS：
 
-- **macOS (推荐通过 Homebrew 安装)**:
+- **macOS (Homebrew)**:
   ```bash
   brew install jdtls
   ```
-- **其他系统**:
-  请参考 [eclipse.jdt.ls](https://github.com/eclipse/eclipse.jdt.ls) 官方页面进行下载，并将 `jdtls` 可执行文件添加到环境变量中。
+- **其他系统**: 参考 [eclipse.jdt.ls](https://github.com/eclipse/eclipse.jdt.ls) 官方页面，将 `jdtls` 添加到环境变量。
 
 ## 运行
 
+### 离线的索引构建
+
 ```bash
-python3 code_parser.py /path/to/project --output /path/to/output
+python main.py --project_path /path/to/project --output_dir /path/to/output
 ```
 
-输出文件：
-- `/path/to/output/symbols_index.json`
-- `/path/to/output/call_graph.json`
-- `/path/to/output/dependency_graph.json`
+生成文件：
+- `symbols_index.json` — 代码符号表
+- `dependency_graph.json` — 依赖关系图
+- `ngramed_symbol.json` — 子词 -> 代码元素索引
+- `invert_index.json` — 标识符 -> 缩写子词倒排索引
+
+### 在线查询
+
+```bash
+python main.py --query "Find the entry function that handles user login authentication"
+```
 
 ## 数据结构 (Schema)
 
 ### 代码元素 (symbols_index.json)
-解析出的代码符号表中的每个元素都遵循以下 Schema：
 
 ```json
 {
-  "symbol_id": 1, 
+  "symbol_id": 1,
   "name": "YouLaiBootApplication",
   "type": "class",
   "file": "/absolute/path/to/file.java",
@@ -60,20 +149,21 @@ python3 code_parser.py /path/to/project --output /path/to/output
     "start_line": 15,
     "end_line": 21
   },
-  "signature": "class YouLaiBootApplication", 
+  "signature": "class YouLaiBootApplication",
   "language": "java",
   "doc": "包含的文档注释内容",
   "container": "com.youlai.boot"
 }
 ```
 
-字段说明：
-- `symbol_id`: 符号的全局唯一标识。
-- `name`: 符号名称（如类名、方法名、变量名）。
-- `type`: 符号类型（如 `class`, `method`, `variable`, `function` 等）。
-- `file`: 所属文件的绝对路径。
-- `range`: 符号在文件中所在的起始行和结束行（1-based）。
-- `signature`: 具体的签名或者声明文本片段。
-- `language`: 所属语言（如 `java`, `python`, `javascript`）。
-- `doc`: 提取到的关联文档注释信息（通常为 javadoc/docstring）。
-- `container`: 所属容器，例如所在的包路径、类路径或父级作用域名称。
+### SemQL 查询结构
+
+SemQL 将自然语言查询分解为三类原子条件：
+
+| 条件类型 | 用途 | 关键字段 |
+|---------|------|---------|
+| **Surface** | 字面文本匹配 | keywords, synonyms, match_kind, code_element_type, code_text |
+| **Intention** | 语义功能约束 | intent (action+object), aspect, keywords |
+| **Relation** | 代码结构约束 | caller, callee, graph_constraint, file_path, code_ql |
+
+每条条件通过 `property` 字段标记为 `include` 或 `exclude`。
