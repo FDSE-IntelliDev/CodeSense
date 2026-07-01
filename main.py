@@ -9,10 +9,11 @@ from ngram_split import SymbolNgramer
 from invert_index import InvertedIndexBuilder
 
 # Online query processing imports
-from query_processing.llm_keyword_extractor import LLMKeywordExtractor
 from query_processing.llm_semCon_extractor import LLMSemConExtractor
 from query_processing.semQL_composer import compose_semQL_from_semCon
-from search.invert_index_search import invert_index_search4symbol
+from executor.surface_executor import run_surface_search
+from executor.relation_executor import run_relation_executor
+from executor.intention_executor import executor as run_intention_executor
 
 from definition import OUTPUT_DIR,PROJECT_PATH,PROJECT_NAME
 from utils.file_utils import save_res
@@ -49,42 +50,59 @@ def process_offline(project_path: str, output_dir: str):
     print("=== [Offline] Indexing completed successfully ===\n")
 
 
-def process_online(query: str):
-    invert_index_path=f'{OUTPUT_DIR}/{PROJECT_NAME}/invert_index.json'
-    ngramed_symbol_path=f'{OUTPUT_DIR}/{PROJECT_NAME}/ngramed_symbol.json'
-    semQL_path=f'{OUTPUT_DIR}/{PROJECT_NAME}/semQL.json'
-    semCon_path=f'{OUTPUT_DIR}/{PROJECT_NAME}/semCon.json'
-    invert_index_search_result_path=f'{OUTPUT_DIR}/{PROJECT_NAME}/invert_index_search_result.json'
+def process_online(query: str, output_dir: str = f"{OUTPUT_DIR}/{PROJECT_NAME}"):
+    output_path = Path(output_dir)
+    output_path.mkdir(parents=True, exist_ok=True)
+
+    semQL_path = str(output_path / "semQL.json")
+    semCon_path = str(output_path / "semCon.json")
+    surface_result_path = str(output_path / "filtered_by_type.json")
+    relation_result_path = str(output_path / "filtered_by_relation.json")
+    intention_result_path = str(output_path / "intention_executor_result.json")
 
     print(f"=== [Online] Processing Search Query ===")
     print(f"User Query: '{query}'")
 
-    # Extract query DSL via LLM
-    # print("Extracting query DSL using LLM...")
-    # extractor = LLMKeywordExtractor()
-    # dsl_result = extractor.extract_keywords(query)
-    # print("\n--- Extracted Query DSL ---")
-    # print(json.dumps(dsl_result, indent=2, ensure_ascii=False))
-    # save_res(semQL_path,dsl_result)
+    print("\n[1/5] Extracting SemCon using LLM ...")
+    extractor = LLMSemConExtractor()
+    semCon_result = extractor.extract_semCon(query)
+    save_res(semCon_path, semCon_result)
+    print(f"  -> SemCon saved to {semCon_path}")
 
-    # print("Extracting SemCon using LLM...")
-    # extractor = LLMSemConExtractor()
-    # semCon_result = extractor.extract_semCon(query)
-    # print("\n--- Extracted SemCon ---")
-    # print(json.dumps(semCon_result, indent=2, ensure_ascii=False))
-    # save_res(semCon_path, semCon_result)
-    #
-    # semQL_result = compose_semQL_from_semCon(semCon_result, raw_query=query)
-    # print("\n--- Composed SemQL ---")
-    # print(json.dumps(semQL_result, indent=2, ensure_ascii=False))
-    # save_res(semQL_path, semQL_result)
+    print("\n[2/5] Composing SemQL from SemCon ...")
+    semQL_result = compose_semQL_from_semCon(semCon_result, raw_query=query)
+    save_res(semQL_path, semQL_result)
+    print(f"  -> SemQL saved to {semQL_path}")
 
-    print("\n--- Inverted Index Search ---")
-    search_results = invert_index_search4symbol(invert_index_path=invert_index_path,ngramed_symbol_path=ngramed_symbol_path,query_dsl_result_path=semQL_path)
-    save_res(invert_index_search_result_path,search_results)
-    print(f"Search Results: {len(search_results)} matched elements found.")
-    print("---------------------------\n")
-    # return dsl_result
+    print("\n[3/5] Running Surface Executor ...")
+    surface_results = run_surface_search(output_dir=output_dir)
+    print(f"  -> Surface results: {len(surface_results)} candidates saved to {surface_result_path}")
+
+    print("\n[4/5] Running Relation Executor ...")
+    relation_results = run_relation_executor(
+        semQL_path=semQL_path,
+        surface_search_result_path=surface_result_path,
+        output_path=relation_result_path,
+    )
+    print(f"  -> Relation results: {len(relation_results)} candidates saved to {relation_result_path}")
+
+    print("\n[5/5] Running Intention Executor ...")
+    final_results = run_intention_executor(
+        semQL_path=semQL_path,
+        relation_executor_result_path=relation_result_path,
+        output_path=intention_result_path,
+    )
+    print(f"  -> Final results: {len(final_results)} candidates saved to {intention_result_path}")
+    print("=== [Online] Pipeline completed ===\n")
+
+    return {
+        "semCon_path": semCon_path,
+        "semQL_path": semQL_path,
+        "surface_result_path": surface_result_path,
+        "relation_result_path": relation_result_path,
+        "intention_result_path": intention_result_path,
+        "final_results": final_results,
+    }
 
 def main():
     parser = argparse.ArgumentParser(description="CodeSearch Pipeline")
@@ -92,11 +110,7 @@ def main():
     parser.add_argument("--output_dir", type=str, help="Directory to save the parsing and indexing results")
     parser.add_argument("--query", type=str, help="A natural language search query for the online phase")
 
-    args = parser.parse_args([
-        # "--project_path", PROJECT_PATH,
-        # "--output", f"{OUTPUT_DIR}/youlai-boot-master",
-        "--query", "Find the entry function that handles user login authentication"
-    ])
+    args = parser.parse_args()
 
     if args.project_path and args.output_dir:
         process_offline(args.project_path, args.output_dir)
@@ -104,8 +118,9 @@ def main():
         print("Skipping offline parsing because --project_path or --output_dir missing.")
 
     if args.query:
-        process_online(args.query)
+        process_online(args.query, output_dir=args.output_dir or f"{OUTPUT_DIR}/{PROJECT_NAME}")
     else:
         print("Skipping online search because no --query provided.")
 
-main()
+if __name__ == "__main__":
+    main()
