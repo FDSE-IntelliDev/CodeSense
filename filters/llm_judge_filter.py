@@ -16,7 +16,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Dict, Iterable, List, Optional, Set, Tuple
 
-from definition import BASE_MODEL
+from definition import BASE_MODEL, QUERY_OUTPUT_DIR
 from parsers.read_tools import get_symbol_code
 from utils.file_utils import load_res, save_res
 from utils.llm_api import call_chat_llm
@@ -493,15 +493,15 @@ def _is_int_like(value: Any) -> bool:
 
 def main() -> None:
     kept = llm_judge_filter(
-        semQL_path="/Users/huangzhuochen/PycharmProjects/CodeSearch/output/youlai-boot-master/semQL_test.json",
-        candidate_path="/Users/huangzhuochen/PycharmProjects/CodeSearch/output/youlai-boot-master/intention_executor_result.json",
-        output_path="/Users/huangzhuochen/PycharmProjects/CodeSearch/output/youlai-boot-master/LLM_judge_result.json",
-        judge_output_path="/Users/huangzhuochen/PycharmProjects/CodeSearch/output/youlai-boot-master/LLM_judge_result_debug.json",
+        semQL_path=f"{QUERY_OUTPUT_DIR}/semQL.json",
+        candidate_path=f"{QUERY_OUTPUT_DIR}/filtered_by_embedding.json",
+        output_path=f"{QUERY_OUTPUT_DIR}/LLM_judge_result.json",
+        judge_output_path=f"{QUERY_OUTPUT_DIR}/LLM_judge_result_debug.json",
         batch_size=20,
         max_code_chars=4000,
         model=BASE_MODEL,
     )
-    print(json.dumps({"kept": len(kept), "output_path": "args.output_pa/Users/huangzhuochen/PycharmProjects/CodeSearch/output/youlai-boot-master/LLM_judge_result.json"}, ensure_ascii=False, indent=2))
+    print(json.dumps({"kept": len(kept), "output_path": f"{QUERY_OUTPUT_DIR}/LLM_judge_result.json"}, ensure_ascii=False, indent=2))
 
 
 if __name__ == "__main__":

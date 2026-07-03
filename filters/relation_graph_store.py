@@ -3,10 +3,10 @@ import sqlite3
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Set, Tuple
 
-from definition import OUTPUT_DIR, PROJECT_NAME
+from definition import PROJECT_OUTPUT_DIR
 
 
-DEFAULT_CODE_DB_PATH = str(Path(OUTPUT_DIR) / PROJECT_NAME / "codegraph.sqlite")
+DEFAULT_CODE_DB_PATH = str(Path(PROJECT_OUTPUT_DIR) / "codegraph.sqlite")
 
 
 def _base_name(name: Any) -> str:

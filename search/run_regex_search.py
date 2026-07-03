@@ -1,12 +1,12 @@
 import json
 
-from definition import OUTPUT_DIR
+from definition import PROJECT_OUTPUT_DIR
 from search.regex_search import search_symbols_by_keywords
 
 
 def main() -> None:
     result = search_symbols_by_keywords(
-        symbols_index_path=f"{OUTPUT_DIR}/youlai-boot-master/symbols_index.json",
+        symbols_index_path=f"{PROJECT_OUTPUT_DIR}/symbols_index.json",
         keywords=["readahead","ra"],
         mode="and",
         case_sensitive=False,

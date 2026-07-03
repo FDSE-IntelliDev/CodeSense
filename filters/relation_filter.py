@@ -19,7 +19,7 @@ from typing import Dict, Any, List, Optional, Set, Tuple
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from definition import PROJECT_PATH, JDTLS_PATH,OUTPUT_DIR,PROJECT_NAME
+from definition import PROJECT_PATH, JDTLS_PATH, PROJECT_OUTPUT_DIR, QUERY_OUTPUT_DIR
 from parsers.java_lsp_client import JavaLSPClient, JavaCallChainExtractor
 from parsers.parallel_java_lsp_client import ParallelJavaLSPClient, ParallelJavaCallChainExtractor
 from parsers.registry import parse_file_with_registry
@@ -89,9 +89,29 @@ def _symbol_key(symbol_id: Any) -> str:
     return str(symbol_id)
 
 
+def _project_output_dir_from_candidate_path(candidate_path: str) -> Path:
+    """Infer the project-level output dir from a candidate result path.
+
+    Online result files now live in ``output/<project>/query_<id>/`` while
+    project-level indexes/graphs remain in ``output/<project>/``. This helper
+    keeps relation filters compatible with both the old flat layout and the new
+    per-query layout.
+    """
+    parent = Path(candidate_path).resolve().parent
+    if parent.name.startswith("query_"):
+        return parent.parent
+    return parent
+
+
+def _codegraph_path_from_candidate_path(candidate_path: str) -> str:
+    return str(_project_output_dir_from_candidate_path(candidate_path) / "codegraph.sqlite")
+
+
 def _load_symbols_by_id(candidate_path: str) -> Dict[str, Dict[str, Any]]:
     """Load sibling symbols_index.json and index symbols by symbol_id."""
-    symbols_path=Path(f"{OUTPUT_DIR}/{PROJECT_NAME}/symbols_index.json")
+    symbols_path = _project_output_dir_from_candidate_path(candidate_path) / "symbols_index.json"
+    if not symbols_path.exists():
+        symbols_path = Path(PROJECT_OUTPUT_DIR) / "symbols_index.json"
     if not symbols_path.exists():
         return {}
 
@@ -485,7 +505,9 @@ def role_filter(
     if not roles:
         return _to_symbols_index_schema(candidates, candidate_path)
 
-    store = RelationGraphStore.open_if_ready()
+    store = RelationGraphStore.open_if_ready(
+        _codegraph_path_from_candidate_path(candidate_path)
+    )
     if store is None:
         return _to_symbols_index_schema(candidates, candidate_path)
 
@@ -558,6 +580,7 @@ def caller_filter(
         relation_entries=caller_entries,
         relation_kind="caller",
         layer=layer,
+        db_path=_codegraph_path_from_candidate_path(candidate_path),
     )
     if edge_kept_ids is not None:
         filtered = [sym for sym in candidates if _symbol_key(sym.get("symbol_id")) in edge_kept_ids]
@@ -634,6 +657,7 @@ def callee_filter(
         relation_entries=callee_entries,
         relation_kind="callee",
         layer=layer,
+        db_path=_codegraph_path_from_candidate_path(candidate_path),
     )
     if edge_kept_ids is not None:
         filtered = [sym for sym in candidates if _symbol_key(sym.get("symbol_id")) in edge_kept_ids]
@@ -672,8 +696,8 @@ if __name__ == "__main__":
     import json
 
     print(json.dumps(role_filter(
-        semQL_path="/Users/huangzhuochen/PycharmProjects/CodeSearch/output/youlai-boot-master/semQL_test.json",
-        candidate_path="/Users/huangzhuochen/PycharmProjects/CodeSearch/output/youlai-boot-master/filtered_by_type.json",
+        semQL_path=f"{QUERY_OUTPUT_DIR}/semQL.json",
+        candidate_path=f"{QUERY_OUTPUT_DIR}/filtered_by_type.json",
         property_name="include",
         # layer=1,
         # worker_count=4,

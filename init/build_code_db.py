@@ -26,7 +26,7 @@ from init.schema import (
     normalize_symbol,
     symbol_row_to_json,
 )
-from definition import JDTLS_PATH, OUTPUT_DIR, PROJECT_NAME, PROJECT_PATH
+from definition import JDTLS_PATH, PROJECT_NAME, PROJECT_OUTPUT_DIR, PROJECT_PATH
 from parsers.registry import get_language_for_file
 
 
@@ -43,7 +43,9 @@ def build_database(
     jdtls_path: str = JDTLS_PATH,
 ) -> Dict[str, int]:
     project_root = os.path.abspath(project_path)
-    output_path = Path(output_dir+'/'+PROJECT_NAME).resolve()
+    output_path = Path(output_dir).resolve()
+    # if output_path.name != PROJECT_NAME:
+    #     output_path = output_path / PROJECT_NAME
     output_path.mkdir(parents=True, exist_ok=True)
     db_path = output_path / db_name
 
@@ -228,7 +230,7 @@ def main() -> None:
     # parser.add_argument("--project_path", default=PROJECT_PATH, help="Project root directory to parse.")
     # parser.add_argument(
     #     "--output",
-    #     default=str(Path(OUTPUT_DIR) / PROJECT_NAME),
+    #     default=PROJECT_OUTPUT_DIR,
     #     help="Output directory for the SQLite database.",
     # )
     # parser.add_argument("--db_name", default="codegraph.sqlite", help="SQLite database filename.")
@@ -247,7 +249,7 @@ def main() -> None:
 
     summary = build_database(
         project_path=PROJECT_PATH,
-        output_dir=OUTPUT_DIR,
+        output_dir=PROJECT_OUTPUT_DIR,
         db_name="codegraph.sqlite",
         export_json=True,
         build_edges=True,

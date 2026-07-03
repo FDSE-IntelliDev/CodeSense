@@ -7,7 +7,7 @@ from typing import Dict, List, Set
 
 sys.path.append(str(Path(__file__).resolve().parent.parent))
 
-from definition import OUTPUT_DIR, PROJECT_NAME, PROJECT_PATH
+from definition import PROJECT_OUTPUT_DIR, PROJECT_PATH
 from parsers.read_tools import get_symbol_code
 
 
@@ -130,8 +130,8 @@ def build_call_chains_from_edges(db_path: str, project_root: str, max_depth: int
         conn.close()
 
 
-def default_paths(project_name: str = PROJECT_NAME) -> Dict[str, str]:
-    base = Path(OUTPUT_DIR) / project_name
+def default_paths(project_output_dir: str = PROJECT_OUTPUT_DIR) -> Dict[str, str]:
+    base = Path(project_output_dir)
     return {
         "db": str(base / "codegraph.sqlite"),
         "output": str(base / "word2vec_call_chains.from_edges.json"),

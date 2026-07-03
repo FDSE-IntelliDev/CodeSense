@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Any, Dict, Iterable, List, Set
 
 from expansion.abbreviate import abbreviate,normalize_entity
-from definition import OUTPUT_DIR
+from definition import PROJECT_OUTPUT_DIR
 from embedding.embedding_main import score_pair
 from query_processing.semql_utils import extract_semql_text_terms
 
@@ -293,8 +293,8 @@ class FullTermMatcher:
 
 if __name__ == "__main__":
     matcher = FullTermMatcher(
-        invert_index_path=f"{OUTPUT_DIR}/youlai-boot-master/invert_index.json",
-        ngramed_symbol_path=f"{OUTPUT_DIR}/youlai-boot-master/ngramed_symbol.json",
+        invert_index_path=f"{PROJECT_OUTPUT_DIR}/invert_index.json",
+        ngramed_symbol_path=f"{PROJECT_OUTPUT_DIR}/ngramed_symbol.json",
     )
 
 
@@ -303,7 +303,7 @@ if __name__ == "__main__":
 
     # result = matcher.match_keywords(payload)
     result=matcher.match_ngram(payload)
-    with open(f'{OUTPUT_DIR}/full_term_match_result.json', 'w', encoding='utf-8') as f:
-        json.dump(result, f, ensure_ascii=False, indent=2)
+    # with open(f'{OUTPUT_DIR}/full_term_match_result.json', 'w', encoding='utf-8') as f:
+    #     json.dump(result, f, ensure_ascii=False, indent=2)
     # print(result["matched_symbols"])
     # print(result["detail"])

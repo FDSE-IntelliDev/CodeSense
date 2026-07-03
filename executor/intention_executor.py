@@ -13,6 +13,7 @@ from typing import Any, Dict, List
 from filters.cluster_pipeline import CodeEmbedder, FiltrationDispatcher, SymbolClusterer
 from filters.embedding_filter import run_embedding_filter
 from filters.llm_judge_filter import llm_judge_filter as run_llm_judge_file_filter
+from definition import QUERY_OUTPUT_DIR
 from utils.file_utils import load_res, save_res
 
 
@@ -156,17 +157,18 @@ def executor(
 
 
 def main() -> None:
+    output_path = f"{QUERY_OUTPUT_DIR}/intention_executor_result.json"
 
     results = executor(
-        semQL_path="/Users/huangzhuochen/PycharmProjects/CodeSearch/output/youlai-boot-master/semQL_test.json",
-        relation_executor_result_path="/Users/huangzhuochen/PycharmProjects/CodeSearch/output/youlai-boot-master/filtered_by_relation.json",
-        output_path="/Users/huangzhuochen/PycharmProjects/CodeSearch/output/youlai-boot-master/intention_executor_result.json",
+        semQL_path=f"{QUERY_OUTPUT_DIR}/semQL.json",
+        relation_executor_result_path=f"{QUERY_OUTPUT_DIR}/filtered_by_relation.json",
+        output_path=output_path,
     )
     print(
         json.dumps(
             {
                 "kept": len(results),
-                "output_path": str(Path("/Users/huangzhuochen/PycharmProjects/CodeSearch/output/youlai-boot-master/intention_executor_result.json").resolve()),
+                "output_path": str(Path(output_path).resolve()),
             },
             ensure_ascii=False,
             indent=2,

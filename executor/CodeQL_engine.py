@@ -12,13 +12,13 @@ import tempfile
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from definition import OUTPUT_DIR, PROJECT_NAME
+from definition import PROJECT_OUTPUT_DIR
 
 
 DEFAULT_CODEQL_DATABASE_CANDIDATES = (
-    Path(OUTPUT_DIR) / PROJECT_NAME / "codeql-db",
-    Path(OUTPUT_DIR) / PROJECT_NAME / "codeql_database",
-    Path(OUTPUT_DIR) / PROJECT_NAME / "database",
+    Path(PROJECT_OUTPUT_DIR) / "codeql-db",
+    Path(PROJECT_OUTPUT_DIR) / "codeql_database",
+    Path(PROJECT_OUTPUT_DIR) / "database",
 )
 
 

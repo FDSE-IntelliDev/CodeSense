@@ -10,7 +10,7 @@ SemQL properties:
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set
 
-from definition import OUTPUT_DIR, PROJECT_NAME
+from definition import QUERY_OUTPUT_DIR
 from filters.relation_filter import (
     _extract_callees_from_semql,
     _extract_callers_from_semql,
@@ -22,7 +22,7 @@ from filters.relation_filter import (
 from utils.file_utils import load_res, save_res
 
 
-DEFAULT_RELATION_RESULT_PATH = f"{OUTPUT_DIR}/{PROJECT_NAME}/filtered_by_relation.json"
+DEFAULT_RELATION_RESULT_PATH = f"{QUERY_OUTPUT_DIR}/filtered_by_relation.json"
 
 
 def _symbol_key(symbol: Dict[str, Any]) -> str:
@@ -314,9 +314,9 @@ if __name__ == "__main__":
 
     print(json.dumps(
         relation_filter_execute(
-            semQL_path=OUTPUT_DIR+'/'+PROJECT_NAME+'/'+'SemQL_test.json',
-            surface_search_result_path="/Users/huangzhuochen/PycharmProjects/CodeSearch/output/youlai-boot-master/filtered_by_type.json",
-            output_path=f"{OUTPUT_DIR}/{PROJECT_NAME}/filtered_by_relation.json",
+            semQL_path=f"{QUERY_OUTPUT_DIR}/semQL_test.json",
+            surface_search_result_path=f"{QUERY_OUTPUT_DIR}/filtered_by_type.json",
+            output_path=f"{QUERY_OUTPUT_DIR}/filtered_by_relation.json",
             # layer=args.layer,
             # worker_count=args.worker_count,
         ),

@@ -1,6 +1,6 @@
 import json
 from search.full_term_matcher import FullTermMatcher
-from definition import OUTPUT_DIR
+from definition import PROJECT_OUTPUT_DIR, QUERY_OUTPUT_DIR
 
 
 def _has_requested_conditions(semql: dict, properties: tuple) -> bool:
@@ -76,9 +76,9 @@ def invert_index_search4symbol(invert_index_path: str, ngramed_symbol_path: str,
 
 if __name__ == "__main__":
     # 使用常量和定义好的路径调用函数
-    invert_index_path = f"{OUTPUT_DIR}/youlai-boot-master/invert_index.json"
-    ngramed_symbol_path = f"{OUTPUT_DIR}/youlai-boot-master/ngramed_symbol.json"
-    query_dsl_result_path = f"{OUTPUT_DIR}/youlai-boot-master/query_dsl_result.json"
+    invert_index_path = f"{PROJECT_OUTPUT_DIR}/invert_index.json"
+    ngramed_symbol_path = f"{PROJECT_OUTPUT_DIR}/ngramed_symbol.json"
+    query_dsl_result_path = f"{QUERY_OUTPUT_DIR}/semQL.json"
 
     # 执行搜索并返回结果
     elements = invert_index_search4symbol(

@@ -166,5 +166,5 @@ def get_ngramed_symbol(self):
         with open(self.ngramed_symbol_path, "r", encoding="utf-8") as f:
             return json.load(f)
 
-# ngramer=SymbolNgramer(symbols_index_path=f"{OUTPUT_DIR}/youlai-boot-master/symbols_index.json",output_path=f"{OUTPUT_DIR}/youlai-boot-master/ngramed_symbol.json")
+# ngramer=SymbolNgramer(symbols_index_path=f"{PROJECT_OUTPUT_DIR}/symbols_index.json", output_path=f"{PROJECT_OUTPUT_DIR}/ngramed_symbol.json")
 # ngramer.build_ngramed_symbol()

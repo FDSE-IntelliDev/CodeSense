@@ -12,7 +12,7 @@ import json
 from pathlib import Path
 from typing import Any, Dict, List
 
-from definition import OUTPUT_DIR, PROJECT_NAME
+from definition import PROJECT_OUTPUT_DIR, QUERY_OUTPUT_DIR
 from parsers.read_tools import read_file_lines
 from search.fuzzy_matcher import FuzzyMatcher
 
@@ -398,6 +398,6 @@ def exact_code_search(symbols_index_path: str, semql_path: str, top_k: int = 50)
 
 
 if __name__ == "__main__":
-    symbols_index_path = f"{OUTPUT_DIR}/{PROJECT_NAME}/symbols_index.json"
-    semql_path = f"{OUTPUT_DIR}/{PROJECT_NAME}/semQL.json"
+    symbols_index_path = f"{PROJECT_OUTPUT_DIR}/symbols_index.json"
+    semql_path = f"{QUERY_OUTPUT_DIR}/semQL.json"
     print(json.dumps(exact_code_search(symbols_index_path, semql_path, top_k=50), indent=4))

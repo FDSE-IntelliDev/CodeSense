@@ -15,7 +15,7 @@ from executor.surface_executor import run_surface_search
 from executor.relation_executor import run_relation_executor
 from executor.intention_executor import executor as run_intention_executor
 
-from definition import OUTPUT_DIR,PROJECT_PATH,PROJECT_NAME
+from definition import PROJECT_OUTPUT_DIR, QUERY_ID, get_query_output_dir
 from utils.file_utils import save_res
 
 
@@ -50,8 +50,23 @@ def process_offline(project_path: str, output_dir: str):
     print("=== [Offline] Indexing completed successfully ===\n")
 
 
-def process_online(query: str, output_dir: str = f"{OUTPUT_DIR}/{PROJECT_NAME}"):
-    output_path = Path(output_dir)
+def process_online(
+    query: str,
+    output_dir: str = PROJECT_OUTPUT_DIR,
+    query_id: int = QUERY_ID,
+):
+    """Run the online query pipeline.
+
+    Args:
+        query: natural-language user query.
+        output_dir: project-level output/index directory, e.g.
+            ``output/<project>``. Offline artifacts such as ``symbols_index.json``
+            and ``invert_index.json`` are read from here.
+        query_id: per-query id used to isolate online intermediate outputs under
+            ``output/<project>/query_<query_id>``.
+    """
+    project_output_path = Path(output_dir)
+    output_path = Path(get_query_output_dir(str(project_output_path), query_id))
     output_path.mkdir(parents=True, exist_ok=True)
 
     semQL_path = str(output_path / "semQL.json")
@@ -75,7 +90,10 @@ def process_online(query: str, output_dir: str = f"{OUTPUT_DIR}/{PROJECT_NAME}")
     print(f"  -> SemQL saved to {semQL_path}")
 
     print("\n[3/5] Running Surface Executor ...")
-    surface_results = run_surface_search(output_dir=output_dir)
+    surface_results = run_surface_search(
+        output_dir=str(output_path),
+        project_output_dir=str(project_output_path),
+    )
     print(f"  -> Surface results: {len(surface_results)} candidates saved to {surface_result_path}")
 
     print("\n[4/5] Running Relation Executor ...")
@@ -101,6 +119,8 @@ def process_online(query: str, output_dir: str = f"{OUTPUT_DIR}/{PROJECT_NAME}")
         "surface_result_path": surface_result_path,
         "relation_result_path": relation_result_path,
         "intention_result_path": intention_result_path,
+        "project_output_dir": str(project_output_path),
+        "query_output_dir": str(output_path),
         "final_results": final_results,
     }
 
@@ -109,6 +129,7 @@ def main():
     parser.add_argument("--project_path", type=str, help="Path to the target codebase")
     parser.add_argument("--output_dir", type=str, help="Directory to save the parsing and indexing results")
     parser.add_argument("--query", type=str, help="A natural language search query for the online phase")
+    parser.add_argument("--query_id", type=int, default=QUERY_ID, help="Query id used for output/<project>/query_<id> online artifacts")
 
     args = parser.parse_args()
 
@@ -118,7 +139,11 @@ def main():
         print("Skipping offline parsing because --project_path or --output_dir missing.")
 
     if args.query:
-        process_online(args.query, output_dir=args.output_dir or f"{OUTPUT_DIR}/{PROJECT_NAME}")
+        process_online(
+            args.query,
+            output_dir=args.output_dir or PROJECT_OUTPUT_DIR,
+            query_id=args.query_id,
+        )
     else:
         print("Skipping online search because no --query provided.")
 

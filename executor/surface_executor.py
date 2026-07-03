@@ -18,7 +18,7 @@ from typing import Any, Dict, List
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from definition import OUTPUT_DIR, PROJECT_NAME
+from definition import PROJECT_OUTPUT_DIR, QUERY_OUTPUT_DIR
 from filters.type_filter import filter_symbols_by_type
 from search.invert_index_search import invert_index_search4symbol
 from utils.file_utils import save_res
@@ -27,14 +27,23 @@ from utils.file_utils import save_res
 class SurfaceExecutor:
     """Stage 1 executor: inverted index search + type-based filtering."""
 
-    def __init__(self, output_dir: str = f"{OUTPUT_DIR}/{PROJECT_NAME}"):
+    def __init__(
+        self,
+        output_dir: str = QUERY_OUTPUT_DIR,
+        project_output_dir: str = PROJECT_OUTPUT_DIR,
+    ):
+        # output_dir stores per-query online artifacts.
         self.output_dir = output_dir
-        self.invert_index_path = f"{output_dir}/invert_index.json"
-        self.ngramed_symbol_path = f"{output_dir}/ngramed_symbol.json"
+        # project_output_dir stores reusable offline indexes.
+        self.project_output_dir = project_output_dir
+        self.invert_index_path = f"{project_output_dir}/invert_index.json"
+        self.ngramed_symbol_path = f"{project_output_dir}/ngramed_symbol.json"
         self.semQL_path = f"{output_dir}/semQL.json"
         self.search_result_path = f"{output_dir}/invert_index_search_result.json"
+        self.exclude_search_result_path = f"{output_dir}/exclude_invert_index_search_result.json"
         self.filtered_result_path = f"{output_dir}/filtered_by_type.json"
         self.exclude_result_path = f"{output_dir}/exclude_by_type.json"
+        self.exclude_type_result_path = f"{output_dir}/exclude_property_exclude_by_type.json"
 
     def execute(self, property: str = "include") -> List[Dict[str, Any]]:
         """Run the full Stage 1 pipeline and return filtered candidates.
@@ -54,17 +63,26 @@ class SurfaceExecutor:
             query_dsl_result_path=self.semQL_path,
             properties=properties,
         )
-        if property == "include":
-            save_res(self.search_result_path, search_results)
+        search_result_path = (
+            self.search_result_path
+            if property == "include"
+            else self.exclude_search_result_path
+        )
+        type_exclude_output_path = (
+            self.exclude_result_path
+            if property == "include"
+            else self.exclude_type_result_path
+        )
+        save_res(search_result_path, search_results)
         print(f"  -> {len(search_results)} matched elements (before type filter)")
 
         # Step 2 — type filtering from semQL surface & relation conditions
         print("[Step 2] Running code element type filter ...")
         if len(search_results)>0:
             filtered = filter_symbols_by_type(
-                search_result_path=self.search_result_path,
+                search_result_path=search_result_path,
                 semQL_path=self.semQL_path,
-                exclude_output_path=self.exclude_result_path,
+                exclude_output_path=type_exclude_output_path,
             )
             print(f"  -> {len(filtered)} elements after type filter")
             print("=== [Surface Executor] Stage 1 complete ===\n")
@@ -74,7 +92,7 @@ class SurfaceExecutor:
             return []
 #
 # def run_surface_search_test(
-#     output_dir: str = f"{OUTPUT_DIR}/{PROJECT_NAME}",
+#     output_dir: str = QUERY_OUTPUT_DIR,
 #     property: str = "include",
 # ) -> List[Dict[str, Any]]:
 #     """Convenience entry point."""
@@ -82,7 +100,8 @@ class SurfaceExecutor:
 
 
 def run_surface_search(
-    output_dir: str = f"{OUTPUT_DIR}/{PROJECT_NAME}",
+    output_dir: str = QUERY_OUTPUT_DIR,
+    project_output_dir: str = PROJECT_OUTPUT_DIR,
 ) -> List[Dict[str, Any]]:
     """
     Full surface search: include candidates minus exclude candidates.
@@ -94,7 +113,10 @@ def run_surface_search(
     4. Save the final result to <output_dir>/filtered_by_type.json.
     5. Return the final filtered result set.
     """
-    executor = SurfaceExecutor(output_dir=output_dir)
+    executor = SurfaceExecutor(
+        output_dir=output_dir,
+        project_output_dir=project_output_dir,
+    )
 
     include_results = executor.execute(property="include")
     exclude_results = executor.execute(property="exclude")
@@ -117,8 +139,8 @@ def run_surface_search(
 
 def main() -> None:
 
-    results = run_surface_search(output_dir=f"{OUTPUT_DIR}/{PROJECT_NAME}")
-    output_path = Path(f"{OUTPUT_DIR}/{PROJECT_NAME}") / "filtered_by_type.json"
+    results = run_surface_search(output_dir=QUERY_OUTPUT_DIR)
+    output_path = Path(QUERY_OUTPUT_DIR) / "filtered_by_type.json"
     print(
         json.dumps(
             {

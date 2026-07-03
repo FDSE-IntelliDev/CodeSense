@@ -1,5 +1,5 @@
 import json
-from definition import OUTPUT_DIR, BASE_MODEL,PROJECT_PATH
+from definition import BASE_MODEL, PROJECT_PATH, QUERY_OUTPUT_DIR
 from utils.file_utils import load_res,save_res
 from utils.llm_api import call_chat_llm
 import re
@@ -197,11 +197,16 @@ def filter_symbols_by_type(
 #             print(f"Error evaluating batch starting at index {i}: {e}")
 #             exclude_results.extend(batch)
 #
-#     save_res(f'{OUTPUT_DIR}/youlai-boot-master/filtered_by_semantics.json', filtered_results)
-#     save_res(f'{OUTPUT_DIR}/youlai-boot-master/exclude_by_semantics.json', exclude_results)
+#     save_res(f'{QUERY_OUTPUT_DIR}/filtered_by_semantics.json', filtered_results)
+#     save_res(f'{QUERY_OUTPUT_DIR}/exclude_by_semantics.json', exclude_results)
 #
 #     return filtered_results
 
 
-filtered_res=filter_symbols_by_type(f'{OUTPUT_DIR}/youlai-boot-master/invert_index_search_result.json',f'{OUTPUT_DIR}/youlai-boot-master/semQL.json')
-# filtered_res=filter_symbols_semantically(f'{OUTPUT_DIR}/youlai-boot-master/filtered_by_type.json',f'{OUTPUT_DIR}/youlai-boot-master/semQL.json')
+if __name__ == "__main__":
+    filtered_res = filter_symbols_by_type(
+        f"{QUERY_OUTPUT_DIR}/invert_index_search_result.json",
+        f"{QUERY_OUTPUT_DIR}/semQL.json",
+    )
+    print(json.dumps({"filtered": len(filtered_res)}, ensure_ascii=False, indent=2))
+    # filtered_res=filter_symbols_semantically(f'{QUERY_OUTPUT_DIR}/filtered_by_type.json', f'{QUERY_OUTPUT_DIR}/semQL.json')

@@ -6,7 +6,7 @@ from sentence_transformers import SentenceTransformer
 from parsers.read_tools import get_symbol_code
 from sklearn.cluster import AgglomerativeClustering
 from sklearn.metrics.pairwise import cosine_similarity
-from definition import OUTPUT_DIR
+from definition import QUERY_OUTPUT_DIR
 from query_processing.semql_utils import extract_semql_text_terms
 
 from pathlib import Path
@@ -261,14 +261,14 @@ if __name__ == "__main__":
 
     # 1. 指定真实的搜索结果文件路径 (动态获取项目根目录并拼接路径)
     project_root = Path(__file__).resolve().parent.parent
-    result_file_path = project_root / "output" / "youlai-boot-master" / "filtered_by_type.json"
+    result_file_path = Path(QUERY_OUTPUT_DIR) / "filtered_by_type.json"
 
     print(f"正在读取真实搜索结果: {result_file_path}")
     with open(result_file_path, "r", encoding="utf-8") as f:
         real_search_results = json.load(f)
     print(f"成功加载，共计 {len(real_search_results)} 个代码元素。")
 
-    with open(f'{OUTPUT_DIR}/youlai-boot-master/semQL.json', "r", encoding="utf-8") as f:
+    with open(Path(QUERY_OUTPUT_DIR) / "semQL.json", "r", encoding="utf-8") as f:
         semql = json.load(f)
 
     print("\n正在加载本地 Embedding 模型...")
@@ -282,7 +282,7 @@ if __name__ == "__main__":
     result_dict = dispatcher.run_pipeline(real_search_results, semql)
 
     # 5. 存储结果
-    output_dir = project_root / "output" / "youlai-boot-master"
+    output_dir = Path(QUERY_OUTPUT_DIR)
     output_dir.mkdir(parents=True, exist_ok=True)
 
     kept_file_path = output_dir / "filtered_by_cluster.json"

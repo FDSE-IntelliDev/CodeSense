@@ -22,7 +22,7 @@ from typing import Any, Dict, List, Tuple
 
 sys.path.append(str(Path(__file__).parent.parent))
 
-from definition import OUTPUT_DIR
+from definition import QUERY_OUTPUT_DIR
 from embedding.embedding_main import score_pair_by_average_vector as score_pair
 from embedding.project_term_vocab import tokenize_text
 from query_processing.semql_utils import extract_semql_text_terms
@@ -249,8 +249,8 @@ def run_embedding_filter(candidates: List[Dict[str, Any]], semql_query: Dict[str
 
 
 if __name__ == "__main__":
-    result_file_path = Path(OUTPUT_DIR) / "youlai-boot-master" / "filtered_by_cluster.json"
-    semql_path = Path(OUTPUT_DIR) / "youlai-boot-master" / "semQL.json"
+    result_file_path = Path(QUERY_OUTPUT_DIR) / "filtered_by_cluster.json"
+    semql_path = Path(QUERY_OUTPUT_DIR) / "semQL.json"
 
     with open(result_file_path, "r", encoding="utf-8") as f:
         candidates = json.load(f)
@@ -258,7 +258,7 @@ if __name__ == "__main__":
         semql = json.load(f)
 
     result = run_embedding_filter(candidates, semql)
-    output_path = Path(OUTPUT_DIR) / "youlai-boot-master" / "filtered_by_embedding.json"
+    output_path = Path(QUERY_OUTPUT_DIR) / "filtered_by_embedding.json"
     with open(output_path, "w", encoding="utf-8") as f:
         json.dump(result, f, ensure_ascii=False, indent=2)
     print(f"Embedding filter result saved to: {output_path}")

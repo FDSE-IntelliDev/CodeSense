@@ -6,7 +6,7 @@ from typing import List, Dict
 from multiprocessing import Pool
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from definition import OUTPUT_DIR, PROJECT_PATH
+from definition import PROJECT_OUTPUT_DIR, PROJECT_PATH
 from parsers.parallel_java_lsp_client import ParallelJavaLSPClient, ParallelJavaCallChainExtractor
 from parsers.read_tools import get_symbol_code
 
@@ -30,7 +30,7 @@ def flatten_call_tree(node: dict, current_chain: List[Dict], all_chains: List[Li
 
 
 def load_symbols() -> List[Dict]:
-	symbols_file = f"{OUTPUT_DIR}/youlai-boot-master/symbols_index.json"
+	symbols_file = f"{PROJECT_OUTPUT_DIR}/symbols_index.json"
 	with open(symbols_file, "r", encoding="utf-8") as f:
 		return json.load(f)
 
@@ -46,9 +46,9 @@ def process_chunk(worker_id: int, methods_chunk: List[Dict]) -> List[str]:
 	local_results: List[List[Dict]] = []
 	part_files: List[str] = []
 	part_id = 0
-	out_dir = f"{OUTPUT_DIR}/youlai-boot-master"
+	out_dir = PROJECT_OUTPUT_DIR
 	os.makedirs(out_dir, exist_ok=True)
-	tmp_dir=f"{OUTPUT_DIR}/youlai-boot-master/tmp"
+	tmp_dir=f"{PROJECT_OUTPUT_DIR}/tmp"
 	os.makedirs(tmp_dir, exist_ok=True)
 
 	try:
@@ -127,7 +127,7 @@ def run_parallel(num_workers: int = 4):
 	end = time.time()
 	print(f"Parallel extraction done in {end-start:.1f}s, merging parts...")
 
-	out_dir = f"{OUTPUT_DIR}/youlai-boot-master"
+	out_dir = PROJECT_OUTPUT_DIR
 	os.makedirs(out_dir, exist_ok=True)
 	out_file = f"{out_dir}/word2vec_call_chains.json"
 

@@ -4,7 +4,7 @@ import json
 import time
 from typing import List, Dict
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from definition import OUTPUT_DIR, PROJECT_PATH
+from definition import PROJECT_OUTPUT_DIR, PROJECT_PATH
 from parsers.java_lsp_client import JavaLSPClient, JavaCallChainExtractor
 from parsers.read_tools import get_symbol_code
 
@@ -37,7 +37,7 @@ def flatten_call_tree(node: dict, current_chain: List[Dict], all_chains: List[Li
 
 
 def load_symbols() -> List[Dict]:
-    symbols_file = f"{OUTPUT_DIR}/youlai-boot-master/symbols_index.json"
+    symbols_file = f"{PROJECT_OUTPUT_DIR}/symbols_index.json"
     with open(symbols_file, "r", encoding="utf-8") as f:
         return json.load(f)
 
@@ -58,7 +58,7 @@ def run():
     result_set = []
     part_id = 0
     part_files = []
-    out_dir = f"{OUTPUT_DIR}/youlai-boot-master"
+    out_dir = PROJECT_OUTPUT_DIR
     os.makedirs(out_dir, exist_ok=True)
     tmp_dir = f"{out_dir}/tmp"
     os.makedirs(tmp_dir, exist_ok=True)

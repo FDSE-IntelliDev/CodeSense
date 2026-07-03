@@ -11,6 +11,7 @@ EXPANSION_DIR=str(Path(ROOT_DIR) / "expansion")
 
 PROJECT_PATH="/Users/huangzhuochen/IdeaProjects/youlai-boot-master"
 PROJECT_NAME="youlai-boot-master"
+PROJECT_OUTPUT_DIR=str(Path(OUTPUT_DIR) / PROJECT_NAME)
 
 CORPUS="enhanced_call_chain_corpus.json"
 
@@ -23,3 +24,20 @@ BASE_MODEL="qwen-plus"
 # BASE_MODEL="gpt-4o-mini"
 
 JDTLS_PATH="/opt/homebrew/bin/jdtls"
+QUERY_ID=1
+
+
+def get_query_output_dir(
+    project_output_dir: str = PROJECT_OUTPUT_DIR,
+    query_id: int = QUERY_ID,
+) -> str:
+    """Return the per-query online pipeline output directory.
+
+    Project-level offline artifacts stay in ``project_output_dir``. All online
+    intermediate results for one query are written under
+    ``project_output_dir/query_<query_id>``.
+    """
+    return str(Path(project_output_dir) / f"query_{query_id}")
+
+
+QUERY_OUTPUT_DIR=get_query_output_dir()
