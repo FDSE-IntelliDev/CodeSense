@@ -1,0 +1,1581 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; style-src 'unsafe-inline' blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; img-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; font-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; media-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; worker-src blob:; connect-src blob: data:; frame-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
+<title>CodeSearch 系统整体流程</title>
+<style>:root{color-scheme:light dark;background:light-dark(rgb(255 255 255), rgb(24 24 24))}html,body{margin:0}body{box-sizing:border-box;padding:1rem;background:inherit}iframe{display:block;width:100%;max-width:736px;height:calc(100vh - 2rem);margin:0 auto;border:0}</style>
+</head>
+<body>
+<iframe sandbox="allow-scripts" referrerpolicy="no-referrer" title="CodeSearch 系统整体流程" srcdoc="&lt;!doctype html&gt;
+&lt;html lang=&quot;zh-CN&quot;&gt;
+&lt;head&gt;
+&lt;meta charset=&quot;utf-8&quot;&gt;
+&lt;meta name=&quot;viewport&quot; content=&quot;width=device-width, initial-scale=1&quot;&gt;
+&lt;meta name=&quot;referrer&quot; content=&quot;no-referrer&quot;&gt;
+&lt;meta http-equiv=&quot;Content-Security-Policy&quot; content=&quot;default-src &#x27;none&#x27;; script-src &#x27;unsafe-inline&#x27; &#x27;unsafe-eval&#x27; &#x27;wasm-unsafe-eval&#x27; blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; style-src &#x27;unsafe-inline&#x27; blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; img-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; font-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; media-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; worker-src blob:; connect-src blob: data:; frame-src &#x27;none&#x27;; object-src &#x27;none&#x27;; base-uri &#x27;none&#x27;; form-action &#x27;none&#x27;&quot;&gt;
+&lt;title&gt;CodeSearch 系统整体流程&lt;/title&gt;
+&lt;style&gt;:root {
+  color-scheme: light dark;
+  background-color: var(--background) !important;
+
+  /* Agent-facing contract; keep in sync with SKILL.md. */
+  --background: light-dark(rgb(255 255 255), rgb(24 24 24));
+  --foreground: light-dark(rgb(26 28 31), rgb(255 255 255));
+  --card: color-mix(in oklab, var(--foreground) 5%, transparent);
+  --card-foreground: var(--foreground);
+  --popover: light-dark(rgb(255 255 255), rgb(45 45 45));
+  --popover-foreground: var(--foreground);
+  --primary: light-dark(rgb(51 156 255), rgb(131 195 255));
+  --primary-foreground: light-dark(rgb(255 255 255), rgb(13 13 13));
+  --secondary: light-dark(rgb(255 255 255 / 96%), rgb(54 54 54 / 96%));
+  --secondary-foreground: var(--foreground);
+  --muted: color-mix(in srgb, var(--foreground) 10%, transparent);
+  --muted-foreground: light-dark(
+    rgb(26 28 31 / 49.4%),
+    rgb(255 255 255 / 49.8%)
+  );
+  --accent: light-dark(rgb(229 242 255), rgb(13 39 63));
+  --accent-foreground: var(--primary);
+  --destructive: light-dark(rgb(226 85 7), rgb(255 133 73));
+  --border: light-dark(rgb(26 28 31 / 8%), rgb(255 255 255 / 8.2%));
+  --input: light-dark(
+    rgb(26 28 31 / 11.8%),
+    color-mix(in oklab, rgb(0 0 0) 10%, transparent)
+  );
+  --ring: light-dark(rgb(51 156 255), rgb(131 195 255 / 76%));
+  --font-size-base: 14px;
+  --viz-series-1: var(--primary);
+  --viz-series-2: light-dark(rgb(243 136 59), rgb(245 154 86));
+  --viz-series-3: light-dark(rgb(93 201 119), rgb(116 213 139));
+  --viz-series-4: light-dark(rgb(235 119 177), rgb(240 143 192));
+  --viz-series-5: light-dark(rgb(155 121 236), rgb(170 145 239));
+  --viz-series-6: light-dark(rgb(58 185 177), rgb(90 203 194));
+
+  /* Internal implementation variables; not part of the agent contract. */
+  --font-sans: -apple-system, system-ui, &quot;Segoe UI&quot;, sans-serif;
+  --font-mono:
+    ui-monospace, SFMono-Regular, &quot;SF Mono&quot;, Menlo, Consolas, &quot;Liberation Mono&quot;,
+    monospace;
+  --font-size-normal: max(11px, var(--font-size-base));
+  --font-size-tooltip: calc(var(--font-size-base) - 1px);
+  --font-size-small: max(11px, calc(var(--font-size-base) - 2px));
+  --font-size-h1: calc(var(--font-size-normal) * 1.7142857143);
+  --font-size-h2: calc(var(--font-size-normal) * 1.4285714286);
+  --font-size-h3: calc(var(--font-size-normal) * 1.2857142857);
+  --font-weight-normal: 430;
+  --font-weight-medium: 500;
+  --line-height-normal: calc(var(--font-size-normal) * 1.5);
+  --line-height-tooltip: calc(var(--font-size-tooltip) * 1.4285714286);
+  --line-height-small: calc(var(--font-size-small) + 4px);
+  --radius: 12.5px;
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-2xl: calc(var(--radius) * 1.6);
+  --radius-full: 9999px;
+  --shadow-sm: 0 1px 2px -1px rgb(0 0 0 / 8%);
+  --checkmark-image: url(&quot;data:image/svg+xml,%3Csvg xmlns=&#x27;http://www.w3.org/2000/svg&#x27; viewBox=&#x27;0 0 17 17&#x27;%3E%3Cpath d=&#x27;M12.8961 3.64101C13.1297 3.41418 13.4984 3.37523 13.7779 3.56581C14.0571 3.75635 14.1554 4.11331 14.0299 4.41347L13.9615 4.53847L7.71151 13.7045C7.59411 13.8767 7.4063 13.9877 7.19881 14.0072C6.99136 14.0267 6.78564 13.9533 6.63826 13.806L2.88826 10.056L2.79842 9.9457C2.6192 9.67407 2.64927 9.30496 2.88826 9.06581C3.12738 8.82669 3.49647 8.79676 3.76815 8.97597L3.8785 9.06581L7.03084 12.2182L12.8053 3.74941L12.8961 3.64101Z&#x27;/%3E%3C/svg%3E&quot;);
+
+  /* Legacy aliases; not part of the current agent contract. */
+  --viz-bg: transparent;
+  --viz-panel: var(--card);
+  --viz-border: var(--border);
+  --viz-text: var(--foreground);
+  --viz-muted: var(--muted-foreground);
+  --viz-accent: var(--primary);
+  --viz-accent-text: var(--primary-foreground);
+  --viz-accent-bg: var(--accent);
+  --viz-font-size: var(--font-size-base);
+  --viz-warning: var(--destructive);
+  --color-background-primary: var(--background);
+  --color-text-primary: var(--foreground);
+  --color-border-secondary: var(--border);
+}
+
+:root[data-theme=&quot;light&quot;] {
+  color-scheme: light;
+}
+
+:root[data-theme=&quot;dark&quot;] {
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html &gt; body {
+  margin: 0;
+  padding: 5px;
+  color: var(--foreground);
+  background: transparent !important;
+  font-family: var(--font-sans);
+  font-size: var(--font-size-normal);
+  font-weight: var(--font-weight-normal);
+  line-height: var(--line-height-normal);
+}
+
+a {
+  color: color-mix(in srgb, var(--viz-accent) 80%, var(--viz-text) 20%);
+  cursor: pointer;
+  font-weight: var(--viz-font-weight-medium);
+  text-decoration: none;
+  text-underline-offset: 2px;
+}
+
+a:is(:hover, :focus-visible) {
+  text-decoration-line: underline;
+  text-decoration-style: dashed;
+  text-decoration-thickness: 0.5px;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6,
+p {
+  margin-block: 0;
+}
+
+h1 {
+  font-size: var(--font-size-h1);
+  font-weight: var(--font-weight-medium);
+  line-height: 1.25;
+}
+
+h2 {
+  font-size: var(--font-size-h2);
+  font-weight: var(--font-weight-medium);
+  line-height: 1.25;
+}
+
+h3,
+h4,
+h5,
+h6 {
+  font-size: var(--font-size-h3);
+  font-weight: var(--font-weight-medium);
+  line-height: 1.3;
+}
+
+b,
+strong,
+th {
+  font-weight: var(--font-weight-medium);
+}
+
+code:not(pre code) {
+  display: inline;
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+  corner-shape: superellipse(1.5);
+  background: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 0.92em;
+  overflow-wrap: anywhere;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+  word-break: break-word;
+}
+
+#widget {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 100%;
+  padding: 0;
+  background: transparent !important;
+}
+
+.card {
+  min-width: 0;
+  padding: 12px;
+  overflow: hidden;
+  overflow-wrap: break-word;
+  border-radius: var(--radius-2xl);
+  corner-shape: superellipse(1.5);
+  color: var(--card-foreground);
+  background: var(--card);
+}
+
+#widget &gt; :not(.card) {
+  width: 100% !important;
+  max-width: none !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.tooltip {
+  position: fixed;
+  z-index: 50;
+  top: 0;
+  left: 0;
+  width: max-content;
+  max-width: min(
+    20rem,
+    var(--tooltip-available-width, calc(100vw - 10px)),
+    calc(100vw - 10px)
+  );
+  max-height: min(
+    var(--tooltip-available-height, calc(100vh - 10px)),
+    calc(100vh - 10px)
+  );
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  corner-shape: superellipse(1.5);
+  color: var(--popover-foreground);
+  background: var(--popover);
+  box-shadow: none;
+  font-size: var(--font-size-tooltip);
+  line-height: var(--line-height-tooltip);
+  overflow-wrap: break-word;
+  white-space: normal;
+  pointer-events: none;
+  user-select: none;
+}
+
+.viz-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(max(180px, 24%), 1fr));
+  gap: 10px;
+}
+
+.viz-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.viz-stat-value {
+  font-size: var(--font-size-h2);
+  font-weight: var(--font-weight-medium);
+  line-height: 1.25;
+}
+
+.viz-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.viz-badge {
+  padding: 3px 8px;
+  border-radius: var(--radius-full);
+  color: var(--accent-foreground);
+  background: var(--accent);
+  font-weight: var(--font-weight-medium);
+}
+
+small,
+.text-small,
+.viz-badge {
+  font-size: var(--font-size-small);
+  line-height: var(--line-height-small);
+}
+
+.text-muted {
+  color: var(--muted-foreground);
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.viz-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.viz-controls &gt; .form-label {
+  display: grid;
+  min-width: min(100%, 260px);
+  flex: 1 1 280px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: 2px 12px;
+  margin-bottom: 0;
+}
+
+.viz-controls &gt; .form-label &gt; :is(.form-control, .form-range, .form-select) {
+  grid-column: 1 / -1;
+}
+
+.btn,
+.form-check-input,
+.form-control,
+.form-range,
+.form-select {
+  font: inherit;
+}
+
+.btn {
+  appearance: button;
+  display: inline-flex;
+  inline-size: fit-content;
+  max-inline-size: 100%;
+  min-height: 28px;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  margin: 0;
+  padding: 0 8px;
+  -webkit-app-region: no-drag;
+  border: 1px solid var(--input);
+  border-radius: var(--radius-lg);
+  corner-shape: superellipse(1.5);
+  color: var(--secondary-foreground);
+  background: var(--secondary);
+  cursor: var(--cursor-interaction, pointer);
+  text-align: center;
+  text-decoration: none;
+  white-space: nowrap;
+  user-select: none;
+  -webkit-font-smoothing: antialiased;
+}
+
+.btn:is(.btn-block, .viz-tile) {
+  inline-size: 100%;
+}
+
+.btn.viz-tile {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+a.btn {
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.btn:not(:disabled):hover {
+  background: color-mix(in srgb, var(--foreground) 6%, var(--secondary));
+}
+
+.btn-primary {
+  border-color: transparent;
+  color: var(--primary-foreground);
+  background: var(--foreground);
+  background-clip: padding-box;
+}
+
+.btn-primary .text-muted {
+  color: color-mix(in srgb, var(--primary-foreground) 50%, transparent);
+}
+
+.btn-primary:not(:disabled):hover {
+  background: color-mix(in srgb, var(--foreground) 80%, transparent);
+  background-clip: padding-box;
+}
+
+.btn-ghost {
+  border-color: transparent;
+  color: var(--muted-foreground);
+  background: transparent;
+}
+
+.btn-ghost:not(:disabled):hover {
+  color: var(--foreground);
+  background: color-mix(in srgb, var(--foreground) 6%, var(--secondary));
+}
+
+.btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+[data-lucide] {
+  stroke-width: 1.6;
+}
+
+.form-label {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--foreground);
+}
+
+.form-control {
+  display: block;
+  width: 100%;
+  min-height: 28px;
+  padding: 0 8px;
+  outline: none;
+  border: 1px solid var(--input);
+  border-radius: var(--radius-lg);
+  corner-shape: superellipse(1.5);
+  color: var(--foreground);
+  background: var(--secondary);
+}
+
+.form-control::placeholder {
+  color: var(--muted-foreground);
+}
+
+.form-control[type=&quot;file&quot;] {
+  padding: 0;
+  overflow: hidden;
+  cursor: var(--cursor-interaction, pointer);
+}
+
+.form-control[type=&quot;file&quot;]::file-selector-button {
+  min-height: 26px;
+  margin-right: 8px;
+  padding: 0 8px;
+  border: 0;
+  border-right: 1px solid var(--input);
+  color: var(--secondary-foreground);
+  background: var(--secondary);
+  cursor: inherit;
+  font: inherit;
+}
+
+.form-control[type=&quot;file&quot;]:not(:disabled):hover::file-selector-button {
+  background: color-mix(in srgb, var(--foreground) 6%, var(--secondary));
+}
+
+.form-control-color[type=&quot;color&quot;] {
+  width: 40px;
+  height: 28px;
+  padding: 3px;
+  cursor: var(--cursor-interaction, pointer);
+}
+
+.form-control-color[type=&quot;color&quot;]::-webkit-color-swatch-wrapper {
+  padding: 0;
+}
+
+.form-control-color[type=&quot;color&quot;]::-webkit-color-swatch {
+  border: 0;
+  border-radius: calc(var(--radius-lg) - 4px);
+  corner-shape: superellipse(1.5);
+}
+
+textarea.form-control {
+  height: auto;
+  min-height: 72px;
+  padding: 8px 10px;
+  resize: vertical;
+}
+
+.form-control:focus-visible {
+  border-color: var(--ring);
+  box-shadow: inset 0 0 0 1px var(--ring);
+}
+
+.form-control:disabled,
+.form-select:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+.form-select {
+  appearance: none;
+  display: block;
+  width: 100%;
+  min-height: 28px;
+  margin: 0;
+  padding: 0 32px 0 8px;
+  outline: none;
+  border: 1px solid var(--input);
+  border-radius: var(--radius-lg);
+  corner-shape: superellipse(1.5);
+  color: var(--foreground);
+  background-color: var(--secondary);
+  background-image:
+    linear-gradient(45deg, transparent 50%, var(--muted-foreground) 50%),
+    linear-gradient(135deg, var(--muted-foreground) 50%, transparent 50%);
+  background-position:
+    calc(100% - 14px) 50%,
+    calc(100% - 10px) 50%;
+  background-repeat: no-repeat;
+  background-size: 4px 4px;
+  cursor: var(--cursor-interaction, default);
+}
+
+.form-select:not(:disabled):hover {
+  background-color: color-mix(in srgb, var(--foreground) 6%, var(--secondary));
+}
+
+.form-select:focus-visible {
+  border-color: var(--ring);
+  box-shadow: inset 0 0 0 1px var(--ring);
+}
+
+.form-check {
+  display: flex;
+  min-height: 20px;
+  align-items: center;
+  gap: 6px;
+}
+
+.form-check-input {
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  flex: 0 0 auto;
+  margin: 0;
+  border: 1px solid var(--input);
+  color: var(--primary-foreground);
+  background-color: transparent;
+  cursor: var(--cursor-interaction, default);
+  transition:
+    background-color 150ms,
+    border-color 150ms,
+    box-shadow 150ms;
+}
+
+.form-check:not(.form-switch) .form-check-input[type=&quot;checkbox&quot;] {
+  border-color: var(--input);
+  border-radius: var(--radius-sm);
+  corner-shape: superellipse(1.5);
+  background-color: var(--secondary);
+  box-shadow: var(--shadow-sm);
+}
+
+.form-check:not(.form-switch)
+  .form-check-input:not(:disabled):not(:checked):hover {
+  background-color: var(--card);
+}
+
+.form-check:not(.form-switch) .form-check-input[type=&quot;checkbox&quot;]:checked {
+  border-color: var(--primary);
+  background-color: var(--primary);
+}
+
+.form-check:not(.form-switch)
+  .form-check-input[type=&quot;checkbox&quot;]:checked::before {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: var(--primary-foreground);
+  content: &quot;&quot;;
+  mask: var(--checkmark-image) center / 12px 12px no-repeat;
+}
+
+.form-check-input[type=&quot;radio&quot;] {
+  width: 14px;
+  height: 14px;
+  border-radius: var(--radius-full);
+}
+
+.form-check-input[type=&quot;radio&quot;]:checked {
+  border: 2px solid var(--primary);
+  background:
+    radial-gradient(circle, var(--primary-foreground) 0 2.5px, transparent 3px),
+    var(--primary);
+}
+
+.form-check:not(.form-switch) .form-check-input:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+.form-check:not(.form-switch) .form-check-input:disabled {
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+.form-check:not(.form-switch) .form-check-input:disabled + .form-check-label {
+  cursor: not-allowed;
+}
+
+.form-switch .form-check-input:disabled,
+.form-switch .form-check-input:disabled + .form-check-label {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.form-check-label {
+  color: var(--foreground);
+  cursor: var(--cursor-interaction, default);
+}
+
+.form-switch .form-check-input {
+  position: relative;
+  width: 32px;
+  height: 20px;
+  border: 0;
+  border-radius: var(--radius-full);
+  background: var(--muted);
+  box-shadow: none;
+  transition: background-color 200ms cubic-bezier(0, 0, 0.2, 1);
+}
+
+.form-switch .form-check-input::before {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  width: 16px;
+  height: 16px;
+  box-sizing: border-box;
+  border: 1px solid light-dark(var(--primary-foreground), var(--foreground));
+  border-radius: var(--radius-full);
+  background: light-dark(var(--primary-foreground), var(--foreground));
+  box-shadow: var(--shadow-sm);
+  content: &quot;&quot;;
+  transform: translate(2px, -50%);
+  transition: transform 200ms cubic-bezier(0, 0, 0.2, 1);
+}
+
+.form-switch .form-check-input:checked {
+  background: var(--primary);
+}
+
+.form-switch .form-check-input:checked::before {
+  transform: translate(14px, -50%);
+}
+
+.form-switch .form-check-input:focus-visible {
+  box-shadow: 0 0 0 2px var(--ring);
+}
+
+.form-range {
+  appearance: none;
+  display: block;
+  width: 100%;
+  height: 28px;
+  flex: 1;
+  margin: 0;
+  padding: 0;
+  outline: none;
+  border: 0;
+  accent-color: var(--primary);
+  background: linear-gradient(
+      color-mix(in srgb, var(--foreground) 7%, transparent),
+      color-mix(in srgb, var(--foreground) 7%, transparent)
+    )
+    center / 100% 2px no-repeat;
+}
+
+.form-range::-webkit-slider-runnable-track {
+  height: 28px;
+  background: transparent;
+}
+
+.form-range::-webkit-slider-thumb {
+  appearance: none;
+  width: 20px;
+  height: 20px;
+  margin-top: 4px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  background: light-dark(var(--primary-foreground), var(--foreground));
+}
+
+.form-range:focus-visible::-webkit-slider-thumb {
+  border-color: var(--ring);
+  box-shadow: inset 0 0 0 1px var(--ring);
+}
+
+.form-range::-moz-range-track {
+  height: 28px;
+  background: transparent;
+}
+
+.form-range::-moz-range-thumb {
+  width: 20px;
+  height: 20px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  background: light-dark(var(--primary-foreground), var(--foreground));
+}
+
+.form-range:focus-visible::-moz-range-thumb {
+  border-color: var(--ring);
+  box-shadow: inset 0 0 0 1px var(--ring);
+}
+
+.form-range:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+.btn:not(.btn-primary, .viz-tile):is(
+    [aria-pressed=&quot;true&quot;],
+    [aria-selected=&quot;true&quot;],
+    .is-selected
+  ) {
+  border-color: var(--primary);
+  color: var(--primary-foreground);
+  background: var(--primary);
+}
+
+.btn.viz-tile:is([aria-pressed=&quot;true&quot;], [aria-selected=&quot;true&quot;], .is-selected) {
+  border-color: var(--primary);
+  box-shadow: inset 0 0 0 1px var(--primary);
+}
+
+.btn:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+svg {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+
+#widget &gt; svg {
+  width: 100%;
+}
+
+.text-warning,
+.text-destructive {
+  color: var(--destructive);
+}
+
+html&gt;body{padding:0}&lt;/style&gt;
+&lt;/head&gt;
+&lt;body&gt;
+&lt;div id=&quot;codesearch-system-overview&quot;&gt;
+  &lt;style&gt;
+    #codesearch-system-overview {
+      color: var(--foreground);
+      display: grid;
+      gap: 22px;
+    }
+    #codesearch-system-overview .overview-strip {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+    }
+    #codesearch-system-overview .viz-stat-value {
+      margin-top: 5px;
+    }
+    #codesearch-system-overview .section {
+      display: grid;
+      gap: 12px;
+    }
+    #codesearch-system-overview .section-head {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    #codesearch-system-overview .section-head h2,
+    #codesearch-system-overview .section-head h3 {
+      margin: 0;
+    }
+    #codesearch-system-overview .diagram {
+      color: var(--foreground);
+      display: grid;
+      gap: 14px;
+    }
+    #codesearch-system-overview .flow-lane {
+      display: grid;
+      grid-template-columns: 78px minmax(0, 1fr);
+      gap: 12px;
+      align-items: start;
+    }
+    #codesearch-system-overview .lane-label {
+      font-weight: 500;
+      padding-top: 9px;
+    }
+    #codesearch-system-overview .flow-chain {
+      display: flex;
+      align-items: stretch;
+      gap: 7px;
+      flex-wrap: wrap;
+    }
+    #codesearch-system-overview .flow-node {
+      display: grid;
+      align-content: center;
+      min-height: 48px;
+      min-width: 104px;
+      flex: 1 1 112px;
+      padding: 8px 10px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: color-mix(in srgb, var(--card) 70%, transparent);
+      text-align: center;
+    }
+    #codesearch-system-overview .flow-node.lexical {
+      border-color: var(--viz-series-1);
+    }
+    #codesearch-system-overview .flow-node.graph {
+      border-color: var(--viz-series-2);
+    }
+    #codesearch-system-overview .flow-node.semantic {
+      border-color: var(--viz-series-3);
+    }
+    #codesearch-system-overview .flow-node.evolving {
+      border: 2px dashed var(--viz-series-4);
+    }
+    #codesearch-system-overview .flow-arrow {
+      display: grid;
+      place-items: center;
+      color: var(--muted-foreground);
+      min-width: 16px;
+    }
+    #codesearch-system-overview .flow-arrow::before {
+      content: &quot;→&quot;;
+    }
+    #codesearch-system-overview .flow-bridge {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
+      padding-left: 90px;
+    }
+    #codesearch-system-overview .bridge-item {
+      display: grid;
+      gap: 4px;
+      padding-top: 8px;
+      border-top: 2px solid var(--border);
+    }
+    #codesearch-system-overview .bridge-item.lexical {
+      border-color: var(--viz-series-1);
+    }
+    #codesearch-system-overview .bridge-item.graph {
+      border-color: var(--viz-series-2);
+    }
+    #codesearch-system-overview .bridge-item.semantic {
+      border-color: var(--viz-series-3);
+    }
+    #codesearch-system-overview .phase-divider {
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr);
+      align-items: center;
+      gap: 10px;
+      margin-top: 4px;
+      font-weight: 500;
+    }
+    #codesearch-system-overview .phase-divider::after {
+      content: &quot;&quot;;
+      height: 1px;
+      background: var(--border);
+    }
+    #codesearch-system-overview .mermaid-source {
+      margin: 8px 0 0;
+      padding: 10px 12px;
+      border-left: 3px solid var(--viz-series-4);
+      background: color-mix(in srgb, var(--muted) 55%, transparent);
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+    }
+    #codesearch-system-overview .legend {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 10px 16px;
+      color: var(--muted-foreground);
+    }
+    #codesearch-system-overview .legend-item {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+    #codesearch-system-overview .swatch {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      background: var(--viz-series-1);
+    }
+    #codesearch-system-overview .swatch.graph {
+      background: var(--viz-series-2);
+    }
+    #codesearch-system-overview .swatch.semantic {
+      background: var(--viz-series-3);
+    }
+    #codesearch-system-overview .swatch.next {
+      background: transparent;
+      border: 2px dashed var(--viz-series-4);
+    }
+    #codesearch-system-overview .stage-panel {
+      display: grid;
+      gap: 12px;
+    }
+    #codesearch-system-overview details {
+      border-top: 1px solid var(--border);
+      padding-top: 9px;
+    }
+    #codesearch-system-overview summary {
+      cursor: pointer;
+      font-weight: 500;
+      margin-bottom: 10px;
+    }
+    #codesearch-system-overview .module-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 14px 20px;
+    }
+    #codesearch-system-overview .module {
+      display: grid;
+      grid-template-columns: minmax(128px, 0.75fr) minmax(0, 1.65fr);
+      gap: 10px 14px;
+      padding: 10px 0;
+      border-bottom: 1px solid var(--border);
+    }
+    #codesearch-system-overview .module-name {
+      font-weight: 500;
+    }
+    #codesearch-system-overview .module-copy {
+      display: grid;
+      gap: 4px;
+    }
+    #codesearch-system-overview .status-line {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    #codesearch-system-overview .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--viz-series-1);
+    }
+    #codesearch-system-overview .status-dot.partial {
+      background: var(--viz-series-4);
+    }
+    #codesearch-system-overview .status-dot.experiment {
+      background: var(--muted-foreground);
+    }
+    #codesearch-system-overview .problem-map {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 14px 20px;
+    }
+    #codesearch-system-overview .problem {
+      display: grid;
+      gap: 6px;
+      padding-top: 10px;
+      border-top: 2px solid var(--border);
+    }
+    #codesearch-system-overview .problem.lexical {
+      border-color: var(--viz-series-1);
+    }
+    #codesearch-system-overview .problem.graph {
+      border-color: var(--viz-series-2);
+    }
+    #codesearch-system-overview .problem.semantic {
+      border-color: var(--viz-series-3);
+    }
+    #codesearch-system-overview .problem strong {
+      font-weight: 500;
+    }
+    #codesearch-system-overview .formula {
+      padding: 10px 12px;
+      border-left: 3px solid var(--viz-series-4);
+      background: color-mix(in srgb, var(--viz-series-4) 8%, transparent);
+    }
+    #codesearch-system-overview .pairwise-note {
+      display: grid;
+      grid-template-columns: auto 1fr;
+      gap: 9px;
+      align-items: start;
+      padding: 10px 12px;
+      border-left: 3px solid var(--muted-foreground);
+      background: color-mix(in srgb, var(--muted) 55%, transparent);
+    }
+    #codesearch-system-overview code {
+      overflow-wrap: anywhere;
+    }
+    @media (max-width: 680px) {
+      #codesearch-system-overview .overview-strip,
+      #codesearch-system-overview .problem-map,
+      #codesearch-system-overview .module-grid {
+        grid-template-columns: 1fr;
+      }
+      #codesearch-system-overview .module {
+        grid-template-columns: 1fr;
+      }
+      #codesearch-system-overview .flow-lane {
+        grid-template-columns: 1fr;
+      }
+      #codesearch-system-overview .lane-label {
+        padding-top: 0;
+      }
+      #codesearch-system-overview .flow-chain {
+        display: grid;
+        grid-template-columns: 1fr;
+      }
+      #codesearch-system-overview .flow-arrow {
+        min-height: 14px;
+      }
+      #codesearch-system-overview .flow-arrow::before {
+        content: &quot;↓&quot;;
+      }
+      #codesearch-system-overview .flow-bridge {
+        grid-template-columns: 1fr;
+        padding-left: 0;
+      }
+    }
+  &lt;/style&gt;
+
+  &lt;section class=&quot;overview-strip&quot; aria-label=&quot;系统定位&quot;&gt;
+    &lt;div class=&quot;card viz-stat&quot;&gt;
+      &lt;div class=&quot;text-muted&quot;&gt;输入&lt;/div&gt;
+      &lt;div class=&quot;viz-stat-value&quot;&gt;自然语言意图&lt;/div&gt;
+      &lt;div class=&quot;text-small&quot;&gt;关键词、行为、结构约束混合表达&lt;/div&gt;
+    &lt;/div&gt;
+    &lt;div class=&quot;card viz-stat&quot;&gt;
+      &lt;div class=&quot;text-muted&quot;&gt;项目知识&lt;/div&gt;
+      &lt;div class=&quot;viz-stat-value&quot;&gt;词法 + 调用图 + 项目语义&lt;/div&gt;
+      &lt;div class=&quot;text-small&quot;&gt;索引、关系数据库与 Hybrid Embedding&lt;/div&gt;
+    &lt;/div&gt;
+    &lt;div class=&quot;card viz-stat&quot;&gt;
+      &lt;div class=&quot;text-muted&quot;&gt;输出&lt;/div&gt;
+      &lt;div class=&quot;viz-stat-value&quot;&gt;相关代码元素与证据&lt;/div&gt;
+      &lt;div class=&quot;text-small&quot;&gt;直接命中、图邻居覆盖与语义判断&lt;/div&gt;
+    &lt;/div&gt;
+  &lt;/section&gt;
+
+  &lt;section class=&quot;section&quot; aria-labelledby=&quot;problem-heading&quot;&gt;
+    &lt;div class=&quot;section-head&quot;&gt;
+      &lt;h2 id=&quot;problem-heading&quot;&gt;要解决的三个核心问题&lt;/h2&gt;
+    &lt;/div&gt;
+    &lt;div class=&quot;problem-map&quot;&gt;
+      &lt;div class=&quot;problem lexical&quot;&gt;
+        &lt;strong&gt;命名不一致&lt;/strong&gt;
+        &lt;span class=&quot;text-small&quot;&gt;查询写 login，代码可能写 auth、signIn 或缩写。通过 ngram、缩写索引和项目术语相关性提高召回。&lt;/span&gt;
+      &lt;/div&gt;
+      &lt;div class=&quot;problem graph&quot;&gt;
+        &lt;strong&gt;语义分散在协作代码中&lt;/strong&gt;
+        &lt;span class=&quot;text-small&quot;&gt;一个业务意图可能由 caller、service、repository 等多个节点共同完成。通过调用图与 AND(n) 表达局部协作。&lt;/span&gt;
+      &lt;/div&gt;
+      &lt;div class=&quot;problem semantic&quot;&gt;
+        &lt;strong&gt;字面命中不等于功能相关&lt;/strong&gt;
+        &lt;span class=&quot;text-small&quot;&gt;候选名称相似但职责可能不同。通过代码聚类、项目 Term Embedding 和 LLM Judge 做高精度判断。&lt;/span&gt;
+      &lt;/div&gt;
+    &lt;/div&gt;
+  &lt;/section&gt;
+
+  &lt;section class=&quot;section&quot; aria-labelledby=&quot;architecture-heading&quot;&gt;
+    &lt;div class=&quot;section-head&quot;&gt;
+      &lt;h2 id=&quot;architecture-heading&quot;&gt;整体流程：离线资产支撑在线图感知检索&lt;/h2&gt;
+      &lt;div class=&quot;legend text-small&quot; aria-label=&quot;流程图图例&quot;&gt;
+        &lt;span class=&quot;legend-item&quot;&gt;&lt;span class=&quot;swatch&quot;&gt;&lt;/span&gt;词法资产&lt;/span&gt;
+        &lt;span class=&quot;legend-item&quot;&gt;&lt;span class=&quot;swatch graph&quot;&gt;&lt;/span&gt;关系资产&lt;/span&gt;
+        &lt;span class=&quot;legend-item&quot;&gt;&lt;span class=&quot;swatch semantic&quot;&gt;&lt;/span&gt;语义资产&lt;/span&gt;
+        &lt;span class=&quot;legend-item&quot;&gt;&lt;span class=&quot;swatch next&quot;&gt;&lt;/span&gt;演进中的 AND(n)&lt;/span&gt;
+      &lt;/div&gt;
+    &lt;/div&gt;
+    &lt;div class=&quot;diagram&quot; aria-label=&quot;CodeSearch 离线与在线整体流程图&quot;&gt;
+      &lt;div class=&quot;phase-divider&quot;&gt;离线阶段：项目知识与检索资产构建&lt;/div&gt;
+      &lt;div class=&quot;flow-lane&quot;&gt;
+        &lt;div class=&quot;lane-label&quot;&gt;代码解析&lt;/div&gt;
+        &lt;div class=&quot;flow-chain&quot;&gt;
+          &lt;div class=&quot;flow-node&quot;&gt;目标代码仓库&lt;/div&gt;&lt;span class=&quot;flow-arrow&quot; aria-hidden=&quot;true&quot;&gt;&lt;/span&gt;
+          &lt;div class=&quot;flow-node&quot;&gt;多语言代码解析&lt;/div&gt;&lt;span class=&quot;flow-arrow&quot; aria-hidden=&quot;true&quot;&gt;&lt;/span&gt;
+          &lt;div class=&quot;flow-node lexical&quot;&gt;符号表&lt;br&gt;&lt;span class=&quot;text-small&quot;&gt;symbols_index.json&lt;/span&gt;&lt;/div&gt;
+          &lt;div class=&quot;flow-node&quot;&gt;依赖关系&lt;br&gt;&lt;span class=&quot;text-small&quot;&gt;dependency_graph.json&lt;/span&gt;&lt;/div&gt;
+          &lt;div class=&quot;flow-node graph&quot;&gt;代码关系数据库&lt;br&gt;&lt;span class=&quot;text-small&quot;&gt;codegraph.sqlite&lt;/span&gt;&lt;/div&gt;
+        &lt;/div&gt;
+      &lt;/div&gt;
+      &lt;div class=&quot;flow-lane&quot;&gt;
+        &lt;div class=&quot;lane-label&quot;&gt;词法索引&lt;/div&gt;
+        &lt;div class=&quot;flow-chain&quot;&gt;
+          &lt;div class=&quot;flow-node lexical&quot;&gt;symbols_index.json&lt;/div&gt;&lt;span class=&quot;flow-arrow&quot; aria-hidden=&quot;true&quot;&gt;&lt;/span&gt;
+          &lt;div class=&quot;flow-node lexical&quot;&gt;标识符分词&lt;/div&gt;&lt;span class=&quot;flow-arrow&quot; aria-hidden=&quot;true&quot;&gt;&lt;/span&gt;
+          &lt;div class=&quot;flow-node lexical&quot;&gt;子词索引&lt;br&gt;&lt;span class=&quot;text-small&quot;&gt;ngramed_symbol.json&lt;/span&gt;&lt;/div&gt;&lt;span class=&quot;flow-arrow&quot; aria-hidden=&quot;true&quot;&gt;&lt;/span&gt;
+          &lt;div class=&quot;flow-node lexical&quot;&gt;缩写 / 子序列扩展&lt;/div&gt;&lt;span class=&quot;flow-arrow&quot; aria-hidden=&quot;true&quot;&gt;&lt;/span&gt;
+          &lt;div class=&quot;flow-node lexical&quot;&gt;缩写倒排索引&lt;br&gt;&lt;span class=&quot;text-small&quot;&gt;invert_index.json&lt;/span&gt;&lt;/div&gt;
+        &lt;/div&gt;
+      &lt;/div&gt;
+      &lt;div class=&quot;flow-lane&quot;&gt;
+        &lt;div class=&quot;lane-label&quot;&gt;关系语料&lt;/div&gt;
+        &lt;div class=&quot;flow-chain&quot;&gt;
+          &lt;div class=&quot;flow-node graph&quot;&gt;codegraph.sqlite&lt;/div&gt;&lt;span class=&quot;flow-arrow&quot; aria-hidden=&quot;true&quot;&gt;&lt;/span&gt;
+          &lt;div class=&quot;flow-node graph&quot;&gt;调用边与实现关系&lt;br&gt;&lt;span class=&quot;text-small&quot;&gt;code_edges / implementations&lt;/span&gt;&lt;/div&gt;&lt;span class=&quot;flow-arrow&quot; aria-hidden=&quot;true&quot;&gt;&lt;/span&gt;
+          &lt;div class=&quot;flow-node graph&quot;&gt;调用链数据集&lt;br&gt;&lt;span class=&quot;text-small&quot;&gt;word2vec_call_chains.json&lt;/span&gt;&lt;/div&gt;&lt;span class=&quot;flow-arrow&quot; aria-hidden=&quot;true&quot;&gt;&lt;/span&gt;
+          &lt;div class=&quot;flow-node semantic&quot;&gt;增强调用链语料&lt;br&gt;&lt;span class=&quot;text-small&quot;&gt;整链 / 局部窗口 / 直接边&lt;/span&gt;&lt;/div&gt;&lt;span class=&quot;flow-arrow&quot; aria-hidden=&quot;true&quot;&gt;&lt;/span&gt;
+          &lt;div class=&quot;flow-node semantic&quot;&gt;项目共现模型&lt;br&gt;&lt;span class=&quot;text-small&quot;&gt;FastText + ICF&lt;/span&gt;&lt;/div&gt;
+        &lt;/div&gt;
+      &lt;/div&gt;
+      &lt;div class=&quot;flow-lane&quot;&gt;
+        &lt;div class=&quot;lane-label&quot;&gt;术语语义&lt;/div&gt;
+        &lt;div class=&quot;flow-chain&quot;&gt;
+          &lt;div class=&quot;flow-node graph&quot;&gt;调用链数据集&lt;/div&gt;&lt;span class=&quot;flow-arrow&quot; aria-hidden=&quot;true&quot;&gt;&lt;/span&gt;
+          &lt;div class=&quot;flow-node semantic&quot;&gt;项目术语表&lt;br&gt;&lt;span class=&quot;text-small&quot;&gt;term_project_vocab.json&lt;/span&gt;&lt;/div&gt;&lt;span class=&quot;flow-arrow&quot; aria-hidden=&quot;true&quot;&gt;&lt;/span&gt;
+          &lt;div class=&quot;flow-node semantic&quot;&gt;项目术语语义索引&lt;br&gt;&lt;span class=&quot;text-small&quot;&gt;MiniLM embeddings&lt;/span&gt;&lt;/div&gt;&lt;span class=&quot;flow-arrow&quot; aria-hidden=&quot;true&quot;&gt;&lt;/span&gt;
+          &lt;div class=&quot;flow-node semantic&quot;&gt;项目特性 Hybrid Term Embedding&lt;/div&gt;
+        &lt;/div&gt;
+      &lt;/div&gt;
+      &lt;div class=&quot;phase-divider&quot;&gt;在线阶段：SemQL 图感知混合检索&lt;/div&gt;
+      &lt;div class=&quot;flow-lane&quot;&gt;
+        &lt;div class=&quot;lane-label&quot;&gt;查询执行&lt;/div&gt;
+        &lt;div class=&quot;flow-chain&quot;&gt;
+          &lt;div class=&quot;flow-node&quot;&gt;自然语言查询&lt;/div&gt;&lt;span class=&quot;flow-arrow&quot; aria-hidden=&quot;true&quot;&gt;&lt;/span&gt;
+          &lt;div class=&quot;flow-node&quot;&gt;LLM 提取 SemCon&lt;/div&gt;&lt;span class=&quot;flow-arrow&quot; aria-hidden=&quot;true&quot;&gt;&lt;/span&gt;
+          &lt;div class=&quot;flow-node&quot;&gt;组合 SemQL&lt;/div&gt;&lt;span class=&quot;flow-arrow&quot; aria-hidden=&quot;true&quot;&gt;&lt;/span&gt;
+          &lt;div class=&quot;flow-node lexical&quot;&gt;Surface keyword_groups&lt;br&gt;&lt;span class=&quot;text-small&quot;&gt;组内 OR&lt;/span&gt;&lt;/div&gt;&lt;span class=&quot;flow-arrow&quot; aria-hidden=&quot;true&quot;&gt;&lt;/span&gt;
+          &lt;div class=&quot;flow-node evolving&quot;&gt;Surface–Relation 协作区&lt;br&gt;&lt;span class=&quot;text-small&quot;&gt;Graph-aware AND(n)&lt;/span&gt;&lt;/div&gt;&lt;span class=&quot;flow-arrow&quot; aria-hidden=&quot;true&quot;&gt;&lt;/span&gt;
+          &lt;div class=&quot;flow-node graph&quot;&gt;显式 Relation Filter&lt;br&gt;&lt;span class=&quot;text-small&quot;&gt;caller / callee / role / file&lt;/span&gt;&lt;/div&gt;&lt;span class=&quot;flow-arrow&quot; aria-hidden=&quot;true&quot;&gt;&lt;/span&gt;
+          &lt;div class=&quot;flow-node semantic&quot;&gt;代码向量聚类&lt;/div&gt;&lt;span class=&quot;flow-arrow&quot; aria-hidden=&quot;true&quot;&gt;&lt;/span&gt;
+          &lt;div class=&quot;flow-node semantic&quot;&gt;项目 Term Embedding 过滤&lt;/div&gt;&lt;span class=&quot;flow-arrow&quot; aria-hidden=&quot;true&quot;&gt;&lt;/span&gt;
+          &lt;div class=&quot;flow-node semantic&quot;&gt;LLM-as-a-Judge&lt;/div&gt;&lt;span class=&quot;flow-arrow&quot; aria-hidden=&quot;true&quot;&gt;&lt;/span&gt;
+          &lt;div class=&quot;flow-node&quot;&gt;最终代码元素与覆盖证据&lt;/div&gt;
+        &lt;/div&gt;
+      &lt;/div&gt;
+      &lt;div class=&quot;flow-bridge&quot; aria-label=&quot;离线资产对在线阶段的支撑关系&quot;&gt;
+        &lt;div class=&quot;bridge-item lexical&quot;&gt;&lt;strong&gt;INV + NGRAM → KG&lt;/strong&gt;&lt;span class=&quot;text-small&quot;&gt;缩写倒排与子词索引支撑组内召回&lt;/span&gt;&lt;/div&gt;
+        &lt;div class=&quot;bridge-item graph&quot;&gt;&lt;strong&gt;CODEDB → GAM / EF&lt;/strong&gt;&lt;span class=&quot;text-small&quot;&gt;调用图支撑 AND(n) 与显式结构过滤&lt;/span&gt;&lt;/div&gt;
+        &lt;div class=&quot;bridge-item semantic&quot;&gt;&lt;strong&gt;HYBRID → KG / TEF&lt;/strong&gt;&lt;span class=&quot;text-small&quot;&gt;扩展词过滤与项目术语级精排&lt;/span&gt;&lt;/div&gt;
+      &lt;/div&gt;
+    &lt;/div&gt;
+    &lt;details&gt;
+      &lt;summary&gt;查看完整 Mermaid 定义&lt;/summary&gt;
+      &lt;pre class=&quot;mermaid-source&quot;&gt;&lt;code&gt;flowchart TB
+    subgraph OFF[&quot;离线阶段：项目知识与检索资产构建&quot;]
+        SRC[&quot;目标代码仓库&quot;]
+
+        SRC --&amp;gt; PARSE[&quot;多语言代码解析&quot;]
+        PARSE --&amp;gt; SYMBOLS[&quot;符号表&amp;lt;br/&amp;gt;symbols_index.json&quot;]
+        PARSE --&amp;gt; DEPS[&quot;依赖关系&amp;lt;br/&amp;gt;dependency_graph.json&quot;]
+        PARSE --&amp;gt; CODEDB[&quot;代码关系数据库&amp;lt;br/&amp;gt;codegraph.sqlite&quot;]
+
+        SYMBOLS --&amp;gt; NGRAM[&quot;标识符分词&quot;]
+        NGRAM --&amp;gt; NGRAMIDX[&quot;子词索引&amp;lt;br/&amp;gt;ngramed_symbol.json&quot;]
+        NGRAMIDX --&amp;gt; ABBR[&quot;缩写/子序列扩展&quot;]
+        ABBR --&amp;gt; INV[&quot;缩写倒排索引&amp;lt;br/&amp;gt;invert_index.json&quot;]
+
+        CODEDB --&amp;gt; EDGES[&quot;调用边与实现关系&amp;lt;br/&amp;gt;code_edges / implementations&quot;]
+        EDGES --&amp;gt; CHAINS[&quot;调用链数据集&amp;lt;br/&amp;gt;word2vec_call_chains.json&quot;]
+
+        CHAINS --&amp;gt; VOCAB[&quot;项目术语表&amp;lt;br/&amp;gt;term_project_vocab.json&quot;]
+        CHAINS --&amp;gt; CORPUS[&quot;增强调用链语料&amp;lt;br/&amp;gt;整链 + 局部窗口 + 直接调用边&quot;]
+
+        CORPUS --&amp;gt; FASTTEXT[&quot;项目共现模型&amp;lt;br/&amp;gt;FastText + ICF&quot;]
+        VOCAB --&amp;gt; SEMINDEX[&quot;项目术语语义索引&amp;lt;br/&amp;gt;MiniLM embeddings&quot;]
+
+        FASTTEXT --&amp;gt; HYBRID[&quot;项目特性 Hybrid Term Embedding&quot;]
+        SEMINDEX --&amp;gt; HYBRID
+    end
+
+    subgraph ON[&quot;在线阶段：SemQL 图感知混合检索&quot;]
+        QUERY[&quot;自然语言查询&quot;] --&amp;gt; SEMCON[&quot;LLM 提取 SemCon&quot;]
+        SEMCON --&amp;gt; SEMQL[&quot;组合 SemQL&quot;]
+
+        SEMQL --&amp;gt; KG[&quot;Surface keyword_groups&amp;lt;br/&amp;gt;组内 OR&quot;]
+        INV --&amp;gt; KG
+        NGRAMIDX --&amp;gt; KG
+        HYBRID --&amp;gt; KG
+
+        KG --&amp;gt; GAM[&quot;Surface–Relation 协作区&amp;lt;br/&amp;gt;Graph-aware AND(n)&amp;lt;br/&amp;gt;概念组跨调用图共同满足&quot;]
+        CODEDB --&amp;gt; GAM
+
+        GAM --&amp;gt; EF[&quot;显式 Relation Filter&amp;lt;br/&amp;gt;caller / callee / role / file&quot;]
+        SEMQL --&amp;gt; EF
+        CODEDB --&amp;gt; EF
+
+        EF --&amp;gt; CF[&quot;Intention：代码向量聚类&quot;]
+        CF --&amp;gt; TEF[&quot;项目 Term Embedding 过滤&quot;]
+        HYBRID --&amp;gt; TEF
+        TEF --&amp;gt; JUDGE[&quot;LLM-as-a-Judge&quot;]
+        SEMQL --&amp;gt; JUDGE
+
+        JUDGE --&amp;gt; RESULT[&quot;最终代码元素与覆盖证据&quot;]
+    end&lt;/code&gt;&lt;/pre&gt;
+    &lt;/details&gt;
+    &lt;div class=&quot;formula text-small&quot;&gt;
+      当前主程序仍按 &lt;code&gt;Surface → Relation → Intention&lt;/code&gt; 传递候选；但 Surface 已调用 Hybrid Embedding 过滤扩展词，且 schema 已携带图关系逻辑。完整 AND(n) 执行器仍处于演进阶段。
+    &lt;/div&gt;
+  &lt;/section&gt;
+
+  &lt;section class=&quot;section&quot; aria-labelledby=&quot;embedding-heading&quot;&gt;
+    &lt;div class=&quot;section-head&quot;&gt;
+      &lt;h2 id=&quot;embedding-heading&quot;&gt;Embedding 建模：通用语义与项目调用上下文融合&lt;/h2&gt;
+    &lt;/div&gt;
+    &lt;div class=&quot;diagram&quot; aria-label=&quot;项目 Hybrid Term Embedding 建模流程图&quot;&gt;
+      &lt;div class=&quot;flow-lane&quot;&gt;
+        &lt;div class=&quot;lane-label&quot;&gt;结构语料&lt;/div&gt;
+        &lt;div class=&quot;flow-chain&quot;&gt;
+          &lt;div class=&quot;flow-node graph&quot;&gt;codegraph.sqlite&lt;br&gt;或 Java LSP&lt;/div&gt;&lt;span class=&quot;flow-arrow&quot; aria-hidden=&quot;true&quot;&gt;&lt;/span&gt;
+          &lt;div class=&quot;flow-node graph&quot;&gt;word2vec_call_chains.json&lt;/div&gt;&lt;span class=&quot;flow-arrow&quot; aria-hidden=&quot;true&quot;&gt;&lt;/span&gt;
+          &lt;div class=&quot;flow-node semantic&quot;&gt;增强语料&lt;br&gt;&lt;span class=&quot;text-small&quot;&gt;整链 / 窗口 / 直接边&lt;/span&gt;&lt;/div&gt;&lt;span class=&quot;flow-arrow&quot; aria-hidden=&quot;true&quot;&gt;&lt;/span&gt;
+          &lt;div class=&quot;flow-node semantic&quot;&gt;FastText + ICF&lt;br&gt;&lt;span class=&quot;text-small&quot;&gt;项目内共现&lt;/span&gt;&lt;/div&gt;
+        &lt;/div&gt;
+      &lt;/div&gt;
+      &lt;div class=&quot;flow-lane&quot;&gt;
+        &lt;div class=&quot;lane-label&quot;&gt;术语语义&lt;/div&gt;
+        &lt;div class=&quot;flow-chain&quot;&gt;
+          &lt;div class=&quot;flow-node graph&quot;&gt;调用链函数名&lt;/div&gt;&lt;span class=&quot;flow-arrow&quot; aria-hidden=&quot;true&quot;&gt;&lt;/span&gt;
+          &lt;div class=&quot;flow-node semantic&quot;&gt;term_project_vocab.json&lt;/div&gt;&lt;span class=&quot;flow-arrow&quot; aria-hidden=&quot;true&quot;&gt;&lt;/span&gt;
+          &lt;div class=&quot;flow-node semantic&quot;&gt;MiniLM 项目术语语义索引&lt;/div&gt;
+        &lt;/div&gt;
+      &lt;/div&gt;
+      &lt;div class=&quot;flow-lane&quot;&gt;
+        &lt;div class=&quot;lane-label&quot;&gt;融合应用&lt;/div&gt;
+        &lt;div class=&quot;flow-chain&quot;&gt;
+          &lt;div class=&quot;flow-node semantic&quot;&gt;共现分 + 通用语义分&lt;/div&gt;&lt;span class=&quot;flow-arrow&quot; aria-hidden=&quot;true&quot;&gt;&lt;/span&gt;
+          &lt;div class=&quot;flow-node semantic&quot;&gt;Hybrid Term Embedding&lt;/div&gt;&lt;span class=&quot;flow-arrow&quot; aria-hidden=&quot;true&quot;&gt;&lt;/span&gt;
+          &lt;div class=&quot;flow-node lexical&quot;&gt;Surface 扩展词过滤&lt;/div&gt;
+          &lt;div class=&quot;flow-node semantic&quot;&gt;Intention Term Filter&lt;/div&gt;
+        &lt;/div&gt;
+      &lt;/div&gt;
+    &lt;/div&gt;
+    &lt;div class=&quot;pairwise-note text-small&quot;&gt;
+      &lt;span class=&quot;status-dot experiment&quot; aria-hidden=&quot;true&quot;&gt;&lt;/span&gt;
+      &lt;span&gt;&lt;strong&gt;Pairwise 判别不在当前主链路中：&lt;/strong&gt;实验效果不理想，&lt;code&gt;embedding_main&lt;/code&gt; 当前实际在线打分使用 Hybrid 的 &lt;code&gt;score_pair&lt;/code&gt;/&lt;code&gt;score_pair_by_average_vector&lt;/code&gt;，不经过 CrossEncoder Pairwise 重排。&lt;/span&gt;
+    &lt;/div&gt;
+  &lt;/section&gt;
+
+  &lt;section class=&quot;section&quot; aria-labelledby=&quot;modules-heading&quot;&gt;
+    &lt;div class=&quot;section-head&quot;&gt;
+      &lt;h2 id=&quot;modules-heading&quot;&gt;模块职责与当前状态&lt;/h2&gt;
+    &lt;/div&gt;
+
+    &lt;details open&gt;
+      &lt;summary&gt;离线资产&lt;/summary&gt;
+      &lt;div class=&quot;stage-panel&quot;&gt;
+      &lt;div class=&quot;module-grid&quot;&gt;
+        &lt;div class=&quot;module&quot;&gt;
+          &lt;div class=&quot;module-name&quot;&gt;代码解析与 Code DB&lt;/div&gt;
+          &lt;div class=&quot;module-copy&quot;&gt;&lt;span&gt;把源码转换为 symbol、dependency、call edge 和 implementation relation。&lt;/span&gt;&lt;span class=&quot;status-line text-small&quot;&gt;&lt;span class=&quot;status-dot&quot;&gt;&lt;/span&gt;基础解析与数据库构建已实现&lt;/span&gt;&lt;/div&gt;
+        &lt;/div&gt;
+        &lt;div class=&quot;module&quot;&gt;
+          &lt;div class=&quot;module-name&quot;&gt;ngram / 倒排索引&lt;/div&gt;
+          &lt;div class=&quot;module-copy&quot;&gt;&lt;span&gt;解决标识符拆词、缩写和命名差异，提供低成本高召回候选。&lt;/span&gt;&lt;span class=&quot;status-line text-small&quot;&gt;&lt;span class=&quot;status-dot&quot;&gt;&lt;/span&gt;已实现&lt;/span&gt;&lt;/div&gt;
+        &lt;/div&gt;
+        &lt;div class=&quot;module&quot;&gt;
+          &lt;div class=&quot;module-name&quot;&gt;调用链数据集&lt;/div&gt;
+          &lt;div class=&quot;module-copy&quot;&gt;&lt;span&gt;从入口沿 callee 展开业务路径，为项目词表和共现训练提供结构语料。&lt;/span&gt;&lt;span class=&quot;status-line text-small&quot;&gt;&lt;span class=&quot;status-dot&quot;&gt;&lt;/span&gt;LSP 与 code_edges 两条构建路径&lt;/span&gt;&lt;/div&gt;
+        &lt;/div&gt;
+        &lt;div class=&quot;module&quot;&gt;
+          &lt;div class=&quot;module-name&quot;&gt;项目术语表&lt;/div&gt;
+          &lt;div class=&quot;module-copy&quot;&gt;&lt;span&gt;从调用链函数名抽取统一术语空间，供共现与语义通道共享。&lt;/span&gt;&lt;span class=&quot;status-line text-small&quot;&gt;&lt;span class=&quot;status-dot&quot;&gt;&lt;/span&gt;已实现&lt;/span&gt;&lt;/div&gt;
+        &lt;/div&gt;
+        &lt;div class=&quot;module&quot;&gt;
+          &lt;div class=&quot;module-name&quot;&gt;FastText + ICF&lt;/div&gt;
+          &lt;div class=&quot;module-copy&quot;&gt;&lt;span&gt;学习当前项目调用流程中的相关性，并抑制跨大量调用链出现的泛化词。&lt;/span&gt;&lt;span class=&quot;status-line text-small&quot;&gt;&lt;span class=&quot;status-dot&quot;&gt;&lt;/span&gt;真正由项目数据训练的通道&lt;/span&gt;&lt;/div&gt;
+        &lt;/div&gt;
+        &lt;div class=&quot;module&quot;&gt;
+          &lt;div class=&quot;module-name&quot;&gt;MiniLM 术语索引&lt;/div&gt;
+          &lt;div class=&quot;module-copy&quot;&gt;&lt;span&gt;为项目限定词表建立通用语义向量索引；当前不是项目数据微调模型。&lt;/span&gt;&lt;span class=&quot;status-line text-small&quot;&gt;&lt;span class=&quot;status-dot&quot;&gt;&lt;/span&gt;已实现&lt;/span&gt;&lt;/div&gt;
+        &lt;/div&gt;
+      &lt;/div&gt;
+      &lt;/div&gt;
+    &lt;/details&gt;
+
+    &lt;details&gt;
+      &lt;summary&gt;当前在线&lt;/summary&gt;
+      &lt;div class=&quot;stage-panel&quot;&gt;
+      &lt;div class=&quot;module-grid&quot;&gt;
+        &lt;div class=&quot;module&quot;&gt;
+          &lt;div class=&quot;module-name&quot;&gt;SemCon / SemQL&lt;/div&gt;
+          &lt;div class=&quot;module-copy&quot;&gt;&lt;span&gt;将自然语言拆成 surface、relation、intention，并按 include/exclude 组织执行条件。&lt;/span&gt;&lt;span class=&quot;status-line text-small&quot;&gt;&lt;span class=&quot;status-dot&quot;&gt;&lt;/span&gt;已实现&lt;/span&gt;&lt;/div&gt;
+        &lt;/div&gt;
+        &lt;div class=&quot;module&quot;&gt;
+          &lt;div class=&quot;module-name&quot;&gt;Surface Executor&lt;/div&gt;
+          &lt;div class=&quot;module-copy&quot;&gt;&lt;span&gt;倒排索引、ngram、缩写召回与类型过滤；Hybrid Embedding 已前置过滤扩展子序列。&lt;/span&gt;&lt;span class=&quot;status-line text-small&quot;&gt;&lt;span class=&quot;status-dot&quot;&gt;&lt;/span&gt;已实现，已非纯词法模块&lt;/span&gt;&lt;/div&gt;
+        &lt;/div&gt;
+        &lt;div class=&quot;module&quot;&gt;
+          &lt;div class=&quot;module-name&quot;&gt;Relation Executor&lt;/div&gt;
+          &lt;div class=&quot;module-copy&quot;&gt;&lt;span&gt;在候选上验证 caller、callee 和图角色，优先查询 codegraph.sqlite，必要时回退 LSP。&lt;/span&gt;&lt;span class=&quot;status-line text-small&quot;&gt;&lt;span class=&quot;status-dot&quot;&gt;&lt;/span&gt;已实现&lt;/span&gt;&lt;/div&gt;
+        &lt;/div&gt;
+        &lt;div class=&quot;module&quot;&gt;
+          &lt;div class=&quot;module-name&quot;&gt;Cluster Filter&lt;/div&gt;
+          &lt;div class=&quot;module-copy&quot;&gt;&lt;span&gt;对代码元素正文与元数据编码、聚类并按查询相关性丢弃最低相关簇。&lt;/span&gt;&lt;span class=&quot;status-line text-small&quot;&gt;&lt;span class=&quot;status-dot&quot;&gt;&lt;/span&gt;已实现&lt;/span&gt;&lt;/div&gt;
+        &lt;/div&gt;
+        &lt;div class=&quot;module&quot;&gt;
+          &lt;div class=&quot;module-name&quot;&gt;Embedding Filter&lt;/div&gt;
+          &lt;div class=&quot;module-copy&quot;&gt;&lt;span&gt;比较查询术语与候选名称、签名、容器术语，融合项目共现分与通用语义分。&lt;/span&gt;&lt;span class=&quot;status-line text-small&quot;&gt;&lt;span class=&quot;status-dot&quot;&gt;&lt;/span&gt;使用 Hybrid；不使用 Pairwise&lt;/span&gt;&lt;/div&gt;
+        &lt;/div&gt;
+        &lt;div class=&quot;module&quot;&gt;
+          &lt;div class=&quot;module-name&quot;&gt;LLM Judge&lt;/div&gt;
+          &lt;div class=&quot;module-copy&quot;&gt;&lt;span&gt;根据 intention include/exclude 和候选代码进行最终高精度功能判断。&lt;/span&gt;&lt;span class=&quot;status-line text-small&quot;&gt;&lt;span class=&quot;status-dot&quot;&gt;&lt;/span&gt;已实现，放在末端控制成本&lt;/span&gt;&lt;/div&gt;
+        &lt;/div&gt;
+      &lt;/div&gt;
+      &lt;/div&gt;
+    &lt;/details&gt;
+
+    &lt;details&gt;
+      &lt;summary&gt;AND(n) 演进&lt;/summary&gt;
+      &lt;div class=&quot;stage-panel&quot;&gt;
+      &lt;div class=&quot;module-grid&quot;&gt;
+        &lt;div class=&quot;module&quot;&gt;
+          &lt;div class=&quot;module-name&quot;&gt;keyword_groups&lt;/div&gt;
+          &lt;div class=&quot;module-copy&quot;&gt;&lt;span&gt;保留查询中的独立概念组；组内 keywords/synonyms 执行 OR，不再把全部词拍平。&lt;/span&gt;&lt;span class=&quot;status-line text-small&quot;&gt;&lt;span class=&quot;status-dot&quot;&gt;&lt;/span&gt;Schema 与 LLM Prompt 已支持&lt;/span&gt;&lt;/div&gt;
+        &lt;/div&gt;
+        &lt;div class=&quot;module&quot;&gt;
+          &lt;div class=&quot;module-name&quot;&gt;Graph-aware AND(n)&lt;/div&gt;
+          &lt;div class=&quot;module-copy&quot;&gt;&lt;span&gt;候选自身未命中某概念时，可由 n 跳内的调用图邻居补齐该概念。&lt;/span&gt;&lt;span class=&quot;status-line text-small&quot;&gt;&lt;span class=&quot;status-dot partial&quot;&gt;&lt;/span&gt;CHANGELOG vNext；独立执行器尚未完整落地&lt;/span&gt;&lt;/div&gt;
+        &lt;/div&gt;
+        &lt;div class=&quot;module&quot;&gt;
+          &lt;div class=&quot;module-name&quot;&gt;pairwise hop&lt;/div&gt;
+          &lt;div class=&quot;module-copy&quot;&gt;&lt;span&gt;不同概念组使用不同 hop 上限，控制强耦合概念与间接概念的传播距离。&lt;/span&gt;&lt;span class=&quot;status-line text-small&quot;&gt;&lt;span class=&quot;status-dot partial&quot;&gt;&lt;/span&gt;Schema 已表达，执行待补齐&lt;/span&gt;&lt;/div&gt;
+        &lt;/div&gt;
+        &lt;div class=&quot;module&quot;&gt;
+          &lt;div class=&quot;module-name&quot;&gt;NOT_HOP&lt;/div&gt;
+          &lt;div class=&quot;module-copy&quot;&gt;&lt;span&gt;删除直接命中排除概念或与其距离过近的候选，并使用比 include 更保守的传播范围。&lt;/span&gt;&lt;span class=&quot;status-line text-small&quot;&gt;&lt;span class=&quot;status-dot partial&quot;&gt;&lt;/span&gt;设计阶段&lt;/span&gt;&lt;/div&gt;
+        &lt;/div&gt;
+        &lt;div class=&quot;module&quot;&gt;
+          &lt;div class=&quot;module-name&quot;&gt;Coverage Evidence&lt;/div&gt;
+          &lt;div class=&quot;module-copy&quot;&gt;&lt;span&gt;记录每个 group 是 direct 命中还是由 graph_neighbor 补齐，以及邻居、术语与距离。&lt;/span&gt;&lt;span class=&quot;status-line text-small&quot;&gt;&lt;span class=&quot;status-dot partial&quot;&gt;&lt;/span&gt;设计阶段&lt;/span&gt;&lt;/div&gt;
+        &lt;/div&gt;
+        &lt;div class=&quot;module&quot;&gt;
+          &lt;div class=&quot;module-name&quot;&gt;距离衰减排序&lt;/div&gt;
+          &lt;div class=&quot;module-copy&quot;&gt;&lt;span&gt;直接命中优先；图传播分数随 hop 距离衰减，再叠加覆盖率与邻近奖励。&lt;/span&gt;&lt;span class=&quot;status-line text-small&quot;&gt;&lt;span class=&quot;status-dot partial&quot;&gt;&lt;/span&gt;设计阶段&lt;/span&gt;&lt;/div&gt;
+        &lt;/div&gt;
+      &lt;/div&gt;
+      &lt;/div&gt;
+    &lt;/details&gt;
+  &lt;/section&gt;
+&lt;/div&gt;
+
+&lt;script src=&quot;https://unpkg.com/@floating-ui/core@1.7.3/dist/floating-ui.core.umd.min.js&quot;&gt;&lt;/script&gt;
+&lt;script src=&quot;https://unpkg.com/@floating-ui/dom@1.7.4/dist/floating-ui.dom.umd.min.js&quot;&gt;&lt;/script&gt;
+&lt;script&gt;
+(() =&gt; {
+  if (window.FloatingUIDOM == null) {
+    return;
+  }
+  const { autoUpdate, computePosition, flip, offset, shift, size } =
+    window.FloatingUIDOM;
+  const tooltipPlacements = new Set([&quot;top&quot;, &quot;right&quot;, &quot;bottom&quot;, &quot;left&quot;]);
+  const tooltipId = `codex-visualization-tooltip-${
+    window.crypto?.randomUUID?.() ?? Date.now().toString(36)
+  }`;
+  const tooltipGap = 5;
+  const hoverDelay = 700;
+  const skipDelay = 300;
+  let activeTrigger = null;
+  let pendingTrigger = null;
+  let tooltip = null;
+  let openTimeout = null;
+  let autoUpdateCleanup = null;
+  let positionRequest = 0;
+  let skipDelayUntil = 0;
+
+  const getTrigger = (target) =&gt;
+    target?.nodeType === Node.ELEMENT_NODE
+      ? target.closest(&quot;[data-tooltip]&quot;)
+      : null;
+  const containsTarget = (trigger, target) =&gt;
+    target?.nodeType != null &amp;&amp; trigger.contains(target);
+  const getContent = (trigger) =&gt;
+    trigger.getAttribute(&quot;data-tooltip&quot;)?.trim() ?? &quot;&quot;;
+  const getPlacement = (trigger) =&gt; {
+    const placement = trigger.getAttribute(&quot;data-tooltip-placement&quot;);
+    return tooltipPlacements.has(placement) ? placement : &quot;top&quot;;
+  };
+  const getTooltip = () =&gt; {
+    if (tooltip == null) {
+      tooltip = document.createElement(&quot;div&quot;);
+      tooltip.id = tooltipId;
+      tooltip.className = &quot;tooltip&quot;;
+      tooltip.setAttribute(&quot;role&quot;, &quot;tooltip&quot;);
+    }
+    return tooltip;
+  };
+  const setDescribedBy = (trigger, described) =&gt; {
+    const ids = new Set(
+      (trigger.getAttribute(&quot;aria-describedby&quot;) ?? &quot;&quot;)
+        .split(/\s+/)
+        .filter(Boolean),
+    );
+    if (described) {
+      ids.add(tooltipId);
+    } else {
+      ids.delete(tooltipId);
+    }
+    if (ids.size === 0) {
+      trigger.removeAttribute(&quot;aria-describedby&quot;);
+    } else {
+      trigger.setAttribute(&quot;aria-describedby&quot;, [...ids].join(&quot; &quot;));
+    }
+  };
+  const clearOpenTimeout = () =&gt; {
+    if (openTimeout != null) {
+      window.clearTimeout(openTimeout);
+      openTimeout = null;
+    }
+    pendingTrigger = null;
+  };
+  const closeTooltip = (activateSkipDelay = true) =&gt; {
+    clearOpenTimeout();
+    positionRequest += 1;
+    autoUpdateCleanup?.();
+    autoUpdateCleanup = null;
+    if (activeTrigger == null) {
+      return;
+    }
+    setDescribedBy(activeTrigger, false);
+    activeTrigger = null;
+    tooltip?.remove();
+    if (activateSkipDelay) {
+      skipDelayUntil = Date.now() + skipDelay;
+    }
+  };
+  const updatePosition = (trigger, floating) =&gt; {
+    const request = ++positionRequest;
+    void computePosition(trigger, floating, {
+      middleware: [
+        offset(tooltipGap),
+        flip({ padding: tooltipGap }),
+        shift({ padding: tooltipGap }),
+        size({
+          padding: tooltipGap,
+          apply({ availableHeight, availableWidth, elements }) {
+            elements.floating.style.setProperty(
+              &quot;--tooltip-available-width&quot;,
+              `${Math.max(0, availableWidth)}px`,
+            );
+            elements.floating.style.setProperty(
+              &quot;--tooltip-available-height&quot;,
+              `${Math.max(0, availableHeight)}px`,
+            );
+          },
+        }),
+      ],
+      placement: getPlacement(trigger),
+      strategy: &quot;fixed&quot;,
+    })
+      .then(({ x, y }) =&gt; {
+        if (activeTrigger !== trigger || request !== positionRequest) {
+          return;
+        }
+        const scale = window.devicePixelRatio || 1;
+        floating.style.transform = `translate(${Math.round(x * scale) / scale}px, ${Math.round(y * scale) / scale}px)`;
+        floating.style.visibility = &quot;visible&quot;;
+      })
+      .catch(() =&gt; {
+        if (activeTrigger === trigger &amp;&amp; request === positionRequest) {
+          closeTooltip(false);
+        }
+      });
+  };
+  const openTooltip = (trigger) =&gt; {
+    const content = getContent(trigger);
+    if (!trigger.isConnected || content.length === 0) {
+      return;
+    }
+    clearOpenTimeout();
+    if (activeTrigger === trigger) {
+      return;
+    }
+    closeTooltip();
+    const floating = getTooltip();
+    floating.textContent = content;
+    floating.style.visibility = &quot;hidden&quot;;
+    floating.style.transform = &quot;translate(0, 0)&quot;;
+    document.body.appendChild(floating);
+    activeTrigger = trigger;
+    setDescribedBy(trigger, true);
+    autoUpdateCleanup = autoUpdate(trigger, floating, () =&gt; {
+      updatePosition(trigger, floating);
+    });
+  };
+  const requestOpen = (trigger, immediate = false) =&gt; {
+    if (
+      getContent(trigger).length === 0 ||
+      activeTrigger === trigger ||
+      pendingTrigger === trigger
+    ) {
+      return;
+    }
+    clearOpenTimeout();
+    pendingTrigger = trigger;
+    const delay =
+      immediate || activeTrigger != null || Date.now() &lt; skipDelayUntil
+        ? 0
+        : hoverDelay;
+    if (delay === 0) {
+      openTooltip(trigger);
+      return;
+    }
+    openTimeout = window.setTimeout(() =&gt; {
+      openTimeout = null;
+      pendingTrigger = null;
+      openTooltip(trigger);
+    }, delay);
+  };
+  const handlePointerOpen = (event) =&gt; {
+    if (event.pointerType === &quot;touch&quot;) {
+      return;
+    }
+    const trigger = getTrigger(event.target);
+    if (trigger == null || containsTarget(trigger, event.relatedTarget)) {
+      return;
+    }
+    requestOpen(trigger);
+  };
+  const handleLeave = (event) =&gt; {
+    const trigger = getTrigger(event.target);
+    if (trigger == null || containsTarget(trigger, event.relatedTarget)) {
+      return;
+    }
+    if (activeTrigger === trigger || pendingTrigger === trigger) {
+      closeTooltip();
+    }
+  };
+  const handleFocusIn = (event) =&gt; {
+    const trigger = getTrigger(event.target);
+    if (trigger?.matches(&quot;:focus-visible&quot;)) {
+      requestOpen(trigger, true);
+    }
+  };
+  const handleKeyDown = (event) =&gt; {
+    if (event.key === &quot;Escape&quot;) {
+      closeTooltip();
+    }
+  };
+  const handleContextMenu = (event) =&gt; {
+    const trigger = getTrigger(event.target);
+    if (activeTrigger === trigger || pendingTrigger === trigger) {
+      closeTooltip();
+    }
+  };
+  const destroy = () =&gt; {
+    closeTooltip(false);
+    document.removeEventListener(&quot;pointerover&quot;, handlePointerOpen);
+    document.removeEventListener(&quot;pointerout&quot;, handleLeave);
+    document.removeEventListener(&quot;focusin&quot;, handleFocusIn);
+    document.removeEventListener(&quot;focusout&quot;, handleLeave);
+    document.removeEventListener(&quot;keydown&quot;, handleKeyDown);
+    document.removeEventListener(&quot;contextmenu&quot;, handleContextMenu);
+    tooltip = null;
+  };
+
+  document.addEventListener(&quot;pointerover&quot;, handlePointerOpen);
+  document.addEventListener(&quot;pointerout&quot;, handleLeave);
+  document.addEventListener(&quot;focusin&quot;, handleFocusIn);
+  document.addEventListener(&quot;focusout&quot;, handleLeave);
+  document.addEventListener(&quot;keydown&quot;, handleKeyDown);
+  document.addEventListener(&quot;contextmenu&quot;, handleContextMenu);
+  window.addEventListener(&quot;pagehide&quot;, destroy, { once: true });
+})();
+&lt;/script&gt;
+&lt;script id=&quot;codex-visualization-lucide&quot; async src=&quot;https://unpkg.com/lucide@1.17.0/dist/umd/lucide.js&quot;&gt;&lt;/script&gt;
+&lt;script&gt;
+(() =&gt; {
+  const initialize = () =&gt; {
+    globalThis.lucide?.createIcons({ attrs: { width: 16, height: 16 } });
+  };
+  if (globalThis.lucide != null) {
+    initialize();
+    return;
+  }
+  document
+    .getElementById(&quot;codex-visualization-lucide&quot;)
+    ?.addEventListener(&quot;load&quot;, initialize, { once: true });
+})();
+&lt;/script&gt;
+
+&lt;/body&gt;
+&lt;/html&gt;
+"></iframe>
+</body>
+</html>

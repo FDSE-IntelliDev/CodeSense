@@ -220,9 +220,9 @@ def score_pair(
     """
     return json.loads(_score_pair_cached(str(text_a), str(text_b)))
 
-def main():
-    project_name = 'youlai-boot-master'
-    query="save dept"#输入用tokenizer分词 然后向量平均 检查co_score=0的case
+def main(project_name,query):
+    # project_name = 'youlai-boot-master'
+    # query="save dept"#输入用tokenizer分词 然后向量平均 检查co_score=0的case
 
     # build_corpus(project_name=project_name, num_workers=4)
     #
@@ -233,7 +233,7 @@ def main():
     #     hybrid_weight=0,
     #     pairwise_weight=1,
     # )
-    embedder = init_embedding(project_name, co_weight=0.2, sem_weight=0.8)
+    init_embedding(project_name, co_weight=0.2, sem_weight=0.8)
 
     result = find_relative_terms_by_average_vector(
         query=query,
