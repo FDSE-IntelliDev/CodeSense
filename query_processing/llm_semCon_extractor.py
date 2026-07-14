@@ -92,9 +92,13 @@ Use the following imported schemas as the exact output format for each condition
 4. Every list item must strictly follow its corresponding schema above.
 5. Do not add fields outside the corresponding schema.
 6. If a category has no conditions, use an empty list.
-7. Use property="include" for required conditions and property="exclude" for negative conditions.
-8. Use surface for literal/code-text matching, intention for behavior/intent/domain meaning, and relation for code structure constraints.
-9. CRITICAL — match_kind atomicity: Each surface condition must have exactly ONE match_kind value (code_element / code_snippet / code_line / unknown). Do NOT combine multiple match_kinds into a single surface condition. If the query involves matching more than one kind (e.g., both a code element name and a code line), split them into separate surface conditions, each with its own match_kind and corresponding keywords.
+7. Surface group_logic rules:
+   - group_logic only describes graph-aware AND among include keyword groups; never put exclude groups in it.
+   - Put groups in group_logic when their matched code elements can jointly form one relevant result if connected within hop_count in the code graph.
+   - graph_scope="call" uses call-chain distance; graph_scope="import" uses file/import distance, with same-file as hop_count=0.
+   - Use pairwise_hop_counts only when a specific include group pair needs a non-default hop_count.
+8. We will use surface for literal/code-text matching, intention for behavior/intent/domain meaning, and relation for code structure constraints.
+9. CRITICAL — match_kind atomicity: Each surface condition must have exactly ONE match_kind value (code_element / code_snippet / code_line / unknown). Do NOT combine multiple match_kinds into a single surface condition. If the query involves matching more than one kind (e.g., both a code element name and a code line), split them into separate surface conditions, each with its own match_kind and corresponding keyword_groups.
 
 ## Query
 {query}
