@@ -96,6 +96,7 @@ Use the following imported schemas as the exact output format for each condition
    - group_logic only describes graph-aware AND among include keyword groups; never put exclude groups in it.
    - Put groups in group_logic when their matched code elements can jointly form one relevant result if connected within hop_count in the code graph.
    - graph_scope="call" uses call-chain distance; graph_scope="import" uses file/import distance, with same-file as hop_count=0.
+   - Set default_hop_count for every group_logic item. It applies to include group pairs without a pairwise override.
    - Use pairwise_hop_counts only when a specific include group pair needs a non-default hop_count.
 8. We will use surface for literal/code-text matching, intention for behavior/intent/domain meaning, and relation for code structure constraints.
 9. CRITICAL — match_kind atomicity: Each surface condition must have exactly ONE match_kind value (code_element / code_snippet / code_line / unknown). Do NOT combine multiple match_kinds into a single surface condition. If the query involves matching more than one kind (e.g., both a code element name and a code line), split them into separate surface conditions, each with its own match_kind and corresponding keyword_groups.

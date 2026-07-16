@@ -1,81 +1,35 @@
 import json
-from definition import BASE_MODEL, PROJECT_PATH, QUERY_OUTPUT_DIR
-from utils.file_utils import load_res,save_res
-from utils.llm_api import call_chat_llm
-import re
+from definition import QUERY_OUTPUT_DIR
 from typing import Any
-from parsers.read_tools import get_symbol_code
-from query_processing.semql_utils import extract_semql_terms, extract_semql_text_terms
+from utils.file_utils import load_res
 
-def filter_symbols_by_type(
-    search_result_path: str,
-    semQL_path: str,
-    exclude_output_path: str = None,
-) -> list:
+def filter_symbols_by_type(search_results: list, allowed_types: Any) -> list:
+    """Filter in-memory symbol records by planner-normalized element types.
+
+    SurfacePlanner already owns schema parsing and function/method
+    normalization. The executor therefore passes ``match.code_element_types``
+    directly; this filter deliberately has no legacy SemQL parsing path.
     """
-    根据 semQL 中的 target 字段对代码元素的结果进行类型过滤。
+    if not isinstance(search_results, list):
+        return []
 
-    :param search_result_path: 搜索结果列表文件的路径 (例如 invert_index_search_result.json)
-    :param semQL_path: semQL 查询文件的路径 (例如 query_dsl_result.json)
-    :param exclude_output_path: 可选，被类型过滤排除的结果保存路径
-    :return: 过滤后的结果列表
-    """
-    # 1. 从文件读取已获的搜索结果
-    search_results = load_res(search_result_path)
-
-    # 2. 从文件读取 semQL 字典对象
-    semql_query = load_res(semQL_path)
-
-    target = []
-    for condition_type in (
-                            "surface",
-                            # "relation"
-                            ):
-        target.extend(
-            extract_semql_text_terms(
-                semql_query,
-                properties=("include",),
-                condition_type=condition_type,
-                term_name="code_element_type",
-            )
-        )
-    if not target:
-        target = extract_semql_text_terms(semql_query, term_name="target")
-
-    # 如果 semQL 中没有指定 target，或者 target 是空的，直接返回全量结果
-    if not target:
-        if exclude_output_path:
-            save_res(exclude_output_path, [])
-        return search_results
-
-    allowed_types = {str(t).lower().strip() for t in target if str(t).strip()}
+    allowed_types = {
+        str(item).lower().strip()
+        for item in (allowed_types or [])
+        if str(item).strip()
+    }
     allowed_types.discard("any")
     allowed_types.discard("null")
     if not allowed_types:
-        if exclude_output_path:
-            save_res(exclude_output_path, [])
         return search_results
 
-    if 'function' in allowed_types:
-        allowed_types.add('method')
-    if 'method' in allowed_types:
-        allowed_types.add('function')
-
     filtered_results = []
-    exclude_results=[]
-
     for symbol in search_results:
+        if not isinstance(symbol, dict):
+            continue
         symbol_type = symbol.get("type", "")
-
-        # 判断当前代码元素的 type 是否在目标 type 集合中
-        # 忽略大小写进行匹配
         if symbol_type.lower().strip() in allowed_types:
             filtered_results.append(symbol)
-        else:
-            exclude_results.append(symbol)
-
-    if exclude_output_path:
-        save_res(exclude_output_path, exclude_results)
 
     return filtered_results
 
@@ -205,8 +159,8 @@ def filter_symbols_by_type(
 
 if __name__ == "__main__":
     filtered_res = filter_symbols_by_type(
-        f"{QUERY_OUTPUT_DIR}/invert_index_search_result.json",
-        f"{QUERY_OUTPUT_DIR}/semQL.json",
+        load_res(f"{QUERY_OUTPUT_DIR}/invert_index_search_result.json"),
+        ["function", "method"],
     )
     print(json.dumps({"filtered": len(filtered_res)}, ensure_ascii=False, indent=2))
-    # filtered_res=filter_symbols_semantically(f'{QUERY_OUTPUT_DIR}/filtered_by_type.json', f'{QUERY_OUTPUT_DIR}/semQL.json')
+    # filtered_res=filter_symbols_semantically(f'{QUERY_OUTPUT_DIR}/filtered_by_type_hop_0.json', f'{QUERY_OUTPUT_DIR}/semQL.json')

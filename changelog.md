@@ -414,3 +414,189 @@ final_score =
 - Agent 需要的是相关代码上下文，而不是孤立的单点代码块。
 
 从论文角度看，`AND(n)` 可以作为 SemQL 2.0 的图感知布尔算子，说明本项目不是简单叠加 lexical search、dense search 和 relation filter，而是在代码图上重新定义了适合 Agent-oriented Code Search 的组合检索语义。
+
+## 2026-07-14 — Planner 模块解耦 SemCon 解析与查询执行
+
+### 修改动机
+
+原有 `SemQLComposer` 直接把三类 SemCon 合并成一个全局 `semQL.json`。这种方式在流程较小时比较直接，但随着 surface、relation、intention 的 schema 和执行语义分别演进，会出现以下问题：
+
+- 全局 Composer 需要理解三类条件的字段、默认值和执行细节，职责持续膨胀。
+- Executor 仍需从全局嵌套结构中寻找自己关心的字段，规划逻辑与执行逻辑混在一起。
+- 任意一种 SemCon schema 发生变化，都可能影响 Composer、公共解析工具和其他 Executor。
+- 合并后的 SemQL 难以单独阅读、测试和复用，也不便于判断某个领域计划是否正确。
+
+因此将 `semQL_composer` 改造成查询规划入口，并进一步拆分为三个领域 Planner。Planner 位于 SemCon 抽取和 Executor 之间，只负责把原始条件规范化为简洁、稳定、可执行的领域计划，不负责访问索引、代码图或调用模型执行检索。
+
+### 目标结构
+
+```text
+Natural Language Query
+  -> SemCon Extraction
+  -> QueryPlanner
+       -> SurfacePlanner   -> surface_semql.json
+       -> RelationPlanner  -> relation_semql.json
+       -> IntentionPlanner -> intention_semql.json
+  -> 对应领域 Executor
+  -> Final Results
+```
+
+`QueryPlanner` 只负责编排三个 Planner，并输出 `query_plan.json` 清单。每个 Planner 只读取对应类型的 SemCon：
+
+- `SurfacePlanner`：解析关键词、同义词、include/exclude、匹配类型和代码元素类型，生成词法召回与集合合并计划。
+- `RelationPlanner`：解析 caller、callee、role、file/container、CodeQL 和其他结构约束，生成关系过滤计划。
+- `IntentionPlanner`：解析功能需求和查询语义，只根据原始 query 与 intention 条件构造 `semantic_text`、terms 和 include/exclude 需求，生成高成本语义判断计划。
+
+三类领域计划之间不复制对方的条件。这样可以保持每个 SemQL 文件简洁易读，并让字段解析器与默认值收敛在所属 Planner 中。
+
+### 设计边界
+
+Planner 与 Executor 的职责边界如下：
+
+- Planner 做 schema 解析、字段规范化、默认值补齐和逻辑计划生成。
+- Executor 消费已经规范化的领域计划，负责索引查询、集合运算、代码图遍历、向量过滤和 LLM 判断。
+- Planner 不读取 `symbols_index.json`、`codegraph.sqlite` 或 embedding 模型，也不直接返回代码候选。
+- Executor 不再长期承担 SemCon schema 兼容与字段猜测逻辑。
+
+这一边界的目的不是增加一层简单转发，而是建立稳定的执行契约：上游 SemCon schema 变化主要由对应 Planner 吸收，下游 Executor 只围绕明确的计划模型实现执行语义。
+
+### 当前落地状态
+
+当前已经新增以下结构：
+
+```text
+query_processing/
+  plan_models.py
+  planners/
+    base.py
+    query_planner.py
+    surface_planner.py
+    relation_planner.py
+    intention_planner.py
+```
+
+主流程目前采用迁移期双写策略：
+
+- 新链路生成 `query_plan.json`、`surface_semql.json`、`relation_semql.json` 和 `intention_semql.json`。
+- 旧链路继续生成 `semQL.json`，现有 Surface、Relation、Intention Executor 暂时仍消费这个兼容文件。
+- `semQL_composer.py` 保留为兼容入口，内部委托给新的 Planner，避免一次性修改所有调用方。
+
+因此当前状态是“Planner 已落地、Executor 输入迁移尚未完成”，不是已经完全移除旧的统一 SemQL。
+
+### Surface schema 接入状态
+
+Planner 改造最初先覆盖旧的扁平 SurfaceCon；在实际 SemCon 抽取已经切换到新版 schema 后，`SurfacePlanner` 也已接入 `keyword_groups` 与 `group_logic`：
+
+- 从每个 keyword group 分别读取 `keywords` 和 `synonyms`，组内构造 OR term expression。
+- 保留 group 级 `group_id`、`property` 和 `reason`，不把概念组语义只拍平成一个词表。
+- 规范化 `graph_scope` 和 `pairwise_hop_counts`，并过滤无效 group 引用与负 hop count。
+- 旧的顶层 `keywords/synonyms/property` 输入会转换成一个 legacy keyword group，不再与新版 group 逻辑共用 condition 级 property 推断。
+
+这次接入只负责生成 group-aware surface plan。Graph-aware AND(n)、pairwise hop 的实际图遍历、`NOT_HOP` 和 coverage evidence 仍属于 Surface–Relation 协作执行区，而不是 Planner 本身。新版 surface 字段的变化也没有要求 `RelationPlanner`、`IntentionPlanner` 理解这些字段，符合领域解耦目标。
+
+### 后续迁移顺序
+
+1. 让 Surface Executor 直接消费 `surface_semql.json`，移除其中对全局 `semQL.json` 的字段解析。
+2. 让 Relation Executor 直接消费 `relation_semql.json`，保持 caller/callee/role 等结构语义不变。
+3. 让 Intention Executor 直接消费 `intention_semql.json`，统一 Cluster、Term Embedding 与 LLM Judge 的查询输入。
+4. 在 Executor 迁移稳定后移除双写逻辑和旧 `semQL.json` 兼容层。
+5. 让 Surface Executor 使用 `keyword_groups` 与 `group_logic` 执行 Graph-aware AND(n)，并补充 coverage evidence。
+
+### 预期收益
+
+- SemQL 从一个全局混合结构变为三个领域执行契约，更短、更易读。
+- schema 变化的影响范围被限制在对应 Planner 和 plan model 内。
+- Executor 专注检索和过滤，不再承担输入协议解析。
+- 每个 Planner 可以独立进行单元测试，错误更容易定位到抽取、规划或执行阶段。
+- 为后续 surface 与 relation 的协作执行保留空间，同时不把三类条件重新耦合进一个庞大 Composer。
+
+## 2026-07-15 — SurfacePlanner 分层布尔语义与跨 Condition 合并
+
+### 修正原因
+
+新版 SurfaceCon 的 `property` 位于 keyword group，而不是 condition。一个 condition 可以同时包含多个 include groups 和 exclude groups，因此不能再把整个 condition 推断成 include 或 exclude。旧实现中的 `_resolve_clause_property()` 会把混合 condition 错误地整体归入 include，造成 exclude group 被当作正向召回条件。
+
+### 四层执行语义
+
+Surface plan 改为显式表达四个层级：
+
+1. **Term 层**：同一个 keyword group 内的 keywords 与 synonyms 执行 OR。
+2. **Group 层**：同一个 condition 内的 include groups 执行 Graph-aware `AND(n)`；单 group 退化为 identity。
+3. **Condition 层**：exclude groups 先通过 OR 构造负向集合，再从该 condition 的正向结果中 subtract。
+4. **跨 Condition 层**：具有相同兼容键的 condition 结果做 intersection，不同兼容键的结果做 union。
+
+兼容键定义为：
+
+```text
+non-code-element: match_kind
+code-element:     (match_kind, normalized code_element_types)
+```
+
+因此两个 `code_element + function` condition 会做交集；`function` 与 `method` 会沿用现有类型规范化规则进入同一兼容组；`code_element + class`、`code_snippet` 等不同兼容组与前述结果做并集。
+
+### 新的 Condition Plan
+
+每个 surface condition 最多生成两个 clause：
+
+```text
+surface_i_include
+  group 内 OR
+  include groups 间 AND_HOP
+
+surface_i_exclude
+  group 内 OR
+  exclude groups 间 OR，形成负向集合
+
+condition_result
+  include_result - exclude_result
+```
+
+例如：
+
+```text
+k1 include = login OR auth
+k2 include = user OR account
+k3 exclude = logout OR signout
+```
+
+生成语义：
+
+```text
+AND_HOP(k1, k2) - OR(k3)
+```
+
+即先让 login/auth 与 user/account 两个概念组在允许的代码图距离内共同满足，再移除 logout/signout 命中的结果。
+
+### Hop 默认值
+
+`group_logic` 新增 `default_hop_count`，供没有 pairwise override 的 include group pair 使用。Planner 继续支持已有 SemCon：字段缺失或非法时使用保守默认值 `0`，即退化为普通严格交集；有效的 `pairwise_hop_counts` 优先于默认值。
+
+### 兼容与边界
+
+- `_resolve_clause_property()` 已删除，property 始终从 group 读取。
+- 旧扁平 SurfaceCon 转换为单个 legacy group，仍支持 condition 级 property。
+- 只有 include group 可以进入 `group_logic`，exclude group 引用会在规划阶段过滤。
+- 只有 exclude group 的 condition 会标记为 `exclude_only`，由顶层 condition expression 记录，供 Executor 在已有正向候选上应用。
+- 本次完成的是 plan 语义和输入契约；真正的 AND(n) 图遍历与 coverage evidence 仍由后续 Surface Executor 实现。
+
+## 2026-07-15 — Planner 搜索规划主链路
+
+在线查询现在按 `Query → SemCon → QueryPlanner → Domain Planner → Logical Plan → Executor` 组织。`QueryPlanner` 将三类条件交给 `SurfacePlanner`、`RelationPlanner`、`IntentionPlanner`，分别生成独立且可测试的执行契约。
+
+- Surface plan：group 内 terms 做 OR，include groups 做 AND(n)，exclude 做 subtract；兼容的 condition 取交集，不同 match/type 组取并集。
+- Relation plan：规范化 caller、callee、role、file/container 等结构约束。
+- Intention plan：统一聚类、项目 Term Embedding 与 LLM Judge 所需的语义输入。
+- 当前仍双写旧 `semQL.json` 供 Executor 兼容；后续 Executor 将直接消费领域计划。
+- 下一阶段在 Logical Plan 与 Executor 之间加入 cost-aware Optimizer，根据候选规模、索引成本和模型成本生成 Physical Plan：优先执行倒排索引、类型等低成本高选择性过滤，将图扩展、Embedding、聚类和 LLM Judge 等重步骤尽量后置。
+
+实际 login/user 样例当前生成 `surface_0_include = AND_HOP(k1, k2)`、`exclude_clause = null`、`result_expression = identity(surface_0_include)`；文档中的 exclude subtract 与跨 condition 合并均明确作为扩展示例，不冒充该次实际输出。
+
+## 2026-07-16 — Surface Executor 直接执行领域计划
+
+Surface Executor 已改为直接消费 `surface_semql.json`，不再解析旧的统一 SemQL。执行器严格按 Term OR、Group AND(n)、Condition subtract、跨 Condition intersect/union 四层计划执行，并继续输出兼容的 symbol 列表。
+
+- 现有 ngram、缩写扩展、项目 embedding 子词过滤继续由 `FullTermMatcher` 复用；类型过滤直接使用 Planner 规范化后的 `code_element_types`。
+- `graph_scope=["call"]` 在 Surface 阶段按无向调用链距离解释：A 调用 B 与 B 调用 A 均视为一跳，caller/callee 方向留给 Relation Executor。
+- 新增 `surface_group_search_results.json`，保存 term OR 与 condition 类型过滤后的逐 group 直接命中；该产物位于 clause 的 identity / OR / AND(n) 之前，便于对照分析各概念组的原始召回。
+- 新增 `surface_evidence_hop_0.json`，按 condition/group 记录查询 `term`、实际 `matched_term`、direct/graph_neighbor、距离和邻居 symbol。
+- `code_snippet`、`code_line` 与非空 `code_text` 暂不执行，当前返回明确 warning，并保留后续专用搜索 Executor 的 TODO。

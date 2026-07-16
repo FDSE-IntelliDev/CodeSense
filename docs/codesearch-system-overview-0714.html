@@ -6,7 +6,7 @@
 <meta name="referrer" content="no-referrer">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; style-src 'unsafe-inline' blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; img-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; font-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; media-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; worker-src blob:; connect-src blob: data:; frame-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
 <title>CodeSearch 系统整体流程</title>
-<style>:root{color-scheme:light dark;background:light-dark(rgb(255 255 255), rgb(24 24 24))}html,body{margin:0}body{box-sizing:border-box;padding:1rem;background:inherit}iframe{display:block;width:100%;max-width:736px;height:calc(100vh - 2rem);margin:0 auto;border:0}</style>
+<style>:root{color-scheme:light dark;background:light-dark(rgb(255 255 255), rgb(24 24 24))}html,body{margin:0}body{box-sizing:border-box;padding:1.5rem;background:inherit}iframe{display:block;width:100%;max-width:1080px;height:calc(100vh - 3rem);margin:0 auto;border:0}</style>
 </head>
 <body>
 <iframe sandbox="allow-scripts" referrerpolicy="no-referrer" title="CodeSearch 系统整体流程" srcdoc="&lt;!doctype html&gt;
@@ -753,12 +753,12 @@ html&gt;body{padding:0}&lt;/style&gt;
     #codesearch-system-overview {
       color: var(--foreground);
       display: grid;
-      gap: 22px;
+      gap: 34px;
     }
     #codesearch-system-overview .overview-strip {
       display: grid;
       grid-template-columns: repeat(3, minmax(0, 1fr));
-      gap: 12px;
+      gap: 16px;
     }
     #codesearch-system-overview .viz-stat-value {
       margin-top: 5px;
@@ -781,7 +781,107 @@ html&gt;body{padding:0}&lt;/style&gt;
     #codesearch-system-overview .diagram {
       color: var(--foreground);
       display: grid;
-      gap: 14px;
+      gap: 18px;
+    }
+    #codesearch-system-overview .integrated-figure {
+      display: grid;
+      gap: 18px;
+      padding: 20px 0;
+      border-top: 1px solid var(--border);
+      border-bottom: 1px solid var(--border);
+    }
+    #codesearch-system-overview .research-track {
+      display: grid;
+      grid-template-columns: 118px minmax(0, 1fr);
+      gap: 18px;
+      align-items: center;
+    }
+    #codesearch-system-overview .track-label {
+      color: var(--muted-foreground);
+      font-weight: 500;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+    #codesearch-system-overview .academic-chain {
+      display: grid;
+      grid-template-columns: minmax(118px, 0.85fr) 24px minmax(150px, 1fr) 24px minmax(260px, 1.8fr);
+      gap: 8px;
+      align-items: stretch;
+    }
+    #codesearch-system-overview .academic-chain.execution {
+      grid-template-columns: minmax(128px, 0.8fr) 24px minmax(155px, 1fr) 24px minmax(250px, 1.65fr) 24px minmax(150px, 1fr);
+    }
+    #codesearch-system-overview .academic-node {
+      display: grid;
+      place-content: center;
+      gap: 4px;
+      min-width: 0;
+      min-height: 62px;
+      padding: 10px 12px;
+      border: 1px solid color-mix(in srgb, var(--foreground) 22%, transparent);
+      border-radius: 5px;
+      background: color-mix(in srgb, var(--card) 55%, transparent);
+      text-align: center;
+    }
+    #codesearch-system-overview .academic-node.emphasis {
+      border-color: var(--viz-series-5);
+      background: color-mix(in srgb, var(--viz-series-5) 6%, transparent);
+    }
+    #codesearch-system-overview .academic-node.evolving {
+      border-style: dashed;
+      border-color: var(--viz-series-4);
+    }
+    #codesearch-system-overview .academic-arrow {
+      display: grid;
+      place-items: center;
+      color: var(--muted-foreground);
+    }
+    #codesearch-system-overview .academic-arrow::before {
+      content: &quot;→&quot;;
+    }
+    #codesearch-system-overview .knowledge-bank,
+    #codesearch-system-overview .domain-planner-bank {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 8px;
+    }
+    #codesearch-system-overview .knowledge-view,
+    #codesearch-system-overview .domain-planner {
+      display: grid;
+      place-content: center;
+      gap: 3px;
+      min-width: 0;
+      min-height: 62px;
+      padding: 8px 9px;
+      border-top: 2px solid var(--border);
+      text-align: center;
+    }
+    #codesearch-system-overview .knowledge-view.lexical {
+      border-color: var(--viz-series-1);
+    }
+    #codesearch-system-overview .knowledge-view.graph {
+      border-color: var(--viz-series-2);
+    }
+    #codesearch-system-overview .knowledge-view.semantic {
+      border-color: var(--viz-series-3);
+    }
+    #codesearch-system-overview .domain-planner {
+      border-color: var(--viz-series-5);
+    }
+    #codesearch-system-overview .cross-track-link {
+      display: grid;
+      grid-template-columns: 118px minmax(0, 1fr);
+      gap: 18px;
+      color: var(--muted-foreground);
+    }
+    #codesearch-system-overview .cross-track-link span {
+      display: block;
+      padding: 2px 0 2px 12px;
+      border-left: 1px solid var(--border);
+    }
+    #codesearch-system-overview .figure-caption {
+      color: var(--muted-foreground);
+      text-align: center;
     }
     #codesearch-system-overview .flow-lane {
       display: grid;
@@ -798,6 +898,25 @@ html&gt;body{padding:0}&lt;/style&gt;
       align-items: stretch;
       gap: 7px;
       flex-wrap: wrap;
+    }
+    #codesearch-system-overview .planner-branches {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
+      width: 100%;
+    }
+    #codesearch-system-overview .planner-card {
+      display: grid;
+      gap: 5px;
+      min-width: 0;
+      padding: 10px 12px;
+      border: 1px solid var(--viz-series-5);
+      border-radius: 8px;
+      background: color-mix(in srgb, var(--viz-series-5) 7%, transparent);
+      text-align: center;
+    }
+    #codesearch-system-overview .planner-card strong {
+      color: var(--foreground);
     }
     #codesearch-system-overview .flow-node {
       display: grid;
@@ -989,6 +1108,151 @@ html&gt;body{padding:0}&lt;/style&gt;
       border-left: 3px solid var(--muted-foreground);
       background: color-mix(in srgb, var(--muted) 55%, transparent);
     }
+    #codesearch-system-overview .planner-example-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 24px 28px;
+    }
+    #codesearch-system-overview .raw-query-example {
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr);
+      gap: 14px;
+      align-items: center;
+      padding: 12px 0;
+      border-top: 1px solid var(--border);
+      border-bottom: 1px solid var(--border);
+    }
+    #codesearch-system-overview .raw-query-example code {
+      padding: 8px 10px;
+      background: color-mix(in srgb, var(--viz-series-5) 7%, transparent);
+      text-align: left;
+    }
+    #codesearch-system-overview .example-step {
+      display: grid;
+      align-content: start;
+      gap: 8px;
+      min-width: 0;
+      padding-top: 10px;
+      border-top: 2px solid var(--border);
+    }
+    #codesearch-system-overview .example-step.planner {
+      border-color: var(--viz-series-5);
+    }
+    #codesearch-system-overview .example-step.executor {
+      border-color: var(--viz-series-2);
+    }
+    #codesearch-system-overview .example-code {
+      margin: 0;
+      padding: 10px 12px;
+      border-left: 3px solid var(--border);
+      background: color-mix(in srgb, var(--muted) 55%, transparent);
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+    }
+    #codesearch-system-overview .cost-lane {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 10px;
+    }
+    #codesearch-system-overview .cost-stage {
+      display: grid;
+      gap: 5px;
+      min-width: 0;
+      padding-top: 8px;
+      border-top: 2px solid var(--border);
+    }
+    #codesearch-system-overview .cost-stage.heavy {
+      border-color: var(--viz-series-4);
+    }
+    #codesearch-system-overview .executor-plan-input,
+    #codesearch-system-overview .executor-output {
+      display: grid;
+      grid-template-columns: 132px minmax(0, 1fr);
+      gap: 18px;
+      align-items: center;
+      padding: 13px 0;
+      border-top: 1px solid var(--border);
+      border-bottom: 1px solid var(--border);
+    }
+    #codesearch-system-overview .executor-plan-input strong,
+    #codesearch-system-overview .executor-output strong {
+      color: var(--foreground);
+    }
+    #codesearch-system-overview .executor-layer-flow {
+      display: grid;
+      gap: 0;
+    }
+    #codesearch-system-overview .executor-layer {
+      display: grid;
+      grid-template-columns: 132px minmax(210px, 0.82fr) minmax(0, 1.7fr);
+      gap: 18px;
+      align-items: start;
+      min-width: 0;
+      padding: 18px 0;
+      border-bottom: 1px solid var(--border);
+    }
+    #codesearch-system-overview .executor-layer-label {
+      display: grid;
+      gap: 4px;
+      padding-left: 10px;
+      border-left: 3px solid var(--viz-series-5);
+    }
+    #codesearch-system-overview .group-layer .executor-layer-label {
+      border-color: var(--viz-series-2);
+    }
+    #codesearch-system-overview .condition-layer .executor-layer-label {
+      border-color: var(--viz-series-4);
+    }
+    #codesearch-system-overview .cross-layer .executor-layer-label {
+      border-color: var(--viz-series-3);
+    }
+    #codesearch-system-overview .executor-method {
+      display: grid;
+      gap: 7px;
+      min-width: 0;
+    }
+    #codesearch-system-overview .executor-operations {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
+      gap: 14px;
+      min-width: 0;
+    }
+    #codesearch-system-overview .executor-operation {
+      display: grid;
+      align-content: start;
+      gap: 5px;
+      min-width: 0;
+      padding-left: 10px;
+      border-left: 1px solid var(--border);
+    }
+    #codesearch-system-overview .executor-operation.persist {
+      border-color: var(--viz-series-5);
+    }
+    #codesearch-system-overview .executor-sequence {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 7px;
+      padding: 14px 0 2px;
+    }
+    #codesearch-system-overview .executor-sequence .step {
+      font-family: var(--font-mono);
+      color: var(--foreground);
+    }
+    #codesearch-system-overview .executor-sequence .join {
+      color: var(--muted-foreground);
+    }
+    #codesearch-system-overview .executor-semantics {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 18px 28px;
+    }
+    #codesearch-system-overview .executor-note {
+      display: grid;
+      gap: 5px;
+      padding-top: 9px;
+      border-top: 1px solid var(--border);
+    }
     #codesearch-system-overview code {
       overflow-wrap: anywhere;
     }
@@ -1004,11 +1268,57 @@ html&gt;body{padding:0}&lt;/style&gt;
       #codesearch-system-overview .flow-lane {
         grid-template-columns: 1fr;
       }
+      #codesearch-system-overview .research-track,
+      #codesearch-system-overview .cross-track-link {
+        grid-template-columns: 1fr;
+        gap: 8px;
+      }
+      #codesearch-system-overview .academic-chain,
+      #codesearch-system-overview .academic-chain.execution {
+        grid-template-columns: 1fr;
+      }
+      #codesearch-system-overview .academic-arrow {
+        min-height: 14px;
+      }
+      #codesearch-system-overview .academic-arrow::before {
+        content: &quot;↓&quot;;
+      }
+      #codesearch-system-overview .knowledge-bank,
+      #codesearch-system-overview .domain-planner-bank {
+        grid-template-columns: 1fr;
+      }
+      #codesearch-system-overview .cross-track-link span {
+        border-left: 0;
+        border-top: 1px solid var(--border);
+        padding: 8px 0 0;
+      }
       #codesearch-system-overview .lane-label {
         padding-top: 0;
       }
       #codesearch-system-overview .flow-chain {
         display: grid;
+        grid-template-columns: 1fr;
+      }
+      #codesearch-system-overview .planner-branches {
+        grid-template-columns: 1fr;
+      }
+      #codesearch-system-overview .planner-example-grid,
+      #codesearch-system-overview .cost-lane {
+        grid-template-columns: 1fr;
+      }
+      #codesearch-system-overview .raw-query-example {
+        grid-template-columns: 1fr;
+      }
+      #codesearch-system-overview .executor-layer-flow {
+        grid-template-columns: 1fr;
+      }
+      #codesearch-system-overview .executor-plan-input,
+      #codesearch-system-overview .executor-output,
+      #codesearch-system-overview .executor-layer {
+        grid-template-columns: 1fr;
+        gap: 10px;
+      }
+      #codesearch-system-overview .executor-semantics {
         grid-template-columns: 1fr;
       }
       #codesearch-system-overview .flow-arrow {
@@ -1064,134 +1374,324 @@ html&gt;body{padding:0}&lt;/style&gt;
 
   &lt;section class=&quot;section&quot; aria-labelledby=&quot;architecture-heading&quot;&gt;
     &lt;div class=&quot;section-head&quot;&gt;
-      &lt;h2 id=&quot;architecture-heading&quot;&gt;整体流程：离线资产支撑在线图感知检索&lt;/h2&gt;
+      &lt;h2 id=&quot;architecture-heading&quot;&gt;CodeSearch 统一系统架构&lt;/h2&gt;
       &lt;div class=&quot;legend text-small&quot; aria-label=&quot;流程图图例&quot;&gt;
-        &lt;span class=&quot;legend-item&quot;&gt;&lt;span class=&quot;swatch&quot;&gt;&lt;/span&gt;词法资产&lt;/span&gt;
-        &lt;span class=&quot;legend-item&quot;&gt;&lt;span class=&quot;swatch graph&quot;&gt;&lt;/span&gt;关系资产&lt;/span&gt;
-        &lt;span class=&quot;legend-item&quot;&gt;&lt;span class=&quot;swatch semantic&quot;&gt;&lt;/span&gt;语义资产&lt;/span&gt;
-        &lt;span class=&quot;legend-item&quot;&gt;&lt;span class=&quot;swatch next&quot;&gt;&lt;/span&gt;演进中的 AND(n)&lt;/span&gt;
+        &lt;span class=&quot;legend-item&quot;&gt;&lt;span class=&quot;swatch&quot;&gt;&lt;/span&gt;词法表示&lt;/span&gt;
+        &lt;span class=&quot;legend-item&quot;&gt;&lt;span class=&quot;swatch graph&quot;&gt;&lt;/span&gt;程序关系&lt;/span&gt;
+        &lt;span class=&quot;legend-item&quot;&gt;&lt;span class=&quot;swatch semantic&quot;&gt;&lt;/span&gt;项目语义&lt;/span&gt;
+        &lt;span class=&quot;legend-item&quot;&gt;&lt;span class=&quot;swatch next&quot;&gt;&lt;/span&gt;演进能力&lt;/span&gt;
       &lt;/div&gt;
     &lt;/div&gt;
-    &lt;div class=&quot;diagram&quot; aria-label=&quot;CodeSearch 离线与在线整体流程图&quot;&gt;
-      &lt;div class=&quot;phase-divider&quot;&gt;离线阶段：项目知识与检索资产构建&lt;/div&gt;
-      &lt;div class=&quot;flow-lane&quot;&gt;
-        &lt;div class=&quot;lane-label&quot;&gt;代码解析&lt;/div&gt;
-        &lt;div class=&quot;flow-chain&quot;&gt;
-          &lt;div class=&quot;flow-node&quot;&gt;目标代码仓库&lt;/div&gt;&lt;span class=&quot;flow-arrow&quot; aria-hidden=&quot;true&quot;&gt;&lt;/span&gt;
-          &lt;div class=&quot;flow-node&quot;&gt;多语言代码解析&lt;/div&gt;&lt;span class=&quot;flow-arrow&quot; aria-hidden=&quot;true&quot;&gt;&lt;/span&gt;
-          &lt;div class=&quot;flow-node lexical&quot;&gt;符号表&lt;br&gt;&lt;span class=&quot;text-small&quot;&gt;symbols_index.json&lt;/span&gt;&lt;/div&gt;
-          &lt;div class=&quot;flow-node&quot;&gt;依赖关系&lt;br&gt;&lt;span class=&quot;text-small&quot;&gt;dependency_graph.json&lt;/span&gt;&lt;/div&gt;
-          &lt;div class=&quot;flow-node graph&quot;&gt;代码关系数据库&lt;br&gt;&lt;span class=&quot;text-small&quot;&gt;codegraph.sqlite&lt;/span&gt;&lt;/div&gt;
+    &lt;div class=&quot;integrated-figure&quot; aria-label=&quot;CodeSearch 项目知识构建、查询规划与混合检索统一流程图&quot;&gt;
+      &lt;div class=&quot;research-track&quot;&gt;
+        &lt;div class=&quot;track-label text-small&quot;&gt;Project modeling&lt;/div&gt;
+        &lt;div class=&quot;academic-chain&quot;&gt;
+          &lt;div class=&quot;academic-node&quot;&gt;&lt;strong&gt;目标代码仓库&lt;/strong&gt;&lt;/div&gt;
+          &lt;span class=&quot;academic-arrow&quot; aria-hidden=&quot;true&quot;&gt;&lt;/span&gt;
+          &lt;div class=&quot;academic-node&quot;&gt;&lt;strong&gt;程序分析与语料构建&lt;/strong&gt;&lt;span class=&quot;text-small&quot;&gt;多语言解析 · 调用链 · 项目术语&lt;/span&gt;&lt;/div&gt;
+          &lt;span class=&quot;academic-arrow&quot; aria-hidden=&quot;true&quot;&gt;&lt;/span&gt;
+          &lt;div class=&quot;knowledge-bank&quot; aria-label=&quot;三类项目知识表示&quot;&gt;
+            &lt;div class=&quot;knowledge-view lexical&quot;&gt;&lt;strong&gt;词法表示&lt;/strong&gt;&lt;span class=&quot;text-small&quot;&gt;标识符 · 子词 · 缩写&lt;/span&gt;&lt;/div&gt;
+            &lt;div class=&quot;knowledge-view graph&quot;&gt;&lt;strong&gt;程序关系图&lt;/strong&gt;&lt;span class=&quot;text-small&quot;&gt;调用 · 实现 · 依赖&lt;/span&gt;&lt;/div&gt;
+            &lt;div class=&quot;knowledge-view semantic&quot;&gt;&lt;strong&gt;项目语义表示&lt;/strong&gt;&lt;span class=&quot;text-small&quot;&gt;FastText/ICF · MiniLM · Hybrid Embedding&lt;/span&gt;&lt;/div&gt;
+          &lt;/div&gt;
         &lt;/div&gt;
       &lt;/div&gt;
-      &lt;div class=&quot;flow-lane&quot;&gt;
-        &lt;div class=&quot;lane-label&quot;&gt;词法索引&lt;/div&gt;
-        &lt;div class=&quot;flow-chain&quot;&gt;
-          &lt;div class=&quot;flow-node lexical&quot;&gt;symbols_index.json&lt;/div&gt;&lt;span class=&quot;flow-arrow&quot; aria-hidden=&quot;true&quot;&gt;&lt;/span&gt;
-          &lt;div class=&quot;flow-node lexical&quot;&gt;标识符分词&lt;/div&gt;&lt;span class=&quot;flow-arrow&quot; aria-hidden=&quot;true&quot;&gt;&lt;/span&gt;
-          &lt;div class=&quot;flow-node lexical&quot;&gt;子词索引&lt;br&gt;&lt;span class=&quot;text-small&quot;&gt;ngramed_symbol.json&lt;/span&gt;&lt;/div&gt;&lt;span class=&quot;flow-arrow&quot; aria-hidden=&quot;true&quot;&gt;&lt;/span&gt;
-          &lt;div class=&quot;flow-node lexical&quot;&gt;缩写 / 子序列扩展&lt;/div&gt;&lt;span class=&quot;flow-arrow&quot; aria-hidden=&quot;true&quot;&gt;&lt;/span&gt;
-          &lt;div class=&quot;flow-node lexical&quot;&gt;缩写倒排索引&lt;br&gt;&lt;span class=&quot;text-small&quot;&gt;invert_index.json&lt;/span&gt;&lt;/div&gt;
+
+      &lt;div class=&quot;cross-track-link text-small&quot;&gt;&lt;span aria-hidden=&quot;true&quot;&gt;&lt;/span&gt;&lt;span&gt;项目特定的词法、结构与语义知识共同约束检索和代价估计 ↓&lt;/span&gt;&lt;/div&gt;
+
+      &lt;div class=&quot;research-track&quot;&gt;
+        &lt;div class=&quot;track-label text-small&quot;&gt;Query planning&lt;/div&gt;
+        &lt;div class=&quot;academic-chain&quot;&gt;
+          &lt;div class=&quot;academic-node&quot;&gt;&lt;strong&gt;自然语言查询&lt;/strong&gt;&lt;/div&gt;
+          &lt;span class=&quot;academic-arrow&quot; aria-hidden=&quot;true&quot;&gt;&lt;/span&gt;
+          &lt;div class=&quot;academic-node&quot;&gt;&lt;strong&gt;语义约束抽取&lt;/strong&gt;&lt;span class=&quot;text-small&quot;&gt;Surface · Relation · Intention SemCon&lt;/span&gt;&lt;/div&gt;
+          &lt;span class=&quot;academic-arrow&quot; aria-hidden=&quot;true&quot;&gt;&lt;/span&gt;
+          &lt;div class=&quot;domain-planner-bank&quot; aria-label=&quot;三个领域 Planner&quot;&gt;
+            &lt;div class=&quot;domain-planner&quot;&gt;&lt;strong&gt;SurfacePlanner&lt;/strong&gt;&lt;span class=&quot;text-small&quot;&gt;OR · AND(n) · subtract&lt;/span&gt;&lt;/div&gt;
+            &lt;div class=&quot;domain-planner&quot;&gt;&lt;strong&gt;RelationPlanner&lt;/strong&gt;&lt;span class=&quot;text-small&quot;&gt;调用与结构约束&lt;/span&gt;&lt;/div&gt;
+            &lt;div class=&quot;domain-planner&quot;&gt;&lt;strong&gt;IntentionPlanner&lt;/strong&gt;&lt;span class=&quot;text-small&quot;&gt;语义目标与判别需求&lt;/span&gt;&lt;/div&gt;
+          &lt;/div&gt;
         &lt;/div&gt;
       &lt;/div&gt;
-      &lt;div class=&quot;flow-lane&quot;&gt;
-        &lt;div class=&quot;lane-label&quot;&gt;关系语料&lt;/div&gt;
-        &lt;div class=&quot;flow-chain&quot;&gt;
-          &lt;div class=&quot;flow-node graph&quot;&gt;codegraph.sqlite&lt;/div&gt;&lt;span class=&quot;flow-arrow&quot; aria-hidden=&quot;true&quot;&gt;&lt;/span&gt;
-          &lt;div class=&quot;flow-node graph&quot;&gt;调用边与实现关系&lt;br&gt;&lt;span class=&quot;text-small&quot;&gt;code_edges / implementations&lt;/span&gt;&lt;/div&gt;&lt;span class=&quot;flow-arrow&quot; aria-hidden=&quot;true&quot;&gt;&lt;/span&gt;
-          &lt;div class=&quot;flow-node graph&quot;&gt;调用链数据集&lt;br&gt;&lt;span class=&quot;text-small&quot;&gt;word2vec_call_chains.json&lt;/span&gt;&lt;/div&gt;&lt;span class=&quot;flow-arrow&quot; aria-hidden=&quot;true&quot;&gt;&lt;/span&gt;
-          &lt;div class=&quot;flow-node semantic&quot;&gt;增强调用链语料&lt;br&gt;&lt;span class=&quot;text-small&quot;&gt;整链 / 局部窗口 / 直接边&lt;/span&gt;&lt;/div&gt;&lt;span class=&quot;flow-arrow&quot; aria-hidden=&quot;true&quot;&gt;&lt;/span&gt;
-          &lt;div class=&quot;flow-node semantic&quot;&gt;项目共现模型&lt;br&gt;&lt;span class=&quot;text-small&quot;&gt;FastText + ICF&lt;/span&gt;&lt;/div&gt;
+
+      &lt;div class=&quot;cross-track-link text-small&quot;&gt;&lt;span aria-hidden=&quot;true&quot;&gt;&lt;/span&gt;&lt;span&gt;领域 Planner 编译并汇合为统一 Logical Plan ↓&lt;/span&gt;&lt;/div&gt;
+
+      &lt;div class=&quot;research-track&quot;&gt;
+        &lt;div class=&quot;track-label text-small&quot;&gt;Retrieval &amp;amp; evidence&lt;/div&gt;
+        &lt;div class=&quot;academic-chain execution&quot;&gt;
+          &lt;div class=&quot;academic-node emphasis&quot;&gt;&lt;strong&gt;Logical Plan&lt;/strong&gt;&lt;span class=&quot;text-small&quot;&gt;布尔 · 图关系 · 语义约束&lt;/span&gt;&lt;/div&gt;
+          &lt;span class=&quot;academic-arrow&quot; aria-hidden=&quot;true&quot;&gt;&lt;/span&gt;
+          &lt;div class=&quot;academic-node evolving&quot;&gt;&lt;strong&gt;代价感知优化&lt;/strong&gt;&lt;span class=&quot;text-small&quot;&gt;选择性估计 · 算子重排&lt;/span&gt;&lt;/div&gt;
+          &lt;span class=&quot;academic-arrow&quot; aria-hidden=&quot;true&quot;&gt;&lt;/span&gt;
+          &lt;div class=&quot;academic-node&quot;&gt;&lt;strong&gt;图感知混合检索&lt;/strong&gt;&lt;span class=&quot;text-small&quot;&gt;词法召回 → Surface–Relation 协作 → 语义精排 → LLM Judge&lt;/span&gt;&lt;/div&gt;
+          &lt;span class=&quot;academic-arrow&quot; aria-hidden=&quot;true&quot;&gt;&lt;/span&gt;
+          &lt;div class=&quot;academic-node&quot;&gt;&lt;strong&gt;代码结果与覆盖证据&lt;/strong&gt;&lt;/div&gt;
         &lt;/div&gt;
       &lt;/div&gt;
-      &lt;div class=&quot;flow-lane&quot;&gt;
-        &lt;div class=&quot;lane-label&quot;&gt;术语语义&lt;/div&gt;
-        &lt;div class=&quot;flow-chain&quot;&gt;
-          &lt;div class=&quot;flow-node graph&quot;&gt;调用链数据集&lt;/div&gt;&lt;span class=&quot;flow-arrow&quot; aria-hidden=&quot;true&quot;&gt;&lt;/span&gt;
-          &lt;div class=&quot;flow-node semantic&quot;&gt;项目术语表&lt;br&gt;&lt;span class=&quot;text-small&quot;&gt;term_project_vocab.json&lt;/span&gt;&lt;/div&gt;&lt;span class=&quot;flow-arrow&quot; aria-hidden=&quot;true&quot;&gt;&lt;/span&gt;
-          &lt;div class=&quot;flow-node semantic&quot;&gt;项目术语语义索引&lt;br&gt;&lt;span class=&quot;text-small&quot;&gt;MiniLM embeddings&lt;/span&gt;&lt;/div&gt;&lt;span class=&quot;flow-arrow&quot; aria-hidden=&quot;true&quot;&gt;&lt;/span&gt;
-          &lt;div class=&quot;flow-node semantic&quot;&gt;项目特性 Hybrid Term Embedding&lt;/div&gt;
+    &lt;/div&gt;
+    &lt;div class=&quot;figure-caption text-small&quot;&gt;图：项目特定知识表示与 Planner 生成的逻辑计划在统一检索执行层汇合。虚线框表示后续引入的代价感知优化器。&lt;/div&gt;
+    &lt;details&gt;
+      &lt;summary&gt;查看论文版 Mermaid 定义&lt;/summary&gt;
+      &lt;pre class=&quot;mermaid-source&quot;&gt;&lt;code&gt;flowchart LR
+    REPO[&quot;目标代码仓库&quot;] --&amp;gt; ANALYSIS[&quot;程序分析与语料构建&quot;]
+    ANALYSIS --&amp;gt; LEX[&quot;词法表示&amp;lt;br/&amp;gt;标识符 · 子词 · 缩写&quot;]
+    ANALYSIS --&amp;gt; GRAPH[&quot;程序关系图&amp;lt;br/&amp;gt;调用 · 实现 · 依赖&quot;]
+    ANALYSIS --&amp;gt; PROJECTSEM[&quot;项目语义建模&amp;lt;br/&amp;gt;调用链语料 · FastText/ICF · MiniLM&quot;]
+    PROJECTSEM --&amp;gt; HYBRID[&quot;项目特性 Hybrid Term Embedding&quot;]
+
+    QUERY[&quot;自然语言查询&quot;] --&amp;gt; SEMCON[&quot;语义约束抽取&amp;lt;br/&amp;gt;Surface · Relation · Intention&quot;]
+    SEMCON --&amp;gt; SP[&quot;SurfacePlanner&quot;]
+    SEMCON --&amp;gt; RP[&quot;RelationPlanner&quot;]
+    SEMCON --&amp;gt; IP[&quot;IntentionPlanner&quot;]
+    SP --&amp;gt; LPLAN[&quot;统一 Logical Plan&quot;]
+    RP --&amp;gt; LPLAN
+    IP --&amp;gt; LPLAN
+    LPLAN -.-&amp;gt; OPT[&quot;代价感知优化&amp;lt;br/&amp;gt;选择性估计 · 算子重排&quot;]
+    OPT -.-&amp;gt; PPLAN[&quot;Physical Plan&quot;]
+
+    PPLAN --&amp;gt; RETRIEVE[&quot;词法候选召回&quot;]
+    LEX --&amp;gt; RETRIEVE
+    RETRIEVE --&amp;gt; GRAPHFILTER[&quot;Surface–Relation 协作&amp;lt;br/&amp;gt;AND(n) · 结构过滤 · 集合合并&quot;]
+    GRAPH --&amp;gt; GRAPHFILTER
+    GRAPHFILTER --&amp;gt; SEMRANK[&quot;项目语义精排&quot;]
+    HYBRID --&amp;gt; SEMRANK
+    SEMRANK --&amp;gt; JUDGE[&quot;LLM-as-a-Judge&quot;]
+    JUDGE --&amp;gt; RESULT[&quot;代码结果与覆盖证据&quot;]&lt;/code&gt;&lt;/pre&gt;
+    &lt;/details&gt;
+    &lt;div class=&quot;formula text-small&quot;&gt;
+      Planner 将 SemCon 编译为领域 Logical Plan；下一阶段在 Logical Plan 与执行器之间加入 Cost-aware Optimizer，依据候选规模、选择性与算子成本生成 Physical Plan。项目知识表示不再被画成独立阶段，而是作为统一检索过程中词法召回、图约束和语义精排的共同基础。
+    &lt;/div&gt;
+  &lt;/section&gt;
+
+  &lt;section class=&quot;section&quot; aria-labelledby=&quot;planner-example-heading&quot;&gt;
+    &lt;div class=&quot;section-head&quot;&gt;
+      &lt;h2 id=&quot;planner-example-heading&quot;&gt;Planner 示例：从 SemCon 到可执行搜索逻辑&lt;/h2&gt;
+      &lt;span class=&quot;viz-badge text-small&quot;&gt;实际 login/user condition + 明确标注的扩展&lt;/span&gt;
+    &lt;/div&gt;
+    &lt;div class=&quot;raw-query-example&quot; aria-label=&quot;Planner 示例的原始自然语言查询&quot;&gt;
+      &lt;strong&gt;Raw Query&lt;/strong&gt;
+      &lt;code&gt;raw_query: &quot;Find the user login entry point&quot;&lt;/code&gt;
+    &lt;/div&gt;
+    &lt;div class=&quot;planner-example-grid&quot;&gt;
+      &lt;div class=&quot;example-step&quot;&gt;
+        &lt;strong&gt;1 · 实际 SemCon 内容&lt;/strong&gt;
+        &lt;span class=&quot;text-small&quot;&gt;以下字段与当前已得到的 surface_0 condition plan 一致，没有人为加入 exclude group。&lt;/span&gt;
+        &lt;pre class=&quot;example-code text-small&quot;&gt;&lt;code&gt;match_kind: code_element
+code_element_type: function
+
+k1 include
+  keywords: [login]
+  synonyms: [auth, authenticate, sign_in, log_in]
+  reason: Core domain action for user authentication flow
+
+k2 include
+  keywords: [user]
+  synonyms: [account, credential, identity, principal]
+  reason: Primary entity being authenticated in the login context
+
+group_logic
+  groups: [k1, k2]
+  graph_scope: [call]
+  default_hop_count: 0
+  pairwise(k1, k2): hop_count = 0&lt;/code&gt;&lt;/pre&gt;
+      &lt;/div&gt;
+      &lt;div class=&quot;example-step planner&quot;&gt;
+        &lt;strong&gt;2 · 实际 SurfaceConditionPlan&lt;/strong&gt;
+        &lt;span class=&quot;text-small&quot;&gt;Planner 保留 group 内 OR 和 group 间 AND_HOP；因为没有 exclude，condition result 是 identity。&lt;/span&gt;
+        &lt;pre class=&quot;example-code text-small&quot;&gt;&lt;code&gt;condition_id: surface_0
+match:
+  kind: code_element
+  code_element_types: [function, method]
+  code_text: null
+
+include_clause:
+  clause_id: surface_0_include
+  property: include
+  groups: [k1, k2]
+  group_expression.operator: and_hop
+  default_hop_count: 0
+  rule.graph_scope: [call]
+  rule.default_hop_count: 0
+  rule.pair(k1, k2): hop_count = 0
+  pair.reason: Login action and user entity are typically
+    co-located in the same function signature or body
+  rule.reason: Function must jointly express login behavior
+    and user as subject/object to be the entry point
+
+exclude_clause: null
+result_expression:
+  operator: identity
+  include_clause_id: surface_0_include
+  exclude_clause_id: null&lt;/code&gt;&lt;/pre&gt;
+      &lt;/div&gt;
+      &lt;div class=&quot;example-step planner&quot;&gt;
+        &lt;strong&gt;3 · 构造的 Exclude 扩展&lt;/strong&gt;
+        &lt;span class=&quot;text-small&quot;&gt;这一栏不是当前实际值，只用于说明未来同一 condition 出现 exclude group 时怎样规划。&lt;/span&gt;
+        &lt;pre class=&quot;example-code text-small&quot;&gt;&lt;code&gt;新增假设 group:
+  k3 exclude
+  terms = logout OR signout
+
+则 Planner 额外生成:
+  surface_0_exclude
+    property: exclude
+    groups: [k3]
+    group_expression.operator: identity
+
+result_expression:
+  operator: subtract
+  include_clause_id: surface_0_include
+  exclude_clause_id: surface_0_exclude
+
+语义 = AND_HOP(k1, k2) - OR(k3)&lt;/code&gt;&lt;/pre&gt;
+      &lt;/div&gt;
+      &lt;div class=&quot;example-step executor&quot;&gt;
+        &lt;strong&gt;4 · 构造的跨 Condition 扩展&lt;/strong&gt;
+        &lt;span class=&quot;text-small&quot;&gt;这一栏同样是规划扩展示例：不同 match kind 由 Planner 做并集；当前 Surface Executor 只执行 code_element / unknown，snippet 留给后续专用 Executor。&lt;/span&gt;
+        &lt;pre class=&quot;example-code text-small&quot;&gt;&lt;code&gt;假设新增:
+  surface_1 = code_element / function / entry OR handler
+  surface_2 = code_snippet / validate token
+
+function_group = INTERSECT(
+  surface_0_result,
+  surface_1_result
+)
+
+final_surface = UNION(
+  function_group,
+  surface_2_result
+)&lt;/code&gt;&lt;/pre&gt;
+      &lt;/div&gt;
+    &lt;/div&gt;
+
+    &lt;div class=&quot;phase-divider&quot;&gt;后续 Optimizer：把 Logical Plan 转成低成本优先的 Physical Plan&lt;/div&gt;
+    &lt;div class=&quot;cost-lane&quot; aria-label=&quot;计划优化器建议的执行成本顺序&quot;&gt;
+      &lt;div class=&quot;cost-stage&quot;&gt;&lt;strong&gt;1 · 低成本召回&lt;/strong&gt;&lt;span class=&quot;text-small&quot;&gt;倒排、ngram、缩写扩展与代码元素类型；先快速建立候选集。&lt;/span&gt;&lt;/div&gt;
+      &lt;div class=&quot;cost-stage&quot;&gt;&lt;strong&gt;2 · 集合缩减&lt;/strong&gt;&lt;span class=&quot;text-small&quot;&gt;组内 OR、exclude subtract、同兼容键交集；优先执行高选择性条件。&lt;/span&gt;&lt;/div&gt;
+      &lt;div class=&quot;cost-stage&quot;&gt;&lt;strong&gt;3 · 图与语义过滤&lt;/strong&gt;&lt;span class=&quot;text-small&quot;&gt;AND(n)、显式 relation、Embedding 与聚类，只处理缩小后的候选。&lt;/span&gt;&lt;/div&gt;
+      &lt;div class=&quot;cost-stage heavy&quot;&gt;&lt;strong&gt;4 · 高成本判别&lt;/strong&gt;&lt;span class=&quot;text-small&quot;&gt;LLM-as-a-Judge 放在末端，对少量候选做最终职责判断。&lt;/span&gt;&lt;/div&gt;
+    &lt;/div&gt;
+    &lt;div class=&quot;formula text-small&quot;&gt;
+      Optimizer 当前是演进目标：后续可结合索引统计、候选基数、hop 范围、模型调用成本和历史选择率重排可交换算子；不可交换的 subtract、AND(n) 覆盖语义和显式依赖关系仍由 Logical Plan 约束。
+    &lt;/div&gt;
+  &lt;/section&gt;
+
+  &lt;section class=&quot;section&quot; aria-labelledby=&quot;surface-executor-heading&quot;&gt;
+    &lt;div class=&quot;section-head&quot;&gt;
+      &lt;h2 id=&quot;surface-executor-heading&quot;&gt;Surface Executor：四层计划解释与集合执行&lt;/h2&gt;
+      &lt;span class=&quot;viz-badge text-small&quot;&gt;直接消费 surface_semql · 不再解析旧 SemQL&lt;/span&gt;
+    &lt;/div&gt;
+    &lt;div class=&quot;executor-plan-input&quot;&gt;
+      &lt;span class=&quot;text-small text-muted&quot;&gt;计划输入&lt;/span&gt;
+      &lt;span&gt;&lt;strong&gt;SurfacePlan&lt;/strong&gt;：conditions、include / exclude clauses、group expressions 与 condition expression 已由 Planner 明确定义；Executor 只解释计划，不重新推断类型或合并逻辑。&lt;/span&gt;
+    &lt;/div&gt;
+    &lt;div class=&quot;executor-layer-flow&quot; aria-label=&quot;Surface Executor 四层执行流程图&quot;&gt;
+      &lt;div class=&quot;executor-layer term-layer&quot;&gt;
+        &lt;div class=&quot;executor-layer-label&quot;&gt;&lt;span class=&quot;text-small text-muted&quot;&gt;Layer 1&lt;/span&gt;&lt;strong&gt;Term / Group Search&lt;/strong&gt;&lt;/div&gt;
+        &lt;div class=&quot;executor-method&quot;&gt;
+          &lt;code&gt;_execute_keyword_group(group, match_spec)&lt;/code&gt;
+          &lt;span class=&quot;text-small&quot;&gt;执行单个 keyword group，输出 &lt;code&gt;SurfaceGroupResult&lt;/code&gt;。&lt;/span&gt;
+        &lt;/div&gt;
+        &lt;div class=&quot;executor-operations&quot;&gt;
+          &lt;div class=&quot;executor-operation&quot;&gt;&lt;strong&gt;Term OR&lt;/strong&gt;&lt;span class=&quot;text-small&quot;&gt;&lt;code&gt;search_symbols_by_terms()&lt;/code&gt; 让 keyword OR synonym OR synonym … 复用倒排、ngram 与缩写扩展搜索。&lt;/span&gt;&lt;code&gt;R(k1)=login ∪ auth&lt;/code&gt;&lt;/div&gt;
+          &lt;div class=&quot;executor-operation&quot;&gt;&lt;strong&gt;Condition type filter&lt;/strong&gt;&lt;span class=&quot;text-small&quot;&gt;&lt;code&gt;filter_symbols_by_type()&lt;/code&gt; 按 &lt;code&gt;match_spec.code_element_types&lt;/code&gt; 过滤每组直接命中。&lt;/span&gt;&lt;/div&gt;
+          &lt;div class=&quot;executor-operation persist&quot;&gt;&lt;strong&gt;保存 AND_HOP 前结果&lt;/strong&gt;&lt;span class=&quot;text-small&quot;&gt;&lt;code&gt;_record_group_search_result()&lt;/code&gt; 逐 condition / clause / group 保存 symbol 与 term evidence，供 case 分析。&lt;/span&gt;&lt;code&gt;surface_group_search_results.json&lt;/code&gt;&lt;/div&gt;
         &lt;/div&gt;
       &lt;/div&gt;
-      &lt;div class=&quot;phase-divider&quot;&gt;在线阶段：SemQL 图感知混合检索&lt;/div&gt;
-      &lt;div class=&quot;flow-lane&quot;&gt;
-        &lt;div class=&quot;lane-label&quot;&gt;查询执行&lt;/div&gt;
-        &lt;div class=&quot;flow-chain&quot;&gt;
-          &lt;div class=&quot;flow-node&quot;&gt;自然语言查询&lt;/div&gt;&lt;span class=&quot;flow-arrow&quot; aria-hidden=&quot;true&quot;&gt;&lt;/span&gt;
-          &lt;div class=&quot;flow-node&quot;&gt;LLM 提取 SemCon&lt;/div&gt;&lt;span class=&quot;flow-arrow&quot; aria-hidden=&quot;true&quot;&gt;&lt;/span&gt;
-          &lt;div class=&quot;flow-node&quot;&gt;组合 SemQL&lt;/div&gt;&lt;span class=&quot;flow-arrow&quot; aria-hidden=&quot;true&quot;&gt;&lt;/span&gt;
-          &lt;div class=&quot;flow-node lexical&quot;&gt;Surface keyword_groups&lt;br&gt;&lt;span class=&quot;text-small&quot;&gt;组内 OR&lt;/span&gt;&lt;/div&gt;&lt;span class=&quot;flow-arrow&quot; aria-hidden=&quot;true&quot;&gt;&lt;/span&gt;
-          &lt;div class=&quot;flow-node evolving&quot;&gt;Surface–Relation 协作区&lt;br&gt;&lt;span class=&quot;text-small&quot;&gt;Graph-aware AND(n)&lt;/span&gt;&lt;/div&gt;&lt;span class=&quot;flow-arrow&quot; aria-hidden=&quot;true&quot;&gt;&lt;/span&gt;
-          &lt;div class=&quot;flow-node graph&quot;&gt;显式 Relation Filter&lt;br&gt;&lt;span class=&quot;text-small&quot;&gt;caller / callee / role / file&lt;/span&gt;&lt;/div&gt;&lt;span class=&quot;flow-arrow&quot; aria-hidden=&quot;true&quot;&gt;&lt;/span&gt;
-          &lt;div class=&quot;flow-node semantic&quot;&gt;代码向量聚类&lt;/div&gt;&lt;span class=&quot;flow-arrow&quot; aria-hidden=&quot;true&quot;&gt;&lt;/span&gt;
-          &lt;div class=&quot;flow-node semantic&quot;&gt;项目 Term Embedding 过滤&lt;/div&gt;&lt;span class=&quot;flow-arrow&quot; aria-hidden=&quot;true&quot;&gt;&lt;/span&gt;
-          &lt;div class=&quot;flow-node semantic&quot;&gt;LLM-as-a-Judge&lt;/div&gt;&lt;span class=&quot;flow-arrow&quot; aria-hidden=&quot;true&quot;&gt;&lt;/span&gt;
-          &lt;div class=&quot;flow-node&quot;&gt;最终代码元素与覆盖证据&lt;/div&gt;
+      &lt;div class=&quot;executor-layer group-layer&quot;&gt;
+        &lt;div class=&quot;executor-layer-label&quot;&gt;&lt;span class=&quot;text-small text-muted&quot;&gt;Layer 2&lt;/span&gt;&lt;strong&gt;Clause&lt;/strong&gt;&lt;/div&gt;
+        &lt;div class=&quot;executor-method&quot;&gt;
+          &lt;code&gt;_execute_clause(clause, match_spec)&lt;/code&gt;
+          &lt;span class=&quot;text-small&quot;&gt;组合该 clause 下已经完成直接搜索的 group results。&lt;/span&gt;
+        &lt;/div&gt;
+        &lt;div class=&quot;executor-operations&quot;&gt;
+          &lt;div class=&quot;executor-operation&quot;&gt;&lt;strong&gt;identity&lt;/strong&gt;&lt;span class=&quot;text-small&quot;&gt;唯一 group 结果原样返回。&lt;/span&gt;&lt;code&gt;R = R(k1)&lt;/code&gt;&lt;/div&gt;
+          &lt;div class=&quot;executor-operation&quot;&gt;&lt;strong&gt;or&lt;/strong&gt;&lt;span class=&quot;text-small&quot;&gt;&lt;code&gt;_union()&lt;/code&gt; 合并多个 group；exclude clause 由此形成全量负向集合。&lt;/span&gt;&lt;code&gt;R = ⋃ R(ki)&lt;/code&gt;&lt;/div&gt;
+          &lt;div class=&quot;executor-operation&quot;&gt;&lt;strong&gt;and_hop · n=0&lt;/strong&gt;&lt;span class=&quot;text-small&quot;&gt;&lt;code&gt;_and_hop() → _intersect()&lt;/code&gt;，无需访问代码图；完整覆盖当前 login / user plan。&lt;/span&gt;&lt;code&gt;R = ⋂ R(ki)&lt;/code&gt;&lt;/div&gt;
+          &lt;div class=&quot;executor-operation&quot;&gt;&lt;strong&gt;and_hop · n&amp;gt;0&lt;/strong&gt;&lt;span class=&quot;text-small&quot;&gt;&lt;code&gt;_and_hop()&lt;/code&gt; 检查概念组命中是否位于同一调用链且无向距离满足 hop_count；不判断 caller / callee。&lt;/span&gt;&lt;/div&gt;
         &lt;/div&gt;
       &lt;/div&gt;
-      &lt;div class=&quot;flow-bridge&quot; aria-label=&quot;离线资产对在线阶段的支撑关系&quot;&gt;
-        &lt;div class=&quot;bridge-item lexical&quot;&gt;&lt;strong&gt;INV + NGRAM → KG&lt;/strong&gt;&lt;span class=&quot;text-small&quot;&gt;缩写倒排与子词索引支撑组内召回&lt;/span&gt;&lt;/div&gt;
-        &lt;div class=&quot;bridge-item graph&quot;&gt;&lt;strong&gt;CODEDB → GAM / EF&lt;/strong&gt;&lt;span class=&quot;text-small&quot;&gt;调用图支撑 AND(n) 与显式结构过滤&lt;/span&gt;&lt;/div&gt;
-        &lt;div class=&quot;bridge-item semantic&quot;&gt;&lt;strong&gt;HYBRID → KG / TEF&lt;/strong&gt;&lt;span class=&quot;text-small&quot;&gt;扩展词过滤与项目术语级精排&lt;/span&gt;&lt;/div&gt;
+      &lt;div class=&quot;executor-layer condition-layer&quot;&gt;
+        &lt;div class=&quot;executor-layer-label&quot;&gt;&lt;span class=&quot;text-small text-muted&quot;&gt;Layer 3&lt;/span&gt;&lt;strong&gt;Condition&lt;/strong&gt;&lt;/div&gt;
+        &lt;div class=&quot;executor-method&quot;&gt;
+          &lt;code&gt;_execute_condition(condition)&lt;/code&gt;
+          &lt;span class=&quot;text-small&quot;&gt;严格执行 &lt;code&gt;result_expression.operator&lt;/code&gt;，合成 include / exclude clause。&lt;/span&gt;
+        &lt;/div&gt;
+        &lt;div class=&quot;executor-operations&quot;&gt;
+          &lt;div class=&quot;executor-operation&quot;&gt;&lt;strong&gt;identity&lt;/strong&gt;&lt;span class=&quot;text-small&quot;&gt;返回 include_result。&lt;/span&gt;&lt;/div&gt;
+          &lt;div class=&quot;executor-operation&quot;&gt;&lt;strong&gt;subtract&lt;/strong&gt;&lt;span class=&quot;text-small&quot;&gt;exclude groups 先分别执行组内 term OR，再由 &lt;code&gt;_union()&lt;/code&gt; 合并，最终通过 &lt;code&gt;_subtract()&lt;/code&gt; 从 include_result 减去。&lt;/span&gt;&lt;code&gt;I − UNION(Ei)&lt;/code&gt;&lt;/div&gt;
+          &lt;div class=&quot;executor-operation&quot;&gt;&lt;strong&gt;exclude_only&lt;/strong&gt;&lt;span class=&quot;text-small&quot;&gt;暂存全局负向集合，不作为正向候选返回。&lt;/span&gt;&lt;/div&gt;
+          &lt;div class=&quot;executor-operation&quot;&gt;&lt;strong&gt;empty&lt;/strong&gt;&lt;span class=&quot;text-small&quot;&gt;返回空集合。&lt;/span&gt;&lt;/div&gt;
+        &lt;/div&gt;
+      &lt;/div&gt;
+      &lt;div class=&quot;executor-layer cross-layer&quot;&gt;
+        &lt;div class=&quot;executor-layer-label&quot;&gt;&lt;span class=&quot;text-small text-muted&quot;&gt;Layer 4&lt;/span&gt;&lt;strong&gt;Cross-condition&lt;/strong&gt;&lt;/div&gt;
+        &lt;div class=&quot;executor-method&quot;&gt;
+          &lt;code&gt;_execute_condition_expression(expression, condition_results)&lt;/code&gt;
+          &lt;span class=&quot;text-small&quot;&gt;完全按 Planner 的兼容分组执行，不在 Executor 内重新推断 match kind 或代码元素类型。&lt;/span&gt;
+        &lt;/div&gt;
+        &lt;div class=&quot;executor-operations&quot;&gt;
+          &lt;div class=&quot;executor-operation&quot;&gt;&lt;strong&gt;merge_group.identity&lt;/strong&gt;&lt;span class=&quot;text-small&quot;&gt;使用该兼容组的唯一 condition 结果。&lt;/span&gt;&lt;/div&gt;
+          &lt;div class=&quot;executor-operation&quot;&gt;&lt;strong&gt;merge_group.intersect&lt;/strong&gt;&lt;span class=&quot;text-small&quot;&gt;&lt;code&gt;_intersect()&lt;/code&gt; 对同 match/type 兼容组内的 condition 结果取交集。&lt;/span&gt;&lt;/div&gt;
+          &lt;div class=&quot;executor-operation&quot;&gt;&lt;strong&gt;expression.union&lt;/strong&gt;&lt;span class=&quot;text-small&quot;&gt;&lt;code&gt;_union()&lt;/code&gt; 合并不同兼容组结果。&lt;/span&gt;&lt;/div&gt;
+          &lt;div class=&quot;executor-operation&quot;&gt;&lt;strong&gt;exclude-only subtraction&lt;/strong&gt;&lt;span class=&quot;text-small&quot;&gt;&lt;code&gt;_subtract()&lt;/code&gt; 最后减去 &lt;code&gt;exclude_only_condition_ids&lt;/code&gt; 对应的负向结果集合。&lt;/span&gt;&lt;/div&gt;
+        &lt;/div&gt;
+      &lt;/div&gt;
+    &lt;/div&gt;
+    &lt;div class=&quot;executor-output&quot;&gt;
+      &lt;span class=&quot;text-small text-muted&quot;&gt;执行输出&lt;/span&gt;
+      &lt;span&gt;&lt;strong&gt;Stable symbol list&lt;/strong&gt; + &lt;code&gt;surface_evidence_hop_0.json&lt;/code&gt;：保留最终候选的 condition / group coverage、查询 term、matched_term、direct / graph_neighbor 与 distance。&lt;/span&gt;
+    &lt;/div&gt;
+    &lt;div class=&quot;executor-sequence text-small&quot; aria-label=&quot;第一阶段完整执行顺序&quot;&gt;
+      &lt;span class=&quot;step&quot;&gt;group term OR&lt;/span&gt;&lt;span class=&quot;join&quot;&gt;→&lt;/span&gt;
+      &lt;span class=&quot;step&quot;&gt;condition type filter&lt;/span&gt;&lt;span class=&quot;join&quot;&gt;→&lt;/span&gt;
+      &lt;span class=&quot;step&quot;&gt;persist direct group results&lt;/span&gt;&lt;span class=&quot;join&quot;&gt;→&lt;/span&gt;
+      &lt;span class=&quot;step&quot;&gt;include group AND(n)&lt;/span&gt;&lt;span class=&quot;join&quot;&gt;→&lt;/span&gt;
+      &lt;span class=&quot;step&quot;&gt;condition exclude subtract&lt;/span&gt;&lt;span class=&quot;join&quot;&gt;→&lt;/span&gt;
+      &lt;span class=&quot;step&quot;&gt;compatible condition intersection&lt;/span&gt;&lt;span class=&quot;join&quot;&gt;→&lt;/span&gt;
+      &lt;span class=&quot;step&quot;&gt;incompatible condition union&lt;/span&gt;&lt;span class=&quot;join&quot;&gt;→&lt;/span&gt;
+      &lt;span class=&quot;step&quot;&gt;exclude-only subtraction&lt;/span&gt;&lt;span class=&quot;join&quot;&gt;→&lt;/span&gt;
+      &lt;span class=&quot;step&quot;&gt;stable symbol list&lt;/span&gt;
+    &lt;/div&gt;
+    &lt;div class=&quot;executor-semantics&quot;&gt;
+      &lt;div class=&quot;executor-note&quot;&gt;
+        &lt;strong&gt;Call scope 的距离语义&lt;/strong&gt;
+        &lt;span class=&quot;text-small&quot;&gt;第一阶段不区分 caller 与 callee。只要两个 group 的任意命中函数位于同一条调用链上，无论 A 调用 B 还是 B 调用 A，都按无向最短路径计算 hop_count；方向性约束仍交给 Relation Executor。&lt;/span&gt;
+      &lt;/div&gt;
+      &lt;div class=&quot;executor-note&quot;&gt;
+        &lt;strong&gt;Direct results 与最终 evidence&lt;/strong&gt;
+        &lt;span class=&quot;text-small&quot;&gt;&lt;code&gt;surface_group_search_results.json&lt;/code&gt; 保留 AND_HOP 前的逐组直接命中；最终 evidence 描述集合与图运算后的存活候选。code_snippet、code_line 与非空 code_text 当前返回明确 warning，并保留专用搜索 Executor 的 TODO。&lt;/span&gt;
       &lt;/div&gt;
     &lt;/div&gt;
     &lt;details&gt;
-      &lt;summary&gt;查看完整 Mermaid 定义&lt;/summary&gt;
+      &lt;summary&gt;查看四层执行 Mermaid 定义&lt;/summary&gt;
       &lt;pre class=&quot;mermaid-source&quot;&gt;&lt;code&gt;flowchart TB
-    subgraph OFF[&quot;离线阶段：项目知识与检索资产构建&quot;]
-        SRC[&quot;目标代码仓库&quot;]
-
-        SRC --&amp;gt; PARSE[&quot;多语言代码解析&quot;]
-        PARSE --&amp;gt; SYMBOLS[&quot;符号表&amp;lt;br/&amp;gt;symbols_index.json&quot;]
-        PARSE --&amp;gt; DEPS[&quot;依赖关系&amp;lt;br/&amp;gt;dependency_graph.json&quot;]
-        PARSE --&amp;gt; CODEDB[&quot;代码关系数据库&amp;lt;br/&amp;gt;codegraph.sqlite&quot;]
-
-        SYMBOLS --&amp;gt; NGRAM[&quot;标识符分词&quot;]
-        NGRAM --&amp;gt; NGRAMIDX[&quot;子词索引&amp;lt;br/&amp;gt;ngramed_symbol.json&quot;]
-        NGRAMIDX --&amp;gt; ABBR[&quot;缩写/子序列扩展&quot;]
-        ABBR --&amp;gt; INV[&quot;缩写倒排索引&amp;lt;br/&amp;gt;invert_index.json&quot;]
-
-        CODEDB --&amp;gt; EDGES[&quot;调用边与实现关系&amp;lt;br/&amp;gt;code_edges / implementations&quot;]
-        EDGES --&amp;gt; CHAINS[&quot;调用链数据集&amp;lt;br/&amp;gt;word2vec_call_chains.json&quot;]
-
-        CHAINS --&amp;gt; VOCAB[&quot;项目术语表&amp;lt;br/&amp;gt;term_project_vocab.json&quot;]
-        CHAINS --&amp;gt; CORPUS[&quot;增强调用链语料&amp;lt;br/&amp;gt;整链 + 局部窗口 + 直接调用边&quot;]
-
-        CORPUS --&amp;gt; FASTTEXT[&quot;项目共现模型&amp;lt;br/&amp;gt;FastText + ICF&quot;]
-        VOCAB --&amp;gt; SEMINDEX[&quot;项目术语语义索引&amp;lt;br/&amp;gt;MiniLM embeddings&quot;]
-
-        FASTTEXT --&amp;gt; HYBRID[&quot;项目特性 Hybrid Term Embedding&quot;]
-        SEMINDEX --&amp;gt; HYBRID
+    PLAN[&quot;SurfacePlan&quot;] --&amp;gt; L1
+    subgraph L1[&quot;Layer 1 · _execute_keyword_group(group, match_spec)&quot;]
+      TERMS[&quot;keyword / synonyms&quot;] --&amp;gt; OR[&quot;term OR retrieval&quot;] --&amp;gt; TYPE[&quot;condition type filter&quot;] --&amp;gt; GR[&quot;SurfaceGroupResult&quot;]
+      GR --&amp;gt; SNAPSHOT[&quot;persist direct group results&amp;lt;br/&amp;gt;before group expression&quot;]
     end
-
-    subgraph ON[&quot;在线阶段：SemQL 图感知混合检索&quot;]
-        QUERY[&quot;自然语言查询&quot;] --&amp;gt; SEMCON[&quot;LLM 提取 SemCon&quot;]
-        SEMCON --&amp;gt; SEMQL[&quot;组合 SemQL&quot;]
-
-        SEMQL --&amp;gt; KG[&quot;Surface keyword_groups&amp;lt;br/&amp;gt;组内 OR&quot;]
-        INV --&amp;gt; KG
-        NGRAMIDX --&amp;gt; KG
-        HYBRID --&amp;gt; KG
-
-        KG --&amp;gt; GAM[&quot;Surface–Relation 协作区&amp;lt;br/&amp;gt;Graph-aware AND(n)&amp;lt;br/&amp;gt;概念组跨调用图共同满足&quot;]
-        CODEDB --&amp;gt; GAM
-
-        GAM --&amp;gt; EF[&quot;显式 Relation Filter&amp;lt;br/&amp;gt;caller / callee / role / file&quot;]
-        SEMQL --&amp;gt; EF
-        CODEDB --&amp;gt; EF
-
-        EF --&amp;gt; CF[&quot;Intention：代码向量聚类&quot;]
-        CF --&amp;gt; TEF[&quot;项目 Term Embedding 过滤&quot;]
-        HYBRID --&amp;gt; TEF
-        TEF --&amp;gt; JUDGE[&quot;LLM-as-a-Judge&quot;]
-        SEMQL --&amp;gt; JUDGE
-
-        JUDGE --&amp;gt; RESULT[&quot;最终代码元素与覆盖证据&quot;]
-    end&lt;/code&gt;&lt;/pre&gt;
+    GR --&amp;gt; L2
+    subgraph L2[&quot;Layer 2 · _execute_clause(clause, match_spec)&quot;]
+      ID[&quot;identity&quot;]
+      U[&quot;or = UNION(groups)&quot;]
+      AH0[&quot;and_hop(0) = INTERSECT(groups)&quot;]
+      AHN[&quot;and_hop(n) = undirected call-chain coverage&quot;]
+    end
+    CALLGRAPH[&quot;Call graph&quot;] --&amp;gt; AHN
+    L2 --&amp;gt; L3
+    subgraph L3[&quot;Layer 3 · _execute_condition(condition)&quot;]
+      CI[&quot;identity&quot;]
+      CS[&quot;subtract: include − UNION(exclude groups)&quot;]
+      CEO[&quot;exclude_only: retain global negative set&quot;]
+      CE[&quot;empty&quot;]
+    end
+    L3 --&amp;gt; L4
+    subgraph L4[&quot;Layer 4 · _execute_condition_expression(expression, results)&quot;]
+      MI[&quot;compatible group: identity / INTERSECT&quot;] --&amp;gt; CU[&quot;incompatible groups: UNION&quot;] --&amp;gt; ES[&quot;subtract exclude-only sets&quot;]
+    end
+    L4 --&amp;gt; RESULT[&quot;Stable symbol list + coverage evidence&quot;]&lt;/code&gt;&lt;/pre&gt;
     &lt;/details&gt;
-    &lt;div class=&quot;formula text-small&quot;&gt;
-      当前主程序仍按 &lt;code&gt;Surface → Relation → Intention&lt;/code&gt; 传递候选；但 Surface 已调用 Hybrid Embedding 过滤扩展词，且 schema 已携带图关系逻辑。完整 AND(n) 执行器仍处于演进阶段。
-    &lt;/div&gt;
   &lt;/section&gt;
 
   &lt;section class=&quot;section&quot; aria-labelledby=&quot;embedding-heading&quot;&gt;
@@ -1274,8 +1774,8 @@ html&gt;body{padding:0}&lt;/style&gt;
       &lt;div class=&quot;stage-panel&quot;&gt;
       &lt;div class=&quot;module-grid&quot;&gt;
         &lt;div class=&quot;module&quot;&gt;
-          &lt;div class=&quot;module-name&quot;&gt;SemCon / SemQL&lt;/div&gt;
-          &lt;div class=&quot;module-copy&quot;&gt;&lt;span&gt;将自然语言拆成 surface、relation、intention，并按 include/exclude 组织执行条件。&lt;/span&gt;&lt;span class=&quot;status-line text-small&quot;&gt;&lt;span class=&quot;status-dot&quot;&gt;&lt;/span&gt;已实现&lt;/span&gt;&lt;/div&gt;
+          &lt;div class=&quot;module-name&quot;&gt;SemCon 抽取 / 兼容 SemQL&lt;/div&gt;
+          &lt;div class=&quot;module-copy&quot;&gt;&lt;span&gt;将自然语言拆成 surface、relation、intention；旧的统一 &lt;code&gt;semQL.json&lt;/code&gt; 仅在 Executor 迁移期保留。&lt;/span&gt;&lt;span class=&quot;status-line text-small&quot;&gt;&lt;span class=&quot;status-dot partial&quot;&gt;&lt;/span&gt;SemCon 已实现；统一 SemQL 处于兼容阶段&lt;/span&gt;&lt;/div&gt;
         &lt;/div&gt;
         &lt;div class=&quot;module&quot;&gt;
           &lt;div class=&quot;module-name&quot;&gt;Surface Executor&lt;/div&gt;
@@ -1296,6 +1796,42 @@ html&gt;body{padding:0}&lt;/style&gt;
         &lt;div class=&quot;module&quot;&gt;
           &lt;div class=&quot;module-name&quot;&gt;LLM Judge&lt;/div&gt;
           &lt;div class=&quot;module-copy&quot;&gt;&lt;span&gt;根据 intention include/exclude 和候选代码进行最终高精度功能判断。&lt;/span&gt;&lt;span class=&quot;status-line text-small&quot;&gt;&lt;span class=&quot;status-dot&quot;&gt;&lt;/span&gt;已实现，放在末端控制成本&lt;/span&gt;&lt;/div&gt;
+        &lt;/div&gt;
+      &lt;/div&gt;
+      &lt;/div&gt;
+    &lt;/details&gt;
+
+    &lt;details open&gt;
+      &lt;summary&gt;Planner、Logical Plan 与后续优化器&lt;/summary&gt;
+      &lt;div class=&quot;stage-panel&quot;&gt;
+      &lt;div class=&quot;module-grid&quot;&gt;
+        &lt;div class=&quot;module&quot;&gt;
+          &lt;div class=&quot;module-name&quot;&gt;QueryPlanner&lt;/div&gt;
+          &lt;div class=&quot;module-copy&quot;&gt;&lt;span&gt;在线查询的规划核心：编排三个领域 Planner，把 SemCon 编译为 Logical Plan Bundle，并隔离抽取 schema 与 Executor 契约。&lt;/span&gt;&lt;span class=&quot;status-line text-small&quot;&gt;&lt;span class=&quot;status-dot&quot;&gt;&lt;/span&gt;领域规划与计划文件已实现&lt;/span&gt;&lt;/div&gt;
+        &lt;/div&gt;
+        &lt;div class=&quot;module&quot;&gt;
+          &lt;div class=&quot;module-name&quot;&gt;SurfacePlanner&lt;/div&gt;
+          &lt;div class=&quot;module-copy&quot;&gt;&lt;span&gt;只解析 surfaceCon：group 内 terms 做 OR，include groups 做 AND(n)，exclude 做 subtract；相同 match_kind 且 code-element 类型相同的 condition 取交集，不同兼容组取并集。&lt;/span&gt;&lt;span class=&quot;status-line text-small&quot;&gt;&lt;span class=&quot;status-dot&quot;&gt;&lt;/span&gt;分层规划已实现；AND(n) 图执行待接入&lt;/span&gt;&lt;/div&gt;
+        &lt;/div&gt;
+        &lt;div class=&quot;module&quot;&gt;
+          &lt;div class=&quot;module-name&quot;&gt;RelationPlanner&lt;/div&gt;
+          &lt;div class=&quot;module-copy&quot;&gt;&lt;span&gt;只解析 relationCon，集中规范 caller、callee、role、file/container、CodeQL 与结构约束。&lt;/span&gt;&lt;span class=&quot;status-line text-small&quot;&gt;&lt;span class=&quot;status-dot&quot;&gt;&lt;/span&gt;已实现&lt;/span&gt;&lt;/div&gt;
+        &lt;/div&gt;
+        &lt;div class=&quot;module&quot;&gt;
+          &lt;div class=&quot;module-name&quot;&gt;IntentionPlanner&lt;/div&gt;
+          &lt;div class=&quot;module-copy&quot;&gt;&lt;span&gt;只根据原始 query 与 intentionCon 构造 requirements、semantic_text 和 terms，供聚类、Embedding 与 LLM Judge 共享。&lt;/span&gt;&lt;span class=&quot;status-line text-small&quot;&gt;&lt;span class=&quot;status-dot&quot;&gt;&lt;/span&gt;已实现&lt;/span&gt;&lt;/div&gt;
+        &lt;/div&gt;
+        &lt;div class=&quot;module&quot;&gt;
+          &lt;div class=&quot;module-name&quot;&gt;领域计划文件&lt;/div&gt;
+          &lt;div class=&quot;module-copy&quot;&gt;&lt;span&gt;分别输出 &lt;code&gt;surface_semql.json&lt;/code&gt;、&lt;code&gt;relation_semql.json&lt;/code&gt;、&lt;code&gt;intention_semql.json&lt;/code&gt;，三者不复制其他领域条件。&lt;/span&gt;&lt;span class=&quot;status-line text-small&quot;&gt;&lt;span class=&quot;status-dot&quot;&gt;&lt;/span&gt;已生成并纳入测试&lt;/span&gt;&lt;/div&gt;
+        &lt;/div&gt;
+        &lt;div class=&quot;module&quot;&gt;
+          &lt;div class=&quot;module-name&quot;&gt;Executor 输入迁移&lt;/div&gt;
+          &lt;div class=&quot;module-copy&quot;&gt;&lt;span&gt;当前仍兼容双写旧 &lt;code&gt;semQL.json&lt;/code&gt;；后续让三个 Executor 分别直接消费对应领域计划，再移除旧 Composer 兼容层。&lt;/span&gt;&lt;span class=&quot;status-line text-small&quot;&gt;&lt;span class=&quot;status-dot partial&quot;&gt;&lt;/span&gt;待分阶段迁移&lt;/span&gt;&lt;/div&gt;
+        &lt;/div&gt;
+        &lt;div class=&quot;module&quot;&gt;
+          &lt;div class=&quot;module-name&quot;&gt;Cost-aware Optimizer&lt;/div&gt;
+          &lt;div class=&quot;module-copy&quot;&gt;&lt;span&gt;基于候选基数、过滤选择性、hop 范围和模型成本，将 Logical Plan 转成 Physical Plan；优先低成本高选择性算子，将 Embedding、聚类和 LLM Judge 后置。&lt;/span&gt;&lt;span class=&quot;status-line text-small&quot;&gt;&lt;span class=&quot;status-dot partial&quot;&gt;&lt;/span&gt;后续演进方向，尚未实现&lt;/span&gt;&lt;/div&gt;
         &lt;/div&gt;
       &lt;/div&gt;
       &lt;/div&gt;

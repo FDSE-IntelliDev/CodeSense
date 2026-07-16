@@ -212,6 +212,99 @@ class RelationGraphStore:
 
         return result
 
+    def undirected_call_neighborhood(
+        self,
+        start_ids: Iterable[int],
+        max_depth: int,
+    ) -> Dict[int, Tuple[int, int]]:
+        """Return nodes on the same call chain within ``max_depth`` hops.
+
+        Surface group cooperation does not assign caller/callee roles. A call
+        edge therefore connects both directions for distance purposes: whether
+        A calls B or B calls A, their undirected call-chain distance is one.
+        Each value is ``(distance, nearest_start_symbol_id)`` so the Surface
+        Executor can emit coverage evidence.
+        """
+        max_depth = max(int(max_depth), 0)
+        original_starts = {int(symbol_id) for symbol_id in start_ids}
+        if not original_starts:
+            return {}
+
+        result: Dict[int, Tuple[int, int]] = {}
+        frontier: Set[int] = set()
+        frontier_origins: Dict[int, int] = {}
+        for start_id in sorted(original_starts):
+            equivalents = self.equivalent_symbol_ids([start_id]) or {start_id}
+            for equivalent_id in equivalents:
+                if equivalent_id in result:
+                    continue
+                result[equivalent_id] = (0, start_id)
+                frontier.add(equivalent_id)
+                frontier_origins[equivalent_id] = start_id
+
+        depth = 0
+        while frontier and depth < max_depth:
+            placeholders = ",".join("?" for _ in frontier)
+            frontier_values = list(frontier)
+            rows = self.conn.execute(
+                f"""
+                SELECT
+                  source_symbol_id,
+                  source_impl_symbol_id,
+                  target_symbol_id,
+                  target_impl_symbol_id
+                FROM code_edges
+                WHERE kind='calls'
+                  AND (
+                    source_symbol_id IN ({placeholders})
+                    OR source_impl_symbol_id IN ({placeholders})
+                    OR target_symbol_id IN ({placeholders})
+                    OR target_impl_symbol_id IN ({placeholders})
+                  )
+                """,
+                frontier_values * 4,
+            ).fetchall()
+
+            next_depth = depth + 1
+            next_frontier: Set[int] = set()
+            next_origins: Dict[int, int] = {}
+            for row in rows:
+                source_ids = {
+                    int(value)
+                    for value in (row["source_symbol_id"], row["source_impl_symbol_id"])
+                    if value is not None
+                }
+                target_ids = {
+                    int(value)
+                    for value in (row["target_symbol_id"], row["target_impl_symbol_id"])
+                    if value is not None
+                }
+                transitions = (
+                    (source_ids & frontier, target_ids),
+                    (target_ids & frontier, source_ids),
+                )
+                for from_ids, candidate_next_ids in transitions:
+                    for from_id in sorted(from_ids):
+                        origin_id = frontier_origins.get(from_id)
+                        if origin_id is None:
+                            continue
+                        for next_id in sorted(candidate_next_ids):
+                            if next_id in result:
+                                continue
+                            equivalents = self.equivalent_symbol_ids([next_id]) or {next_id}
+                            for equivalent_id in equivalents:
+                                if equivalent_id in result:
+                                    continue
+                                result[equivalent_id] = (next_depth, origin_id)
+                                next_frontier.add(equivalent_id)
+                                next_origins[equivalent_id] = origin_id
+
+            frontier = next_frontier
+            frontier_origins = next_origins
+            depth = next_depth
+
+        return result
+
     def symbol_degrees(
         self,
         symbol_id: int,

@@ -21,10 +21,13 @@
 1. **查询理解**
    - `query_processing/llm_keyword_extractor.py` — LLM 提取关键词、意图、目标类型
    - `query_processing/llm_semCon_extractor.py` — LLM 提取 SemCon 原子条件（surface / intention / relation）
-   - `query_processing/semQL_composer.py` — 将 SemCon 组合为 SemQL 结构化查询
+   - `query_processing/planners/` — 将三类 SemCon 分别编译为独立执行计划
+   - `query_processing/semQL_composer.py` — 迁移期保留的旧版组合 SemQL 兼容层
 2. **候选召回** (`executor/surface_executor.py`)
    - 倒排索引 + 缩写扩展召回（`search/`）
-   - 类型过滤（`filters/type_filter.py`）
+   - Planner 类型过滤与四层集合执行：term OR、group AND(n)、condition subtract、跨 condition 合并
+   - call scope 按无向调用链距离补齐 group coverage，并输出 `surface_evidence_hop_0.json`
+   - 在执行 clause 的 identity / OR / AND(n) 前，将各 group 的直接检索结果保存到 `surface_group_search_results.json`
 3. **精排过滤**
    - 聚类过滤（`filters/cluster_pipeline.py`）— 基于语义向量聚类，按簇相关性分层
    - Embedding 过滤（`filters/embedding_filter.py`）— 基于训练好的 term embedding 细粒度打分
@@ -134,6 +137,32 @@ python main.py --project_path /path/to/project --output_dir /path/to/output
 ```bash
 python main.py --query "Find the entry function that handles user login authentication"
 ```
+
+每次在线查询会在 `output/<project>/query_<id>/` 下生成独立查询计划：
+
+- `query_plan.json` — 轻量计划清单，只记录三类子计划的位置
+- `surface_semql.json` — Surface keyword groups、组内 OR、group logic、匹配类型和 include/exclude 逻辑
+- `relation_semql.json` — caller/callee、图角色、路径及其他结构约束
+- `intention_semql.json` — 语义 query profile 和 include/exclude 意图要求
+- `surface_group_search_results.json` — term OR 与类型过滤后的逐 group 直接命中，位于 clause 集合运算之前
+- `surface_evidence_hop_0.json` — 最终 Surface 候选的 condition/group、term、matched term 与图距离证据
+
+三个 Planner 只解析各自的 SemCon 字段：
+
+```text
+SurfaceCon   -> SurfacePlanner   -> surface_semql.json
+RelationCon  -> RelationPlanner  -> relation_semql.json
+IntentionCon -> IntentionPlanner -> intention_semql.json
+```
+
+Surface Executor 已直接读取 `surface_semql.json`；Relation 与 Intention Executor
+仍按后续迁移顺序接入各自的领域计划。旧组合 SemQL 只保留兼容入口，不再作为
+Surface Executor 的输入。
+
+Surface plan 按层级表达组合逻辑：group 内的 keywords/synonyms 做 OR，同一
+condition 的 include groups 做 AND(n)，exclude groups 构造负向集合并从正向
+结果中减去。多个 SurfaceCon condition 使用 `(match_kind, code_element_types)`
+作为兼容键：兼容键相同的结果取交集，不同兼容组之间取并集。
 
 ## 数据结构 (Schema)
 

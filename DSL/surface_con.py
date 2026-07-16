@@ -18,6 +18,7 @@ surface condition 用于描述所有基于字面文本的搜索条件，包括�
 - group_logic: include groups 之间的图感知 AND 配置；这里默认使用 and_hop，不再显式配置 op
   - groups: 参与 and_hop 的 include group_id 列表
   - graph_scope: and_hop 使用的代码关系范围，只能选择 call 或 import；同文件关系在 import/file scope 下视为 hop_count=0
+  - default_hop_count: 未被 pairwise_hop_counts 覆盖的 include group pair 使用的默认 hop count
   - pairwise_hop_counts: 针对具体 group pair 的 hop count 覆盖，用于表达不同概念之间的关系强弱
   - reason: 解释为什么这些 include groups 需要通过 and_hop 合并
 - match_kind: 表示是否需要做代码元素、代码行、代码片段或未知类型的精准匹配
@@ -51,6 +52,7 @@ surface_condition = {
             "graph_scope": [
                 "<call|import; call means call-chain relation, import means file/import relation and same-file is treated as hop_count=0>"
             ],
+            "default_hop_count": "<non-negative integer; default hop count for include group pairs without a pairwise override>",
             "pairwise_hop_counts": [
                 {
                     "groups": [

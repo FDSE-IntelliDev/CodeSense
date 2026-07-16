@@ -218,18 +218,20 @@ class FullTermMatcher:
             "detail": detail,
         }
 
-    def match_ngram(self, keyword_payload: Any, properties: tuple = ("include",)) -> Dict[str, Any]:
-        """
-        Aggregate subtokens across all keywords:
-        keyword -> subsequences -> invert_index subtokens
-        """
-        initial_keywords = self._to_keyword_list(keyword_payload, properties)
-
+    def match_terms(self, initial_keywords: Iterable[str]) -> Dict[str, Any]:
+        """Match a normalized execution-plan term list without parsing SemQL."""
         # keywords按照空格拆分有序子词进行扩展
         keywords: List[str] = []
         seen_kw: Set[str] = set()
+        source_terms_by_keyword: Dict[str, List[str]] = {}
         for kw in initial_keywords:
+            kw = str(kw).strip()
+            if not kw:
+                continue
             for subkw in generate_ordered_subterms(kw):
+                source_terms = source_terms_by_keyword.setdefault(subkw, [])
+                if kw not in source_terms:
+                    source_terms.append(kw)
                 if subkw not in seen_kw:
                     seen_kw.add(subkw)
                     keywords.append(subkw)
@@ -278,6 +280,8 @@ class FullTermMatcher:
 
             detail.append(
                 {
+                    "term": source_terms_by_keyword.get(kw, [kw])[0],
+                    "source_terms": source_terms_by_keyword.get(kw, [kw]),
                     "keyword": kw,
                     "normalized_kws": normalized_kw_list,
                     "subsequences": sorted(subseqs),
@@ -289,6 +293,16 @@ class FullTermMatcher:
             "matched_subtokens": sorted(all_subtokens),
             "detail": detail,
         }
+
+    def match_ngram(self, keyword_payload: Any, properties: tuple = ("include",)) -> Dict[str, Any]:
+        """
+        Backward-compatible SemQL adapter around :meth:`match_terms`.
+
+        Existing callers can keep passing the legacy/grouped SemQL payload, while
+        the planner-driven Surface Executor passes one keyword group's terms
+        directly to ``match_terms``.
+        """
+        return self.match_terms(self._to_keyword_list(keyword_payload, properties))
 
 
 if __name__ == "__main__":

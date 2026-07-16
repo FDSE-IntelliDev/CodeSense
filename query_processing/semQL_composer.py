@@ -1,12 +1,14 @@
-"""
-Compose extracted SemCon conditions into a SemQL structure.
+"""Legacy combined-SemQL compatibility layer.
 
-This module does not decide concrete AND / OR / NOT execution logic. It only
-organizes atomic SemCon conditions by condition type and property so later
-search, filter, and reranking stages can decide how to execute them.
+New code should use :mod:`query_processing.planners` to create independent
+surface, relation, and intention plans. The combined composer remains during
+the migration because existing executors still consume ``semQL.json``.
 """
 
 from typing import Any, Dict, List, Optional
+
+from query_processing.plan_models import QueryPlanBundle
+from query_processing.planners.query_planner import plan_query_from_semcon
 
 
 class SemQLComposer:
@@ -57,3 +59,16 @@ class SemQLComposer:
 
 def compose_semQL_from_semCon(semCon: Dict[str, Any], raw_query: Optional[str] = None) -> Dict[str, Any]:
     return SemQLComposer().compose(semCon, raw_query=raw_query)
+
+
+def compose_query_plans_from_semCon(
+    semCon: Dict[str, Any],
+    raw_query: Optional[str] = None,
+) -> QueryPlanBundle:
+    """Compile SemCon into independent domain plans.
+
+    This function is the planner-based replacement for the combined composer.
+    It lives here temporarily to offer a discoverable migration path for older
+    imports.
+    """
+    return plan_query_from_semcon(semCon, raw_query=raw_query)

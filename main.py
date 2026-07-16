@@ -10,13 +10,16 @@ from invert_index import InvertedIndexBuilder
 
 # Online query processing imports
 from query_processing.llm_semCon_extractor import LLMSemConExtractor
-from query_processing.semQL_composer import compose_semQL_from_semCon
+from query_processing.semQL_composer import (
+    compose_query_plans_from_semCon,
+    compose_semQL_from_semCon,
+)
 from executor.surface_executor import run_surface_search
 from executor.relation_executor import run_relation_executor
 from executor.intention_executor import executor as run_intention_executor
 
 from definition import PROJECT_OUTPUT_DIR, QUERY_ID, get_query_output_dir
-from utils.file_utils import save_res
+from utils.file_utils import save_res,load_res
 
 
 def process_offline(project_path: str, output_dir: str):
@@ -71,7 +74,15 @@ def process_online(
 
     semQL_path = str(output_path / "semQL.json")
     semCon_path = str(output_path / "semCon.json")
-    surface_result_path = str(output_path / "filtered_by_type.json")
+    query_plan_path = str(output_path / "query_plan.json")
+    surface_semQL_path = str(output_path / "surface_semql.json")
+    relation_semQL_path = str(output_path / "relation_semql.json")
+    intention_semQL_path = str(output_path / "intention_semql.json")
+    surface_result_path = str(output_path / "filtered_by_type_hop_0.json")
+    surface_evidence_path = str(output_path / "surface_evidence_hop_0.json")
+    surface_group_search_result_path = str(
+        output_path / "surface_group_search_results.json"
+    )
     relation_result_path = str(output_path / "filtered_by_relation.json")
     intention_result_path = str(output_path / "intention_executor_result.json")
 
@@ -79,18 +90,39 @@ def process_online(
     print(f"User Query: '{query}'")
 
     print("\n[1/5] Extracting SemCon using LLM ...")
-    extractor = LLMSemConExtractor()
-    semCon_result = extractor.extract_semCon(query)
-    save_res(semCon_path, semCon_result)
+    # extractor = LLMSemConExtractor()
+    # semCon_result = extractor.extract_semCon(query)
+    # save_res(semCon_path, semCon_result)
+    semCon_result=load_res(semCon_path)
     print(f"  -> SemCon saved to {semCon_path}")
 
-    print("\n[2/5] Composing SemQL from SemCon ...")
-    semQL_result = compose_semQL_from_semCon(semCon_result, raw_query=query)
-    save_res(semQL_path, semQL_result)
-    print(f"  -> SemQL saved to {semQL_path}")
+    print("\n[2/5] Planning domain SemQL ...")
+    query_plans = compose_query_plans_from_semCon(semCon_result, raw_query=query)
+    save_res(surface_semQL_path, query_plans.surface.to_dict())
+    save_res(relation_semQL_path, query_plans.relation.to_dict())
+    save_res(intention_semQL_path, query_plans.intention.to_dict())
+    save_res(
+        query_plan_path,
+        query_plans.manifest(
+            raw_query=query,
+            surface_path=Path(surface_semQL_path).name,
+            relation_path=Path(relation_semQL_path).name,
+            intention_path=Path(intention_semQL_path).name,
+        ),
+    )
+    print(f"  -> Surface plan saved to {surface_semQL_path}")
+    print(f"  -> Relation plan saved to {relation_semQL_path}")
+    print(f"  -> Intention plan saved to {intention_semQL_path}")
+    print(f"  -> Query plan manifest saved to {query_plan_path}")
+
+    # Compatibility output: existing executors still read the combined plan.
+    # semQL_result = compose_semQL_from_semCon(semCon_result, raw_query=query)
+    # save_res(semQL_path, semQL_result)
+    # print(f"  -> Legacy combined SemQL saved to {semQL_path}")
 
     print("\n[3/5] Running Surface Executor ...")
     surface_results = run_surface_search(
+        surface_plan_path=surface_semQL_path,
         output_dir=str(output_path),
         project_output_dir=str(project_output_path),
     )
@@ -116,7 +148,13 @@ def process_online(
     return {
         "semCon_path": semCon_path,
         "semQL_path": semQL_path,
+        "query_plan_path": query_plan_path,
+        "surface_semQL_path": surface_semQL_path,
+        "relation_semQL_path": relation_semQL_path,
+        "intention_semQL_path": intention_semQL_path,
         "surface_result_path": surface_result_path,
+        "surface_evidence_path": surface_evidence_path,
+        "surface_group_search_result_path": surface_group_search_result_path,
         "relation_result_path": relation_result_path,
         "intention_result_path": intention_result_path,
         "project_output_dir": str(project_output_path),
@@ -126,17 +164,25 @@ def process_online(
 
 def main():
     parser = argparse.ArgumentParser(description="CodeSearch Pipeline")
+    parser.add_argument("--init",action="store_true",help="Initialize the project before searching")
     parser.add_argument("--project_path", type=str, help="Path to the target codebase")
     parser.add_argument("--output_dir", type=str, help="Directory to save the parsing and indexing results")
     parser.add_argument("--query", type=str, help="A natural language search query for the online phase")
     parser.add_argument("--query_id", type=int, default=QUERY_ID, help="Query id used for output/<project>/query_<id> online artifacts")
 
-    args = parser.parse_args()
+    args = parser.parse_args(
+        [
+            "--project_path","/Users/bytedance/old6ma/projects/youlai-boot-master",
+            "--output_dir","/Users/bytedance/old6ma/CodeSearch/output/youlai-boot-master",
+            "--query","Find the entry function that handles user login authentication.",
+            "--query_id","1"
+        ]
+    )
 
-    if args.project_path and args.output_dir:
+    if args.init:
         process_offline(args.project_path, args.output_dir)
     else:
-        print("Skipping offline parsing because --project_path or --output_dir missing.")
+        print("Skipping offline phase.")
 
     if args.query:
         process_online(
