@@ -261,7 +261,7 @@ if __name__ == "__main__":
 
     # 1. 指定真实的搜索结果文件路径 (动态获取项目根目录并拼接路径)
     project_root = Path(__file__).resolve().parent.parent
-    result_file_path = Path(QUERY_OUTPUT_DIR) / "filtered_by_type_hop_0.json"
+    result_file_path = Path(QUERY_OUTPUT_DIR) / "filtered_by_type.json"
 
     print(f"正在读取真实搜索结果: {result_file_path}")
     with open(result_file_path, "r", encoding="utf-8") as f:

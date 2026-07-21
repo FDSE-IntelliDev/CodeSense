@@ -163,4 +163,4 @@ if __name__ == "__main__":
         ["function", "method"],
     )
     print(json.dumps({"filtered": len(filtered_res)}, ensure_ascii=False, indent=2))
-    # filtered_res=filter_symbols_semantically(f'{QUERY_OUTPUT_DIR}/filtered_by_type_hop_0.json', f'{QUERY_OUTPUT_DIR}/semQL.json')
+    # filtered_res=filter_symbols_semantically(f'{QUERY_OUTPUT_DIR}/filtered_by_type.json', f'{QUERY_OUTPUT_DIR}/semQL.json')

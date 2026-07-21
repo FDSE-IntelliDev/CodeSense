@@ -212,38 +212,59 @@ class RelationGraphStore:
 
         return result
 
-    def undirected_call_neighborhood(
+    def undirected_call_pairs(
         self,
         start_ids: Iterable[int],
+        target_ids: Iterable[int],
         max_depth: int,
-    ) -> Dict[int, Tuple[int, int]]:
-        """Return nodes on the same call chain within ``max_depth`` hops.
+    ) -> List[Tuple[int, int, int]]:
+        """Return all start/target pairs within an undirected call distance.
 
-        Surface group cooperation does not assign caller/callee roles. A call
-        edge therefore connects both directions for distance purposes: whether
-        A calls B or B calls A, their undirected call-chain distance is one.
-        Each value is ``(distance, nearest_start_symbol_id)`` so the Surface
-        Executor can emit coverage evidence.
+        Unlike :meth:`undirected_call_neighborhood`, this method retains every
+        reachable origin. That distinction is required when several Surface
+        pair rules are joined: keeping only one nearest origin can discard a
+        different, equally near origin that is needed by another rule.
+
+        The traversal expands one side only. ``target_ids`` remain direct
+        retrieval hits, so an intermediate call-chain node can never become a
+        pair endpoint merely because both sides can reach it.
         """
         max_depth = max(int(max_depth), 0)
-        original_starts = {int(symbol_id) for symbol_id in start_ids}
-        if not original_starts:
-            return {}
+        starts = {int(symbol_id) for symbol_id in start_ids}
+        targets = {int(symbol_id) for symbol_id in target_ids}
+        if not starts or not targets:
+            return []
 
-        result: Dict[int, Tuple[int, int]] = {}
-        frontier: Set[int] = set()
-        frontier_origins: Dict[int, int] = {}
-        for start_id in sorted(original_starts):
-            equivalents = self.equivalent_symbol_ids([start_id]) or {start_id}
-            for equivalent_id in equivalents:
-                if equivalent_id in result:
-                    continue
-                result[equivalent_id] = (0, start_id)
-                frontier.add(equivalent_id)
-                frontier_origins[equivalent_id] = start_id
+        equivalent_cache: Dict[int, Set[int]] = {}
+
+        def equivalents(symbol_id: int) -> Set[int]:
+            cached = equivalent_cache.get(symbol_id)
+            if cached is None:
+                cached = self.equivalent_symbol_ids([symbol_id]) or {symbol_id}
+                equivalent_cache[symbol_id] = cached
+            return cached
+
+        # node -> origins first reaching that node at the current BFS depth.
+        frontier_origins: Dict[int, Set[int]] = {}
+        # node -> all origins that have already reached that node.
+        visited_origins: Dict[int, Set[int]] = {}
+        matched_distances: Dict[Tuple[int, int], int] = {}
+
+        for start_id in sorted(starts):
+            for equivalent_id in equivalents(start_id):
+                visited_origins.setdefault(equivalent_id, set()).add(start_id)
+                frontier_origins.setdefault(equivalent_id, set()).add(start_id)
+                if equivalent_id in targets:
+                    matched_distances[(start_id, equivalent_id)] = 0
 
         depth = 0
-        while frontier and depth < max_depth:
+        expected_pair_count = len(starts) * len(targets)
+        while (
+            frontier_origins
+            and depth < max_depth
+            and len(matched_distances) < expected_pair_count
+        ):
+            frontier = set(frontier_origins)
             placeholders = ",".join("?" for _ in frontier)
             frontier_values = list(frontier)
             rows = self.conn.execute(
@@ -266,44 +287,64 @@ class RelationGraphStore:
             ).fetchall()
 
             next_depth = depth + 1
-            next_frontier: Set[int] = set()
-            next_origins: Dict[int, int] = {}
+            next_frontier_origins: Dict[int, Set[int]] = {}
             for row in rows:
                 source_ids = {
                     int(value)
-                    for value in (row["source_symbol_id"], row["source_impl_symbol_id"])
+                    for value in (
+                        row["source_symbol_id"],
+                        row["source_impl_symbol_id"],
+                    )
                     if value is not None
                 }
-                target_ids = {
+                target_edge_ids = {
                     int(value)
-                    for value in (row["target_symbol_id"], row["target_impl_symbol_id"])
+                    for value in (
+                        row["target_symbol_id"],
+                        row["target_impl_symbol_id"],
+                    )
                     if value is not None
                 }
                 transitions = (
-                    (source_ids & frontier, target_ids),
-                    (target_ids & frontier, source_ids),
+                    (source_ids & frontier, target_edge_ids),
+                    (target_edge_ids & frontier, source_ids),
                 )
                 for from_ids, candidate_next_ids in transitions:
-                    for from_id in sorted(from_ids):
-                        origin_id = frontier_origins.get(from_id)
-                        if origin_id is None:
+                    for from_id in from_ids:
+                        origins = frontier_origins.get(from_id)
+                        if not origins:
                             continue
-                        for next_id in sorted(candidate_next_ids):
-                            if next_id in result:
-                                continue
-                            equivalents = self.equivalent_symbol_ids([next_id]) or {next_id}
-                            for equivalent_id in equivalents:
-                                if equivalent_id in result:
+                        for next_id in candidate_next_ids:
+                            for equivalent_id in equivalents(next_id):
+                                visited = visited_origins.setdefault(
+                                    equivalent_id,
+                                    set(),
+                                )
+                                new_origins = origins - visited
+                                if not new_origins:
                                     continue
-                                result[equivalent_id] = (next_depth, origin_id)
-                                next_frontier.add(equivalent_id)
-                                next_origins[equivalent_id] = origin_id
+                                visited.update(new_origins)
+                                next_frontier_origins.setdefault(
+                                    equivalent_id,
+                                    set(),
+                                ).update(new_origins)
+                                if equivalent_id not in targets:
+                                    continue
+                                for origin_id in new_origins:
+                                    matched_distances.setdefault(
+                                        (origin_id, equivalent_id),
+                                        next_depth,
+                                    )
 
-            frontier = next_frontier
-            frontier_origins = next_origins
+            frontier_origins = next_frontier_origins
             depth = next_depth
 
-        return result
+        return [
+            (start_id, target_id, distance)
+            for (start_id, target_id), distance in sorted(
+                matched_distances.items()
+            )
+        ]
 
     def symbol_degrees(
         self,
@@ -354,57 +395,56 @@ class RelationGraphStore:
         return int(in_row["degree"] or 0), int(out_row["degree"] or 0)
 
 
-def filter_candidates_with_edges(
+def filter_candidates_with_store(
+    store: RelationGraphStore,
     candidates: List[Dict[str, Any]],
-    relation_entries: List[Tuple[Optional[str], str, Optional[int]]],
+    relation_entries: List[Tuple[Optional[str], str]],
     relation_kind: str,
     layer: Optional[int],
-    db_path: str = DEFAULT_CODE_DB_PATH,
 ) -> Optional[Set[str]]:
-    """
-    Return candidate symbol ids that satisfy caller/callee constraints via code_edges.
+    """Return candidate ids satisfying normalized caller/callee entries.
 
     relation_kind:
       - caller: candidate is reachable callee from the anchor caller
       - callee: candidate is reachable caller to the anchor callee
-    Return None when DB is unavailable or an anchor cannot be resolved, so callers
-    can fall back to the existing LSP path.
+
+    Return ``None`` when an anchor cannot be resolved so the caller can use the
+    existing LSP fallback. Candidate implementation-equivalence is cached for
+    the whole constraint execution instead of recomputed for every anchor.
     """
-    store = RelationGraphStore.open_if_ready(db_path)
-    if store is None:
-        return None
+    if relation_kind not in {"caller", "callee"}:
+        raise ValueError(f"Unsupported relation kind: {relation_kind}")
 
-    try:
-        candidate_ids = {
-            int(candidate["symbol_id"])
-            for candidate in candidates
-            if candidate.get("symbol_id") is not None
-        }
-        if not candidate_ids:
-            return set()
+    candidates_with_ids = [
+        (int(candidate["symbol_id"]), candidate)
+        for candidate in candidates
+        if candidate.get("symbol_id") is not None
+    ]
+    if not candidates_with_ids:
+        return set()
 
-        kept: Set[int] = set()
-        for file_name, func_name, hop_count in relation_entries:
-            anchors = store.resolve_symbols(file_name, func_name)
-            if anchors is None:
-                return None
-            max_depth = hop_count if hop_count is not None else layer
-            direction = "out" if relation_kind == "caller" else "in"
-            reachable = store.reachable(
-                anchors,
-                direction=direction,
-                max_depth=max_depth,
-                func_name=func_name,
-                exact_depth=hop_count is not None,
-                expand_start=file_name is None,
-            )
-            for candidate in candidates:
-                if candidate.get("symbol_id") is None:
-                    continue
-                candidate_id = int(candidate["symbol_id"])
-                candidate_func_name = candidate.get("name") or candidate.get("signature")
-                if store.equivalent_symbol_ids([candidate_id], func_name=candidate_func_name) & reachable:
-                    kept.add(candidate_id)
-        return {_symbol_key(sid) for sid in kept}
-    finally:
-        store.close()
+    candidate_equivalents = {
+        candidate_id: store.equivalent_symbol_ids(
+            [candidate_id],
+            func_name=candidate.get("name") or candidate.get("signature"),
+        )
+        for candidate_id, candidate in candidates_with_ids
+    }
+    kept: Set[int] = set()
+    direction = "out" if relation_kind == "caller" else "in"
+    for file_name, func_name in relation_entries:
+        anchors = store.resolve_symbols(file_name, func_name)
+        if anchors is None:
+            return None
+        reachable = store.reachable(
+            anchors,
+            direction=direction,
+            max_depth=layer,
+            func_name=func_name,
+            exact_depth=False,
+            expand_start=file_name is None,
+        )
+        for candidate_id, _candidate in candidates_with_ids:
+            if candidate_equivalents[candidate_id] & reachable:
+                kept.add(candidate_id)
+    return {_symbol_key(sid) for sid in kept}

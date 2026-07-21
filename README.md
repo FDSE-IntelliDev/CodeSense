@@ -177,7 +177,7 @@ condition 的 include groups 做 AND(n)，exclude groups 构造负向集合并�
 作为兼容键：兼容键相同的结果取交集，不同兼容组之间取并集。
 
 Relation plan 将单个 clause 内的 file、graph role、caller 和 callee 约束按 AND
-执行；多个 include clause 先做 UNION，再与 Surface 候选取交集；多个 exclude
+执行；多个 include clause 继续做 INTERSECT；多个 exclude
 clause 做 UNION 后从结果中减去。caller/callee 优先查询项目代码关系数据库，无法
 解析时复用 LSP fallback。在线 `code_ql` 执行尚未接入，计划会保留该字段并在执行
 报告中明确标记为未执行。

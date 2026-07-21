@@ -117,7 +117,6 @@ class SurfacePlan(SerializablePlan):
 class CallAnchor:
     file_name: Optional[str]
     symbol_name: str
-    hop_count: Optional[int]
 
 
 @dataclass(frozen=True)
@@ -145,7 +144,7 @@ class RelationFilters:
 @dataclass(frozen=True)
 class RelationResultLogic:
     clause_operator: str = "intersect"
-    include_clause_operator: str = "union"
+    include_clause_operator: str = "intersect"
     include_operator: str = "intersect_candidates"
     exclude_clause_operator: str = "union"
     exclude_operator: str = "subtract"

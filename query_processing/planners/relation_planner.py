@@ -8,12 +8,12 @@ from query_processing.plan_models import (
     CallAnchor,
     RelationClause,
     RelationFilters,
+    RelationGraphConstraint,
     RelationPlan,
 )
 from query_processing.planners.base import (
     normalize_optional_string,
     normalize_property,
-    normalize_string_list,
 )
 
 
@@ -57,11 +57,6 @@ class RelationPlanner:
         return RelationClause(
             clause_id=f"relation_{index}",
             file_path=normalize_optional_string(condition.get("file_path")),
-            container=normalize_optional_string(condition.get("container")),
-            code_element_types=[
-                item.lower()
-                for item in normalize_string_list(condition.get("code_element_type"))
-            ],
             graph_constraint=self._normalize_graph_constraint(
                 condition.get("graph_constraint")
             ),
@@ -71,14 +66,19 @@ class RelationPlanner:
             description=normalize_optional_string(condition.get("description")),
         )
 
-    def _normalize_graph_constraint(self, value: Any) -> Dict[str, Any]:
+    def _normalize_graph_constraint(
+        self,
+        value: Any,
+    ) -> Optional[RelationGraphConstraint]:
         if not isinstance(value, dict):
-            return {}
-        normalized = dict(value)
-        role = normalize_optional_string(normalized.get("role"))
-        if role is not None:
-            normalized["role"] = self.ROLE_ALIASES.get(role.lower(), role.lower())
-        return normalized
+            return None
+        role = normalize_optional_string(value.get("role"))
+        if role is None:
+            return None
+        normalized_role = self.ROLE_ALIASES.get(role.lower())
+        if normalized_role is None:
+            return None
+        return RelationGraphConstraint(role=normalized_role)
 
     @staticmethod
     def parse_call_anchor(value: Any) -> Optional[CallAnchor]:
@@ -87,34 +87,18 @@ class RelationPlanner:
             return None
 
         parts = raw.split(":")
-        if len(parts) >= 3:
+        if len(parts) == 2:
             file_name = normalize_optional_string(parts[0])
             symbol_name = normalize_optional_string(parts[1])
-            hop_count = RelationPlanner._parse_hop_count(parts[2])
-        elif len(parts) == 2:
-            file_name = normalize_optional_string(parts[0])
-            symbol_name = normalize_optional_string(parts[1])
-            hop_count = None
-        else:
+        elif len(parts) == 1:
             file_name = None
             symbol_name = raw
-            hop_count = None
+        else:
+            return None
 
         if symbol_name is None:
             return None
         return CallAnchor(
             file_name=file_name,
             symbol_name=symbol_name,
-            hop_count=hop_count,
         )
-
-    @staticmethod
-    def _parse_hop_count(value: Any) -> Optional[int]:
-        text = normalize_optional_string(value)
-        if text is None:
-            return None
-        try:
-            hop_count = int(text)
-        except (TypeError, ValueError):
-            return None
-        return hop_count if hop_count >= 0 else None

@@ -613,9 +613,15 @@ Surface Executor 已改为直接消费 `surface_semql.json`，不再解析旧的
 
 Relation Executor 已改为直接消费 `relation_semql.json`，不再从统一 SemQL 中反向
 解析 property、caller、callee 和 role。Planner 输出 clause 内 AND、include clause
-UNION 后与 Surface 候选相交、exclude clause UNION 后 subtract 的显式集合计划。
+INTERSECT、exclude clause UNION 后 subtract 的显式集合计划。
 
 - `file_path` 先做低成本候选收缩，graph role、caller、callee 在缩小后的集合上依次执行。
 - caller/callee 复用 `codegraph.sqlite` 优先、LSP fallback 的既有查询内核，并在一次执行中复用图数据库连接与 implementation relation 缓存。
+- 调用方未传入 `graph_store` 时先初始化连接，随后仍统一调用 `filter_candidates_with_store()`；不再维护第二套“自行连接并过滤”的包装函数。
+- `file_path` 显式区分源文件与目录/package：文件使用精确或路径后缀匹配，目录使用路径段/目录前缀匹配。
+- caller/callee 的 file 部分始终按“函数所在文件名”解释；只有进入 LSP fallback 时才解析成绝对路径。
+- caller/callee 不再携带 condition 级 hop count，调用深度统一由 Relation Executor 的 `layer` 控制。
+- graph role 的 include 过滤保留非函数候选；exclude 只返回真正具有目标图角色的函数，避免误删其他代码元素。
+- Relation Executor 的 `graph_role` 过滤测试已通过：单元测试覆盖 `entry_point` 命中及非函数候选在 include/exclude 下的保留差异；真实项目 login 样例将 82 个 Surface 候选过滤为 24 个 entry-point 候选，执行过程无 warning。
 - 当前 RelationCon 未启用的 container/code element type 不再写入 relation plan。
 - `code_ql` 暂时只保留计划与未执行 warning；code_ql-only exclude 不会误删全部候选。

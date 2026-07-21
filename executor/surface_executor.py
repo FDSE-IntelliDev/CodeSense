@@ -94,8 +94,8 @@ class SurfaceExecutor:
             self.project_output_dir / "ngramed_symbol.json"
         )
         self.codegraph_path = str(self.project_output_dir / "codegraph.sqlite")
-        self.filtered_result_path = str(self.output_dir / "filtered_by_type_hop_0.json")
-        self.evidence_result_path = str(self.output_dir / "surface_evidence_hop_0.json")
+        self.filtered_result_path = str(self.output_dir / "filtered_by_type.json")
+        self.evidence_result_path = str(self.output_dir / "surface_evidence.json")
         self.group_search_result_path = str(
             self.output_dir / "surface_group_search_results.json"
         )
@@ -965,7 +965,7 @@ def run_surface_search(
 
 def main() -> None:
     results = run_surface_search(output_dir=QUERY_OUTPUT_DIR)
-    output_path = Path(QUERY_OUTPUT_DIR) / "filtered_by_type_hop_0.json"
+    output_path = Path(QUERY_OUTPUT_DIR) / "filtered_by_type.json"
     print(
         json.dumps(
             {

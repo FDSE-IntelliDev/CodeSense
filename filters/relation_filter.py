@@ -25,23 +25,20 @@ from parsers.parallel_java_lsp_client import ParallelJavaLSPClient, ParallelJava
 from parsers.registry import parse_file_with_registry
 from query_processing.semql_utils import extract_semql_text_terms
 from utils.file_utils import load_res
-from filters.relation_graph_store import RelationGraphStore, filter_candidates_with_edges
+from filters.relation_graph_store import (
+    RelationGraphStore,
+    filter_candidates_with_store,
+)
 
 # 并发查询时的 worker 数量
 DEFAULT_WORKER_COUNT = 4
 
 
-def _parse_call_field(raw: str) -> Tuple[Optional[str], Optional[str], Optional[int]]:
-    """
-    Parse a caller/callee field value into (file_name, func_name, hop_count).
-
-    Preferred format "file_name:func_name:hop_count" -> (file_name, func_name, hop_count)
-    Missing components should be written as "None", e.g. "None:login:2".
-    Legacy formats "file_name:func_name" and "func_name" are still accepted.
-    """
+def _parse_call_field(raw: str) -> Tuple[Optional[str], Optional[str]]:
+    """Parse ``file_name:func_name`` or a bare function name."""
     raw = str(raw).strip()
     if not raw or raw.lower() == "none":
-        return None, None, None
+        return None, None
 
     def _none_if_empty(value: str) -> Optional[str]:
         value = value.strip()
@@ -49,28 +46,14 @@ def _parse_call_field(raw: str) -> Tuple[Optional[str], Optional[str], Optional[
             return None
         return value
 
-    def _parse_hop_count(value: Optional[str]) -> Optional[int]:
-        if value is None:
-            return None
-        value = value.strip()
-        if not value or value.lower() == "none":
-            return None
-        try:
-            return int(value)
-        except ValueError:
-            return None
-
     parts = raw.split(":")
-    if len(parts) >= 3:
-        file_name = _none_if_empty(parts[0])
-        func_name = _none_if_empty(parts[1])
-        hop_count = _parse_hop_count(parts[2])
-        return file_name, func_name, hop_count
     if len(parts) == 2:
         file_name = _none_if_empty(parts[0])
         func_name = _none_if_empty(parts[1])
-        return file_name, func_name, None
-    return None, _none_if_empty(raw), None
+        return file_name, func_name
+    if len(parts) == 1:
+        return None, _none_if_empty(raw)
+    return None, None
 
 
 def _base_func_name(name: Any) -> str:
@@ -152,7 +135,7 @@ def _to_symbols_index_schema(
 def _extract_callers_from_semql(
     semQL: Dict[str, Any],
     property_name: str,
-) -> List[Tuple[Optional[str], str, Optional[int]]]:
+) -> List[Tuple[Optional[str], str]]:
     """Extract all caller field values from relation conditions."""
     raw_values = extract_semql_text_terms(
         semQL,
@@ -160,18 +143,18 @@ def _extract_callers_from_semql(
         condition_type="relation",
         term_name="caller",
     )
-    result: List[Tuple[Optional[str], str, Optional[int]]] = []
+    result: List[Tuple[Optional[str], str]] = []
     for raw in raw_values:
-        fn, func, hop_count = _parse_call_field(raw)
+        fn, func = _parse_call_field(raw)
         if func:
-            result.append((fn, func, hop_count))
+            result.append((fn, func))
     return result
 
 
 def _extract_callees_from_semql(
     semQL: Dict[str, Any],
     property_name: str,
-) -> List[Tuple[Optional[str], str, Optional[int]]]:
+) -> List[Tuple[Optional[str], str]]:
     """Extract all callee field values from relation conditions."""
     raw_values = extract_semql_text_terms(
         semQL,
@@ -179,11 +162,11 @@ def _extract_callees_from_semql(
         condition_type="relation",
         term_name="callee",
     )
-    result: List[Tuple[Optional[str], str, Optional[int]]] = []
+    result: List[Tuple[Optional[str], str]] = []
     for raw in raw_values:
-        fn, func, hop_count = _parse_call_field(raw)
+        fn, func = _parse_call_field(raw)
         if func:
-            result.append((fn, func, hop_count))
+            result.append((fn, func))
     return result
 
 
@@ -289,7 +272,7 @@ def _can_resolve_to_unique_file(
 
 def _filter_by_caller_with_path(
     candidates: List[Dict[str, Any]],
-    callers_with_path: List[Tuple[str, str, Optional[int]]],
+    resolved_callers: List[Tuple[str, str]],
     layer: Optional[int],
 ) -> Set[str]:
     """
@@ -301,9 +284,8 @@ def _filter_by_caller_with_path(
     lsp_client.start()
     try:
         extractor = JavaCallChainExtractor(lsp_client)
-        for abs_path, func_name, hop_count in callers_with_path:
-            query_layer = hop_count if hop_count is not None else layer
-            callees = extractor.get_callees(abs_path, func_name, layer=query_layer)
+        for abs_path, func_name in resolved_callers:
+            callees = extractor.get_callees(abs_path, func_name, layer=layer)
             callee_keys: Set[Tuple[str, str]] = {
                 (_base_func_name(c.get("name")), _uri_to_path(c.get("uri")))
                 for c in callees
@@ -330,7 +312,7 @@ def _filter_by_caller_with_path(
 
 def _filter_by_caller_without_path(
     candidates: List[Dict[str, Any]],
-    caller_entries: List[Tuple[str, Optional[int]]],
+    unresolved_callers: List[str],
     layer: Optional[int],
     worker_count: int = DEFAULT_WORKER_COUNT,
 ) -> Set[str]:
@@ -339,10 +321,7 @@ def _filter_by_caller_without_path(
     Uses a thread pool of ParallelJavaLSPClient instances for concurrency.
     """
     kept: Set[str] = set()
-    targets_by_layer: Dict[Optional[int], Set[str]] = {}
-    for name, hop_count in caller_entries:
-        query_layer = hop_count if hop_count is not None else layer
-        targets_by_layer.setdefault(query_layer, set()).add(_base_func_name(name))
+    target_names = {_base_func_name(name) for name in unresolved_callers}
 
     def _query_one(sym: Dict[str, Any]) -> Optional[str]:
         sym_file = str(sym.get("file", "")).strip()
@@ -356,15 +335,14 @@ def _filter_by_caller_without_path(
         client.start()
         try:
             extractor = ParallelJavaCallChainExtractor(client)
-            for query_layer, target_set in targets_by_layer.items():
-                callers = extractor.get_callers(abs_path, sym_name, layer=query_layer)
-                caller_name_set: Set[str] = {
-                    _base_func_name(c.get("name"))
-                    for c in callers
-                    if c.get("name")
-                }
-                if caller_name_set & target_set:
-                    return sid
+            callers = extractor.get_callers(abs_path, sym_name, layer=layer)
+            caller_name_set: Set[str] = {
+                _base_func_name(c.get("name"))
+                for c in callers
+                if c.get("name")
+            }
+            if caller_name_set & target_names:
+                return sid
         finally:
             client.stop()
         return None
@@ -385,7 +363,7 @@ def _filter_by_caller_without_path(
 
 def _filter_by_callee_with_path(
     candidates: List[Dict[str, Any]],
-    callees_with_path: List[Tuple[str, str, Optional[int]]],
+    resolved_callees: List[Tuple[str, str]],
     layer: Optional[int],
 ) -> Set[str]:
     """
@@ -397,9 +375,8 @@ def _filter_by_callee_with_path(
     lsp_client.start()
     try:
         extractor = JavaCallChainExtractor(lsp_client)
-        for abs_path, func_name, hop_count in callees_with_path:
-            query_layer = hop_count if hop_count is not None else layer
-            callers = extractor.get_callers(abs_path, func_name, layer=query_layer)
+        for abs_path, func_name in resolved_callees:
+            callers = extractor.get_callers(abs_path, func_name, layer=layer)
             caller_keys: Set[Tuple[str, str]] = {
                 (_base_func_name(c.get("name")), _uri_to_path(c.get("uri")))
                 for c in callers
@@ -426,7 +403,7 @@ def _filter_by_callee_with_path(
 
 def _filter_by_callee_without_path(
     candidates: List[Dict[str, Any]],
-    callee_entries: List[Tuple[str, Optional[int]]],
+    unresolved_callees: List[str],
     layer: Optional[int],
     worker_count: int = DEFAULT_WORKER_COUNT,
 ) -> Set[str]:
@@ -435,10 +412,7 @@ def _filter_by_callee_without_path(
     Uses a thread pool of ParallelJavaLSPClient instances for concurrency.
     """
     kept: Set[str] = set()
-    targets_by_layer: Dict[Optional[int], Set[str]] = {}
-    for name, hop_count in callee_entries:
-        query_layer = hop_count if hop_count is not None else layer
-        targets_by_layer.setdefault(query_layer, set()).add(_base_func_name(name))
+    target_names = {_base_func_name(name) for name in unresolved_callees}
 
     def _query_one(sym: Dict[str, Any]) -> Optional[str]:
         sym_file = str(sym.get("file", "")).strip()
@@ -452,15 +426,14 @@ def _filter_by_callee_without_path(
         client.start()
         try:
             extractor = ParallelJavaCallChainExtractor(client)
-            for query_layer, target_set in targets_by_layer.items():
-                callees = extractor.get_callees(abs_path, sym_name, layer=query_layer)
-                callee_name_set: Set[str] = {
-                    _base_func_name(c.get("name"))
-                    for c in callees
-                    if c.get("name")
-                }
-                if callee_name_set & target_set:
-                    return sid
+            callees = extractor.get_callees(abs_path, sym_name, layer=layer)
+            callee_name_set: Set[str] = {
+                _base_func_name(c.get("name"))
+                for c in callees
+                if c.get("name")
+            }
+            if callee_name_set & target_names:
+                return sid
         finally:
             client.stop()
         return None
@@ -478,6 +451,198 @@ def _filter_by_callee_without_path(
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
+
+def filter_candidates_by_roles(
+    candidates: List[Dict[str, Any]],
+    roles: List[str],
+    candidate_path: str,
+    graph_store: Optional[RelationGraphStore] = None,
+    preserve_non_applicable: bool = True,
+) -> List[Dict[str, Any]]:
+    """Apply graph roles while handling non-callable candidates explicitly.
+
+    Non-callable symbols do not have a call-graph role. They remain valid while
+    evaluating an include constraint, but must not be reported as matches for
+    an exclude constraint.
+    """
+    normalized_roles = {
+        str(role).strip().lower()
+        for role in roles
+        if str(role).strip().lower() in {"entry_point", "leaf", "isolate"}
+    }
+    if not candidates or not normalized_roles:
+        return list(candidates)
+
+    store = graph_store
+    owns_store = store is None
+    if store is None:
+        store = RelationGraphStore.open_if_ready(
+            _codegraph_path_from_candidate_path(candidate_path)
+        )
+    if store is None:
+        return list(candidates) if preserve_non_applicable else []
+
+    try:
+        kept_candidates: List[Dict[str, Any]] = []
+        for candidate in candidates:
+            symbol_type = str(candidate.get("type") or "").strip().lower()
+            if symbol_type not in {"function", "method"}:
+                if preserve_non_applicable:
+                    kept_candidates.append(candidate)
+                continue
+
+            symbol_id = candidate.get("symbol_id")
+            if symbol_id is None:
+                continue
+
+            in_degree, out_degree = store.symbol_degrees(
+                int(symbol_id),
+                func_name=candidate.get("name") or candidate.get("signature"),
+            )
+            role_matches = {
+                "entry_point": in_degree == 0 and out_degree > 0,
+                "leaf": out_degree == 0 and in_degree > 0,
+                "isolate": in_degree == 0 and out_degree == 0,
+            }
+            if any(role_matches[role] for role in normalized_roles):
+                kept_candidates.append(candidate)
+        return kept_candidates
+    finally:
+        if owns_store:
+            store.close()
+
+
+def _filter_candidates_by_call_entries(
+    candidates: List[Dict[str, Any]],
+    relation_entries: List[Tuple[Optional[str], str]],
+    relation_kind: str,
+    candidate_path: str,
+    layer: Optional[int],
+    worker_count: int,
+    graph_store: Optional[RelationGraphStore] = None,
+    preserve_on_empty_fallback: bool = True,
+) -> List[Dict[str, Any]]:
+    """Apply normalized caller/callee entries with the existing LSP fallback."""
+    if not candidates or not relation_entries:
+        return list(candidates)
+
+    store = graph_store
+    owns_store = store is None
+    if store is None:
+        store = RelationGraphStore.open_if_ready(
+            _codegraph_path_from_candidate_path(candidate_path)
+        )
+
+    edge_kept_ids = None
+    if store is not None:
+        try:
+            edge_kept_ids = filter_candidates_with_store(
+                store=store,
+                candidates=candidates,
+                relation_entries=relation_entries,
+                relation_kind=relation_kind,
+                layer=layer,
+            )
+        finally:
+            if owns_store:
+                store.close()
+    if edge_kept_ids is not None:
+        return [
+            symbol
+            for symbol in candidates
+            if _symbol_key(symbol.get("symbol_id")) in edge_kept_ids
+        ]
+
+    resolved_anchors: List[Tuple[str, str]] = []
+    unresolved_anchors: List[str] = []
+    for file_name, func_name in relation_entries:
+        if file_name:
+            # RelationCon provides a file name, not an absolute path. Resolve
+            # it against the project only for the LSP API that requires one.
+            abs_path = _can_resolve_to_unique_file(file_name, func_name)
+            if abs_path:
+                resolved_anchors.append((abs_path, func_name))
+                continue
+        unresolved_anchors.append(func_name)
+
+    kept_ids: Set[str] = set()
+    if relation_kind == "caller":
+        if resolved_anchors:
+            kept_ids |= _filter_by_caller_with_path(
+                candidates,
+                resolved_anchors,
+                layer,
+            )
+        if unresolved_anchors:
+            kept_ids |= _filter_by_caller_without_path(
+                candidates,
+                unresolved_anchors,
+                layer,
+                worker_count=worker_count,
+            )
+    elif relation_kind == "callee":
+        if resolved_anchors:
+            kept_ids |= _filter_by_callee_with_path(
+                candidates,
+                resolved_anchors,
+                layer,
+            )
+        if unresolved_anchors:
+            kept_ids |= _filter_by_callee_without_path(
+                candidates,
+                unresolved_anchors,
+                layer,
+                worker_count=worker_count,
+            )
+    else:
+        raise ValueError(f"Unsupported relation kind: {relation_kind}")
+
+    if not kept_ids:
+        return list(candidates) if preserve_on_empty_fallback else []
+    return [symbol for symbol in candidates if symbol.get("symbol_id") in kept_ids]
+
+
+def filter_candidates_by_caller_entries(
+    candidates: List[Dict[str, Any]],
+    caller_entries: List[Tuple[Optional[str], str]],
+    candidate_path: str,
+    layer: Optional[int] = 1,
+    worker_count: int = DEFAULT_WORKER_COUNT,
+    graph_store: Optional[RelationGraphStore] = None,
+    preserve_on_empty_fallback: bool = True,
+) -> List[Dict[str, Any]]:
+    return _filter_candidates_by_call_entries(
+        candidates=candidates,
+        relation_entries=caller_entries,
+        relation_kind="caller",
+        candidate_path=candidate_path,
+        layer=layer,
+        worker_count=worker_count,
+        graph_store=graph_store,
+        preserve_on_empty_fallback=preserve_on_empty_fallback,
+    )
+
+
+def filter_candidates_by_callee_entries(
+    candidates: List[Dict[str, Any]],
+    callee_entries: List[Tuple[Optional[str], str]],
+    candidate_path: str,
+    layer: Optional[int] = 1,
+    worker_count: int = DEFAULT_WORKER_COUNT,
+    graph_store: Optional[RelationGraphStore] = None,
+    preserve_on_empty_fallback: bool = True,
+) -> List[Dict[str, Any]]:
+    return _filter_candidates_by_call_entries(
+        candidates=candidates,
+        relation_entries=callee_entries,
+        relation_kind="callee",
+        candidate_path=candidate_path,
+        layer=layer,
+        worker_count=worker_count,
+        graph_store=graph_store,
+        preserve_on_empty_fallback=preserve_on_empty_fallback,
+    )
+
 
 def role_filter(
     semQL_path: str,
@@ -498,46 +663,14 @@ def role_filter(
     """
     semQL = load_res(semQL_path)
     candidates = load_res(candidate_path)
-    if not candidates:
-        return []
-
     roles = _extract_roles_from_semql(semQL, property_name)
-    if not roles:
-        return _to_symbols_index_schema(candidates, candidate_path)
-
-    store = RelationGraphStore.open_if_ready(
-        _codegraph_path_from_candidate_path(candidate_path)
+    filtered = filter_candidates_by_roles(
+        candidates,
+        roles,
+        candidate_path,
+        preserve_non_applicable=property_name == "include",
     )
-    if store is None:
-        return _to_symbols_index_schema(candidates, candidate_path)
-
-    try:
-        filtered: List[Dict[str, Any]] = []
-        for candidate in candidates:
-            symbol_type = str(candidate.get("type") or "").strip().lower()
-            if symbol_type not in {"function", "method"}:
-                filtered.append(candidate)
-                continue
-
-            symbol_id = candidate.get("symbol_id")
-            if symbol_id is None:
-                continue
-
-            in_degree, out_degree = store.symbol_degrees(
-                int(symbol_id),
-                func_name=candidate.get("name") or candidate.get("signature"),
-            )
-            role_matches = {
-                "entry_point": in_degree == 0 and out_degree > 0,
-                "leaf": out_degree == 0 and in_degree > 0,
-                "isolate": in_degree == 0 and out_degree == 0,
-            }
-            if any(role_matches[role] for role in roles):
-                filtered.append(candidate)
-
-        return _to_symbols_index_schema(filtered, candidate_path)
-    finally:
-        store.close()
+    return _to_symbols_index_schema(filtered, candidate_path)
 
 
 def caller_filter(
@@ -567,53 +700,16 @@ def caller_filter(
     """
     semQL = load_res(semQL_path)
     caller_entries = _extract_callers_from_semql(semQL, property_name)
-    if not caller_entries:
-        candidates = load_res(candidate_path)
-        return _to_symbols_index_schema(candidates, candidate_path)
-
     candidates = load_res(candidate_path)
-    if not candidates:
-        return []
-
-    edge_kept_ids = filter_candidates_with_edges(
+    filtered = filter_candidates_by_caller_entries(
         candidates=candidates,
-        relation_entries=caller_entries,
-        relation_kind="caller",
+        caller_entries=caller_entries,
+        candidate_path=candidate_path,
         layer=layer,
-        db_path=_codegraph_path_from_candidate_path(candidate_path),
+        worker_count=worker_count,
+        preserve_on_empty_fallback=property_name == "include",
     )
-    if edge_kept_ids is not None:
-        filtered = [sym for sym in candidates if _symbol_key(sym.get("symbol_id")) in edge_kept_ids]
-        return _to_symbols_index_schema(filtered, candidate_path)
-
-    # Separate entries that can be uniquely resolved from those that cannot
-    callers_with_path: List[Tuple[str, str, Optional[int]]] = []
-    callers_without_path: List[Tuple[str, Optional[int]]] = []
-
-    for file_name, func_name, hop_count in caller_entries:
-        if file_name:
-            abs_path = _can_resolve_to_unique_file(file_name, func_name)
-            if abs_path:
-                callers_with_path.append((abs_path, func_name, hop_count))
-                continue
-        callers_without_path.append((func_name, hop_count))
-
-    kept_ids: Set[str] = set()
-
-    # Case 1: single LSP query per caller
-    if callers_with_path:
-        kept_ids |= _filter_by_caller_with_path(candidates, callers_with_path, layer)
-
-    # Case 2: concurrent queries per candidate
-    if callers_without_path:
-        kept_ids |= _filter_by_caller_without_path(
-            candidates, callers_without_path, layer, worker_count=worker_count
-        )
-
-    if kept_ids:
-        filtered = [sym for sym in candidates if sym.get("symbol_id") in kept_ids]
-        return _to_symbols_index_schema(filtered, candidate_path)
-    return _to_symbols_index_schema(candidates, candidate_path)
+    return _to_symbols_index_schema(filtered, candidate_path)
 
 
 def callee_filter(
@@ -644,52 +740,16 @@ def callee_filter(
     """
     semQL = load_res(semQL_path)
     callee_entries = _extract_callees_from_semql(semQL, property_name)
-    if not callee_entries:
-        candidates = load_res(candidate_path)
-        return _to_symbols_index_schema(candidates, candidate_path)
-
     candidates = load_res(candidate_path)
-    if not candidates:
-        return []
-
-    edge_kept_ids = filter_candidates_with_edges(
+    filtered = filter_candidates_by_callee_entries(
         candidates=candidates,
-        relation_entries=callee_entries,
-        relation_kind="callee",
+        callee_entries=callee_entries,
+        candidate_path=candidate_path,
         layer=layer,
-        db_path=_codegraph_path_from_candidate_path(candidate_path),
+        worker_count=worker_count,
+        preserve_on_empty_fallback=property_name == "include",
     )
-    if edge_kept_ids is not None:
-        filtered = [sym for sym in candidates if _symbol_key(sym.get("symbol_id")) in edge_kept_ids]
-        return _to_symbols_index_schema(filtered, candidate_path)
-
-    callees_with_path: List[Tuple[str, str, Optional[int]]] = []
-    callees_without_path: List[Tuple[str, Optional[int]]] = []
-
-    for file_name, func_name, hop_count in callee_entries:
-        if file_name:
-            abs_path = _can_resolve_to_unique_file(file_name, func_name)
-            if abs_path:
-                callees_with_path.append((abs_path, func_name, hop_count))
-                continue
-        callees_without_path.append((func_name, hop_count))
-
-    kept_ids: Set[str] = set()
-
-    # Case 1: single LSP query per callee
-    if callees_with_path:
-        kept_ids |= _filter_by_callee_with_path(candidates, callees_with_path, layer)
-
-    # Case 2: concurrent queries per candidate
-    if callees_without_path:
-        kept_ids |= _filter_by_callee_without_path(
-            candidates, callees_without_path, layer, worker_count=worker_count
-        )
-
-    if kept_ids:
-        filtered = [sym for sym in candidates if sym.get("symbol_id") in kept_ids]
-        return _to_symbols_index_schema(filtered, candidate_path)
-    return _to_symbols_index_schema(candidates, candidate_path)
+    return _to_symbols_index_schema(filtered, candidate_path)
 
 
 if __name__ == "__main__":
