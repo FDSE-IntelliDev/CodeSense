@@ -11,6 +11,8 @@
 将源代码解析为结构化索引，供在线检索使用：
 
 1. **代码解析** (`code_parser.py`) — 解析源文件，提取符号表、依赖图
+   - `init/build_code_db.py` — 现有 parser + Java LSP 数据库构建链路
+   - `codeQL/` — CodeQL 批量解析与同 schema 数据库构建链路，用于和 LSP 结果对比
 2. **子词分词** (`ngram_split.py`) — 对符号名进行分词，构建 `子词 -> [代码元素]` 的 ngram 索引
 3. **倒排索引** (`invert_index.py`) — 基于缩写扩展，构建 `标识符 -> [缩写子词]` 的倒排索引
 
@@ -61,6 +63,11 @@ CodeSearch/
 │   ├── java_lsp_client.py     # Java LSP 客户端
 │   ├── parallel_java_lsp_client.py
 │   └── code_element_types.py  # 代码元素类型注册表
+├── codeQL/                    # CodeQL 离线解析与 codegraph.codeql.sqlite 构建
+│   ├── build_code_db.py
+│   ├── runner.py
+│   ├── transform.py
+│   └── queries/java/
 ├── query_processing/          # 查询理解
 │   ├── llm_keyword_extractor.py   # LLM 关键词提取
 │   ├── llm_semCon_extractor.py    # LLM SemCon 条件提取
@@ -118,6 +125,11 @@ pip install -r requirements.txt
   ```
 - **其他系统**: 参考 [eclipse.jdt.ls](https://github.com/eclipse/eclipse.jdt.ls) 官方页面，将 `jdtls` 添加到环境变量。
 
+### 可选系统依赖（CodeQL 对比链路）
+
+CodeQL 版本默认生成独立的 `codegraph.codeql.sqlite`，不会覆盖 LSP 版本。
+安装方式、构建模式和完整命令见 [`codeQL/README.md`](codeQL/README.md)。
+
 ## 运行
 
 ### 离线的索引构建
@@ -155,14 +167,20 @@ RelationCon  -> RelationPlanner  -> relation_semql.json
 IntentionCon -> IntentionPlanner -> intention_semql.json
 ```
 
-Surface Executor 已直接读取 `surface_semql.json`；Relation 与 Intention Executor
-仍按后续迁移顺序接入各自的领域计划。旧组合 SemQL 只保留兼容入口，不再作为
-Surface Executor 的输入。
+Surface 与 Relation Executor 已分别直接读取 `surface_semql.json` 和
+`relation_semql.json`；Intention Executor 仍按后续迁移顺序接入独立计划。旧组合
+SemQL 只保留兼容入口，不再作为 Surface/Relation Executor 的输入。
 
 Surface plan 按层级表达组合逻辑：group 内的 keywords/synonyms 做 OR，同一
 condition 的 include groups 做 AND(n)，exclude groups 构造负向集合并从正向
 结果中减去。多个 SurfaceCon condition 使用 `(match_kind, code_element_types)`
 作为兼容键：兼容键相同的结果取交集，不同兼容组之间取并集。
+
+Relation plan 将单个 clause 内的 file、graph role、caller 和 callee 约束按 AND
+执行；多个 include clause 先做 UNION，再与 Surface 候选取交集；多个 exclude
+clause 做 UNION 后从结果中减去。caller/callee 优先查询项目代码关系数据库，无法
+解析时复用 LSP fallback。在线 `code_ql` 执行尚未接入，计划会保留该字段并在执行
+报告中明确标记为未执行。
 
 ## 数据结构 (Schema)
 

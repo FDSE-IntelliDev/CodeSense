@@ -42,18 +42,10 @@ class SurfaceKeywordGroup:
 
 
 @dataclass(frozen=True)
-class SurfacePairwiseHopCount:
-    groups: List[str]
-    hop_count: int
-    reason: Optional[str] = None
-
-
-@dataclass(frozen=True)
 class SurfaceGroupLogic:
     groups: List[str]
-    graph_scope: List[str]
-    default_hop_count: int = 0
-    pairwise_hop_counts: List[SurfacePairwiseHopCount] = field(default_factory=list)
+    graph_scope: str
+    hop_count: int
     reason: Optional[str] = None
 
 
@@ -61,7 +53,6 @@ class SurfaceGroupLogic:
 class SurfaceGroupExpression:
     operator: str
     groups: List[str]
-    default_hop_count: int = 0
     rules: List[SurfaceGroupLogic] = field(default_factory=list)
 
 
@@ -130,12 +121,15 @@ class CallAnchor:
 
 
 @dataclass(frozen=True)
+class RelationGraphConstraint:
+    role: Optional[str] = None
+
+
+@dataclass(frozen=True)
 class RelationClause:
     clause_id: str
     file_path: Optional[str]
-    container: Optional[str]
-    code_element_types: List[str]
-    graph_constraint: Dict[str, Any]
+    graph_constraint: Optional[RelationGraphConstraint]
     caller: Optional[CallAnchor]
     callee: Optional[CallAnchor]
     code_ql: Optional[str]
@@ -150,7 +144,10 @@ class RelationFilters:
 
 @dataclass(frozen=True)
 class RelationResultLogic:
+    clause_operator: str = "intersect"
+    include_clause_operator: str = "union"
     include_operator: str = "intersect_candidates"
+    exclude_clause_operator: str = "union"
     exclude_operator: str = "subtract"
 
 

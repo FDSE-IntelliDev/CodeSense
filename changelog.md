@@ -600,3 +600,22 @@ Surface Executor 已改为直接消费 `surface_semql.json`，不再解析旧的
 - 新增 `surface_group_search_results.json`，保存 term OR 与 condition 类型过滤后的逐 group 直接命中；该产物位于 clause 的 identity / OR / AND(n) 之前，便于对照分析各概念组的原始召回。
 - 新增 `surface_evidence_hop_0.json`，按 condition/group 记录查询 `term`、实际 `matched_term`、direct/graph_neighbor、距离和邻居 symbol。
 - `code_snippet`、`code_line` 与非空 `code_text` 暂不执行，当前返回明确 warning，并保留后续专用搜索 Executor 的 TODO。
+
+## 2026-07-20 — CodeQL 数据库构建对比链路
+
+新增 `codeQL/`，以 CodeQL database 和项目级批量查询替代逐 symbol 的 Java LSP
+请求，并复用 `init.code_db.CodeDatabase` 输出同 schema 的
+`codegraph.codeql.sqlite`。当前 Java 查询覆盖文件、符号、import、调用边、类型
+继承/实现和方法 override；转换阶段通过 stable key 哈希映射完成线性时间关联，
+同时输出逐阶段耗时，便于后续和 LSP 链路比较覆盖率与构建成本。
+
+## 2026-07-21 — Relation Executor 直接执行领域计划
+
+Relation Executor 已改为直接消费 `relation_semql.json`，不再从统一 SemQL 中反向
+解析 property、caller、callee 和 role。Planner 输出 clause 内 AND、include clause
+UNION 后与 Surface 候选相交、exclude clause UNION 后 subtract 的显式集合计划。
+
+- `file_path` 先做低成本候选收缩，graph role、caller、callee 在缩小后的集合上依次执行。
+- caller/callee 复用 `codegraph.sqlite` 优先、LSP fallback 的既有查询内核，并在一次执行中复用图数据库连接与 implementation relation 缓存。
+- 当前 RelationCon 未启用的 container/code element type 不再写入 relation plan。
+- `code_ql` 暂时只保留计划与未执行 warning；code_ql-only exclude 不会误删全部候选。

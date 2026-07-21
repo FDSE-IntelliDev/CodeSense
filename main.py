@@ -130,7 +130,7 @@ def process_online(
 
     print("\n[4/5] Running Relation Executor ...")
     relation_results = run_relation_executor(
-        semQL_path=semQL_path,
+        relation_plan_path=relation_semQL_path,
         surface_search_result_path=surface_result_path,
         output_path=relation_result_path,
     )

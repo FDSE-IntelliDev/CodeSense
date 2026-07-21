@@ -13,7 +13,6 @@ from query_processing.plan_models import (
     SurfaceGroupLogic,
     SurfaceKeywordGroup,
     SurfaceMatchSpec,
-    SurfacePairwiseHopCount,
     SurfacePlan,
     SurfaceRetrievalClause,
     SurfaceTerm,
@@ -30,7 +29,6 @@ class SurfacePlanner:
     """Normalize SurfaceCon without collapsing term, group, or condition logic."""
 
     SUPPORTED_MATCH_KINDS = {"code_element", "code_snippet", "code_line", "unknown"}
-    DEFAULT_HOP_COUNT = 0
 
     def plan(
         self,
@@ -102,7 +100,6 @@ class SurfacePlanner:
             group_expression=SurfaceGroupExpression(
                 operator=operator,
                 groups=group_ids,
-                default_hop_count=self.DEFAULT_HOP_COUNT,
                 rules=self._normalize_group_logic(raw_group_logic, groups),
             ),
         )
@@ -221,78 +218,57 @@ class SurfacePlanner:
         if not isinstance(value, list):
             return []
 
-        include_group_ids = {group.group_id for group in keyword_groups}
-        result: List[SurfaceGroupLogic] = []
+        group_order = {
+            group.group_id: index
+            for index, group in enumerate(keyword_groups)
+        }
+        include_group_ids = set(group_order)
+        normalized_rules: Dict[
+            Tuple[frozenset, str],
+            SurfaceGroupLogic,
+        ] = {}
+        rule_order: List[Tuple[frozenset, str]] = []
         for raw_logic in value:
             if not isinstance(raw_logic, dict):
                 continue
 
-            groups = [
-                group_id
-                for group_id in normalize_string_list(raw_logic.get("groups"))
-                if group_id in include_group_ids
-            ]
-            if len(groups) < 2:
+            groups = normalize_string_list(raw_logic.get("groups"))
+            if (
+                len(groups) != 2
+                or groups[0] == groups[1]
+                or any(group_id not in include_group_ids for group_id in groups)
+            ):
+                continue
+            groups.sort(key=group_order.__getitem__)
+
+            graph_scope = (
+                normalize_optional_string(raw_logic.get("graph_scope")) or ""
+            ).lower()
+            if graph_scope not in {"call", "import"}:
                 continue
 
-            graph_scope = [
-                scope.lower()
-                for scope in normalize_string_list(raw_logic.get("graph_scope"))
-                if scope.lower() in {"call", "import"}
-            ]
-            result.append(
-                SurfaceGroupLogic(
-                    groups=groups,
-                    graph_scope=graph_scope,
-                    default_hop_count=self._normalize_hop_count(
-                        raw_logic.get("default_hop_count"),
-                        default=self.DEFAULT_HOP_COUNT,
-                    ),
-                    pairwise_hop_counts=self._normalize_pairwise_hop_counts(
-                        raw_logic.get("pairwise_hop_counts"),
-                        set(groups),
-                    ),
-                    reason=normalize_optional_string(raw_logic.get("reason")),
-                )
-            )
-        return result
-
-    @staticmethod
-    def _normalize_pairwise_hop_counts(
-        value: Any,
-        allowed_group_ids: set,
-    ) -> List[SurfacePairwiseHopCount]:
-        if not isinstance(value, list):
-            return []
-
-        result: List[SurfacePairwiseHopCount] = []
-        seen_pairs = set()
-        for raw_pair in value:
-            if not isinstance(raw_pair, dict):
-                continue
-            groups = normalize_string_list(raw_pair.get("groups"))
-            if len(groups) != 2 or any(group not in allowed_group_ids for group in groups):
-                continue
-
-            hop_count = SurfacePlanner._normalize_hop_count(
-                raw_pair.get("hop_count"),
+            hop_count = self._normalize_hop_count(
+                raw_logic.get("hop_count"),
                 default=None,
             )
             if hop_count is None:
                 continue
 
-            pair_key = frozenset(groups)
-            if len(pair_key) != 2 or pair_key in seen_pairs:
-                continue
-            seen_pairs.add(pair_key)
-            result.append(
-                SurfacePairwiseHopCount(
-                    groups=groups,
-                    hop_count=hop_count,
-                    reason=normalize_optional_string(raw_pair.get("reason")),
-                )
+            rule_key = (frozenset(groups), graph_scope)
+            candidate = SurfaceGroupLogic(
+                groups=groups,
+                graph_scope=graph_scope,
+                hop_count=hop_count,
+                reason=normalize_optional_string(raw_logic.get("reason")),
             )
-        return result
+            existing = normalized_rules.get(rule_key)
+            if existing is None:
+                rule_order.append(rule_key)
+                normalized_rules[rule_key] = candidate
+            elif candidate.hop_count < existing.hop_count:
+                normalized_rules[rule_key] = candidate
+
+        return [normalized_rules[rule_key] for rule_key in rule_order]
 
     @staticmethod
     def _normalize_hop_count(value: Any, default: Optional[int]) -> Optional[int]:

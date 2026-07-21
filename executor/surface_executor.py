@@ -17,7 +17,7 @@ import sys
 from copy import deepcopy
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Sequence, Set, Tuple
 
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -49,6 +49,32 @@ class _ExecutionSet:
     coverage: Dict[str, Dict[str, Dict[str, Dict[str, Any]]]] = field(
         default_factory=dict
     )
+    # symbol_id -> condition_id -> pair-rule evidence
+    pair_coverage: Dict[str, Dict[str, List[Dict[str, Any]]]] = field(
+        default_factory=dict
+    )
+
+
+@dataclass(frozen=True)
+class _PairRule:
+    rule_id: str
+    left_group_id: str
+    right_group_id: str
+    hop_count: int
+    graph_scope: str
+
+
+@dataclass(frozen=True)
+class _PairMatch:
+    left_symbol_id: str
+    right_symbol_id: str
+    distance: int
+
+
+@dataclass(frozen=True)
+class _PairResult:
+    rule: _PairRule
+    matches: Tuple[_PairMatch, ...]
 
 
 class SurfaceExecutor:
@@ -133,6 +159,7 @@ class SurfaceExecutor:
                 symbol_id: {
                     "condition_ids": list(final_set.coverage.get(symbol_id, {})),
                     "coverage": final_set.coverage.get(symbol_id, {}),
+                    "pair_coverage": final_set.pair_coverage.get(symbol_id, {}),
                 }
                 for symbol_id in final_set.symbols
             },
@@ -444,179 +471,310 @@ class SurfaceExecutor:
         if len(group_ids) < 2:
             return group_results[group_ids[0]] if group_ids else _ExecutionSet()
 
-        pair_rules: Dict[frozenset, Tuple[int, Tuple[str, ...]]] = {}
-        for index, left_group in enumerate(group_ids):
-            for right_group in group_ids[index + 1 :]:
-                pair_rules[frozenset((left_group, right_group))] = self._pair_rule(
-                    expression,
-                    left_group,
-                    right_group,
-                )
-
-        if all(limit == 0 for limit, _scopes in pair_rules.values()):
+        pair_rules = self._compile_pair_rules(group_ids, expression)
+        if not pair_rules:
             return self._intersect([group_results[group_id] for group_id in group_ids])
 
-        positive_call_rules = [
-            pair
-            for pair, (limit, scopes) in pair_rules.items()
-            if limit > 0 and "call" in scopes
-        ]
-        # unsupported_rules = [
-        #     pair
-        #     for pair, (limit, scopes) in pair_rules.items()
-        #     if limit > 0 and "call" not in scopes
-        # ]
-        # if unsupported_rules:
-        #     self._warn(
-        #         f"{condition_id}: non-call AND(n) scope is not supported; "
-        #         "the affected pairs use strict intersection"
-        #     )
-        if not positive_call_rules:
-            return self._intersect([group_results[group_id] for group_id in group_ids])
-
-        graph_store = self._get_graph_store()
-        if graph_store is None:
+        requires_call_graph = any(
+            rule.hop_count > 0 and rule.graph_scope == "call"
+            for rule in pair_rules
+        )
+        graph_store = self._get_graph_store() if requires_call_graph else None
+        if requires_call_graph and graph_store is None:
             self._warn(
                 f"{condition_id}: call graph unavailable; AND(n) degraded to AND(0)"
             )
-            return self._intersect([group_results[group_id] for group_id in group_ids])
 
-        max_hop_by_group = {group_id: 0 for group_id in group_ids}
-        for pair, (limit, scopes) in pair_rules.items():
-            if limit <= 0 or "call" not in scopes:
-                continue
-            for group_id in pair:
-                max_hop_by_group[group_id] = max(max_hop_by_group[group_id], limit)
-
-        neighborhoods: Dict[str, Dict[int, Tuple[int, int]]] = {}
-        for group_id in group_ids:
-            start_ids = []
-            for symbol_id in group_results[group_id].symbols:
-                try:
-                    start_ids.append(int(symbol_id))
-                except (TypeError, ValueError):
-                    continue
-            neighborhoods[group_id] = graph_store.undirected_call_neighborhood(
-                start_ids,
-                max_hop_by_group[group_id],
+        unsupported = [
+            rule
+            for rule in pair_rules
+            if rule.hop_count > 0 and rule.graph_scope != "call"
+        ]
+        if unsupported:
+            self._warn(
+                f"{condition_id}: non-call AND(n) pair rules are not supported; "
+                "the affected pairs use strict intersection"
             )
 
-        candidates = self._union([group_results[group_id] for group_id in group_ids])
-        result = _ExecutionSet()
-        for symbol_id, symbol in candidates.symbols.items():
-            try:
-                numeric_symbol_id = int(symbol_id)
-            except (TypeError, ValueError):
-                continue
-
-            direct_groups = {
-                group_id
-                for group_id in group_ids
-                if symbol_id in group_results[group_id].symbols
-            }
-            covered_groups = set(direct_groups)
-            selected_graph_evidence: Dict[str, Dict[str, Any]] = {}
-
-            changed = True
-            while changed and len(covered_groups) < len(group_ids):
-                changed = False
-                for target_group in group_ids:
-                    if target_group in covered_groups:
-                        continue
-                    neighborhood_entry = neighborhoods[target_group].get(
-                        numeric_symbol_id
-                    )
-                    if neighborhood_entry is None:
-                        continue
-                    distance, origin_symbol_id = neighborhood_entry
-
-                    valid_anchors = []
-                    for anchor_group in covered_groups:
-                        limit, scopes = pair_rules.get(
-                            frozenset((target_group, anchor_group)),
-                            (0, ()),
-                        )
-                        if "call" in scopes and distance <= limit:
-                            valid_anchors.append((limit, anchor_group))
-                    if not valid_anchors:
-                        continue
-
-                    origin_id = _symbol_key(origin_symbol_id)
-                    origin_evidence = (
-                        group_results[target_group]
-                        .coverage.get(origin_id, {})
-                        .get(condition_id, {})
-                        .get(target_group)
-                    )
-                    if origin_evidence is None:
-                        continue
-                    graph_evidence = deepcopy(origin_evidence)
-                    graph_evidence.update(
-                        {
-                            "match_type": "graph_neighbor",
-                            "distance": distance,
-                            "neighbor_symbol_id": origin_symbol_id,
-                        }
-                    )
-                    selected_graph_evidence[target_group] = graph_evidence
-                    covered_groups.add(target_group)
-                    changed = True
-
-            if len(covered_groups) != len(group_ids):
-                continue
-
-            result.symbols[symbol_id] = symbol
-            result.coverage[symbol_id] = deepcopy(
-                candidates.coverage.get(symbol_id, {})
+        paired_group_ids = set()
+        execution_sets: List[_ExecutionSet] = []
+        for rule in pair_rules:
+            paired_group_ids.add(rule.left_group_id)
+            paired_group_ids.add(rule.right_group_id)
+            pair_result = self._execute_pair_rule(
+                rule,
+                group_results[rule.left_group_id],
+                group_results[rule.right_group_id],
+                graph_store,
             )
-            condition_coverage = result.coverage[symbol_id].setdefault(
-                condition_id, {}
+            if not pair_result.matches:
+                return _ExecutionSet()
+            execution_sets.append(
+                self._pair_result_to_execution_set(
+                    pair_result,
+                    group_results,
+                    condition_id,
+                )
             )
-            condition_coverage.update(selected_graph_evidence)
-        return result
+
+        execution_sets.extend(
+            group_results[group_id]
+            for group_id in group_ids
+            if group_id not in paired_group_ids
+        )
+        return self._intersect(execution_sets)
 
     @staticmethod
-    def _pair_rule(
+    def _compile_pair_rules(
+        group_ids: List[str],
         expression: Dict[str, Any],
-        left_group: str,
-        right_group: str,
-    ) -> Tuple[int, Tuple[str, ...]]:
-        default_hop = _non_negative_int(expression.get("default_hop_count"), 0)
-        selected: List[Tuple[int, Tuple[str, ...]]] = []
-        rules = expression.get("rules")
-        if not isinstance(rules, list):
-            rules = []
+    ) -> List[_PairRule]:
+        """Read planner-normalized atomic pair rules."""
+        group_order = {group_id: index for index, group_id in enumerate(group_ids)}
+        valid_groups = set(group_ids)
+        compiled: Dict[Tuple[frozenset, str], _PairRule] = {}
 
-        pair_key = frozenset((left_group, right_group))
-        for rule in rules:
-            if not isinstance(rule, dict):
+        raw_rules = expression.get("rules")
+        rules = raw_rules if isinstance(raw_rules, list) else []
+        for raw_rule in rules:
+            if not isinstance(raw_rule, dict):
                 continue
-            rule_groups = {str(group_id) for group_id in rule.get("groups", [])}
-            if not pair_key.issubset(rule_groups):
+
+            raw_groups = raw_rule.get("groups")
+            if not isinstance(raw_groups, list) or len(raw_groups) != 2:
+                continue
+            left_group, right_group = (
+                str(raw_groups[0]),
+                str(raw_groups[1]),
+            )
+            if (
+                left_group == right_group
+                or left_group not in valid_groups
+                or right_group not in valid_groups
+            ):
+                continue
+            if group_order[left_group] > group_order[right_group]:
+                left_group, right_group = right_group, left_group
+
+            graph_scope = str(raw_rule.get("graph_scope") or "").strip().lower()
+            if graph_scope not in {"call", "import"}:
                 continue
             hop_count = _non_negative_int(
-                rule.get("default_hop_count"),
-                default_hop,
+                raw_rule.get("hop_count"),
+                -1,
             )
-            pairwise = rule.get("pairwise_hop_counts")
-            if isinstance(pairwise, list):
-                for pair in pairwise:
-                    if not isinstance(pair, dict):
-                        continue
-                    if frozenset(str(item) for item in pair.get("groups", [])) == pair_key:
-                        hop_count = _non_negative_int(pair.get("hop_count"), hop_count)
-                        break
-            scopes = tuple(
-                str(scope).lower()
-                for scope in rule.get("graph_scope", [])
-                if str(scope).lower() in {"call", "import"}
-            )
-            selected.append((hop_count, scopes))
+            if hop_count < 0:
+                continue
 
-        if not selected:
-            return default_hop, ("call",) if default_hop > 0 else ()
-        # Multiple applicable constraints are combined conservatively.
-        return min(selected, key=lambda item: item[0])
+            rule_key = (frozenset((left_group, right_group)), graph_scope)
+            candidate = _PairRule(
+                rule_id=f"{left_group}__{right_group}__{graph_scope}",
+                left_group_id=left_group,
+                right_group_id=right_group,
+                hop_count=hop_count,
+                graph_scope=graph_scope,
+            )
+            existing = compiled.get(rule_key)
+            if existing is None or candidate.hop_count < existing.hop_count:
+                compiled[rule_key] = candidate
+
+        return sorted(
+            compiled.values(),
+            key=lambda rule: (
+                group_order[rule.left_group_id],
+                group_order[rule.right_group_id],
+                rule.graph_scope,
+            ),
+        )
+
+    @staticmethod
+    def _execute_pair_rule(
+        rule: _PairRule,
+        left_result: _ExecutionSet,
+        right_result: _ExecutionSet,
+        graph_store: Optional[RelationGraphStore],
+    ) -> _PairResult:
+        """Execute one pair by expanding only the smaller direct-result side."""
+        if (
+            rule.hop_count <= 0
+            or rule.graph_scope != "call"
+            or graph_store is None
+        ):
+            common_ids = set(left_result.symbols) & set(right_result.symbols)
+            return _PairResult(
+                rule=rule,
+                matches=tuple(
+                    _PairMatch(symbol_id, symbol_id, 0)
+                    for symbol_id in sorted(common_ids)
+                ),
+            )
+
+        expand_left = len(left_result.symbols) <= len(right_result.symbols)
+        starts = left_result.symbols if expand_left else right_result.symbols
+        targets = right_result.symbols if expand_left else left_result.symbols
+        try:
+            numeric_starts = [int(symbol_id) for symbol_id in starts]
+            numeric_targets = [int(symbol_id) for symbol_id in targets]
+        except (TypeError, ValueError):
+            return _PairResult(rule=rule, matches=())
+
+        matched_pairs = graph_store.undirected_call_pairs(
+            numeric_starts,
+            numeric_targets,
+            rule.hop_count,
+        )
+        matches = []
+        for start_id, target_id, distance in matched_pairs:
+            if expand_left:
+                left_symbol_id = _symbol_key(start_id)
+                right_symbol_id = _symbol_key(target_id)
+            else:
+                left_symbol_id = _symbol_key(target_id)
+                right_symbol_id = _symbol_key(start_id)
+            matches.append(
+                _PairMatch(
+                    left_symbol_id=left_symbol_id,
+                    right_symbol_id=right_symbol_id,
+                    distance=distance,
+                )
+            )
+        return _PairResult(
+            rule=rule,
+            matches=tuple(
+                sorted(
+                    matches,
+                    key=lambda match: (
+                        match.left_symbol_id,
+                        match.right_symbol_id,
+                        match.distance,
+                    ),
+                )
+            ),
+        )
+
+    @classmethod
+    def _pair_result_to_execution_set(
+        cls,
+        pair_result: _PairResult,
+        group_results: Dict[str, _ExecutionSet],
+        condition_id: str,
+    ) -> _ExecutionSet:
+        """Project supported pair endpoints into one intersectable result set."""
+        result = _ExecutionSet()
+        rule = pair_result.rule
+        seen_by_symbol: Dict[
+            str,
+            Set[Tuple[str, str, str, int]],
+        ] = {}
+
+        for match in pair_result.matches:
+            endpoints = (
+                (rule.left_group_id, match.left_symbol_id),
+                (rule.right_group_id, match.right_symbol_id),
+            )
+            for group_id, symbol_id in endpoints:
+                symbol = group_results[group_id].symbols.get(symbol_id)
+                if symbol is None:
+                    continue
+                result.symbols.setdefault(symbol_id, symbol)
+                cls._merge_symbol_coverage(
+                    result.coverage,
+                    symbol_id,
+                    group_results[group_id].coverage.get(symbol_id, {}),
+                )
+
+            evidence = {
+                "rule_id": rule.rule_id,
+                "groups": [
+                    rule.left_group_id,
+                    rule.right_group_id,
+                ],
+                "symbol_ids": [
+                    int(match.left_symbol_id),
+                    int(match.right_symbol_id),
+                ],
+                "graph_scope": rule.graph_scope,
+                "distance": match.distance,
+                "hop_limit": rule.hop_count,
+            }
+            evidence_key: Tuple[str, str, str, int] = (
+                rule.rule_id,
+                match.left_symbol_id,
+                match.right_symbol_id,
+                match.distance,
+            )
+            for symbol_id in {match.left_symbol_id, match.right_symbol_id}:
+                if symbol_id not in result.symbols:
+                    continue
+                seen = seen_by_symbol.setdefault(symbol_id, set())
+                if evidence_key in seen:
+                    continue
+                seen.add(evidence_key)
+                result.pair_coverage.setdefault(symbol_id, {}).setdefault(
+                    condition_id,
+                    [],
+                ).append(deepcopy(evidence))
+
+            cls._merge_incident_graph_evidence(
+                result,
+                group_results,
+                condition_id,
+                rule,
+                match,
+            )
+        return result
+
+    @classmethod
+    def _merge_incident_graph_evidence(
+        cls,
+        result: _ExecutionSet,
+        group_results: Dict[str, _ExecutionSet],
+        condition_id: str,
+        rule: _PairRule,
+        match: _PairMatch,
+    ) -> None:
+        if match.left_symbol_id == match.right_symbol_id:
+            return
+        endpoints = (
+            (
+                match.left_symbol_id,
+                rule.right_group_id,
+                match.right_symbol_id,
+            ),
+            (
+                match.right_symbol_id,
+                rule.left_group_id,
+                match.left_symbol_id,
+            ),
+        )
+        for result_symbol_id, neighbor_group_id, neighbor_symbol_id in endpoints:
+            if result_symbol_id not in result.symbols:
+                continue
+            direct_evidence = (
+                group_results[neighbor_group_id]
+                .coverage.get(neighbor_symbol_id, {})
+                .get(condition_id, {})
+                .get(neighbor_group_id)
+            )
+            if direct_evidence is None:
+                continue
+            graph_evidence = deepcopy(direct_evidence)
+            graph_evidence.update(
+                {
+                    "match_type": "graph_neighbor",
+                    "distance": match.distance,
+                    "neighbor_symbol_id": int(neighbor_symbol_id),
+                    "pair_groups": [
+                        rule.left_group_id,
+                        rule.right_group_id,
+                    ],
+                    "hop_limit": rule.hop_count,
+                }
+            )
+            result.coverage.setdefault(result_symbol_id, {}).setdefault(
+                condition_id,
+                {},
+            ).setdefault(neighbor_group_id, graph_evidence)
 
     def _get_graph_store(self) -> Optional[RelationGraphStore]:
         if self._graph_store is None:
@@ -681,6 +839,11 @@ class SurfaceExecutor:
                     symbol_id,
                     result_set.coverage.get(symbol_id, {}),
                 )
+                cls._merge_symbol_pair_coverage(
+                    result.pair_coverage,
+                    symbol_id,
+                    result_set.pair_coverage.get(symbol_id, {}),
+                )
         return result
 
     @classmethod
@@ -702,6 +865,11 @@ class SurfaceExecutor:
                     symbol_id,
                     result_set.coverage.get(symbol_id, {}),
                 )
+                cls._merge_symbol_pair_coverage(
+                    result.pair_coverage,
+                    symbol_id,
+                    result_set.pair_coverage.get(symbol_id, {}),
+                )
         return result
 
     @staticmethod
@@ -721,6 +889,11 @@ class SurfaceExecutor:
                 for symbol_id, coverage in include_result.coverage.items()
                 if symbol_id not in excluded_ids
             },
+            pair_coverage={
+                symbol_id: deepcopy(coverage)
+                for symbol_id, coverage in include_result.pair_coverage.items()
+                if symbol_id not in excluded_ids
+            },
         )
 
     @staticmethod
@@ -734,6 +907,34 @@ class SurfaceExecutor:
             condition_coverage = symbol_coverage.setdefault(condition_id, {})
             for group_id, evidence in groups.items():
                 condition_coverage.setdefault(group_id, deepcopy(evidence))
+
+    @staticmethod
+    def _merge_symbol_pair_coverage(
+        target: Dict[str, Dict[str, List[Dict[str, Any]]]],
+        symbol_id: str,
+        source: Dict[str, List[Dict[str, Any]]],
+    ) -> None:
+        symbol_coverage = target.setdefault(symbol_id, {})
+        for condition_id, pair_evidence in source.items():
+            condition_coverage = symbol_coverage.setdefault(condition_id, [])
+            seen = {
+                (
+                    evidence.get("rule_id"),
+                    tuple(evidence.get("symbol_ids", [])),
+                    evidence.get("distance"),
+                )
+                for evidence in condition_coverage
+            }
+            for evidence in pair_evidence:
+                evidence_key = (
+                    evidence.get("rule_id"),
+                    tuple(evidence.get("symbol_ids", [])),
+                    evidence.get("distance"),
+                )
+                if evidence_key in seen:
+                    continue
+                seen.add(evidence_key)
+                condition_coverage.append(deepcopy(evidence))
 
     def _warn(self, message: str) -> None:
         if message not in self._warnings:
