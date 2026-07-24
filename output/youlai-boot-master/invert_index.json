@@ -1,0 +1,1243 @@
+{
+    "you": [],
+    "lai": [],
+    "boot": [
+        "boot"
+    ],
+    "application": [
+        "app"
+    ],
+    "main": [
+        "ma",
+        "main"
+    ],
+    "file": [
+        "file"
+    ],
+    "controller": [],
+    "service": [
+        "service"
+    ],
+    "upload": [
+        "upload"
+    ],
+    "delete": [
+        "delete"
+    ],
+    "info": [
+        "info"
+    ],
+    "name": [
+        "name"
+    ],
+    "url": [],
+    "local": [
+        "local"
+    ],
+    "storage": [
+        "storage"
+    ],
+    "path": [
+        "path"
+    ],
+    "min": [],
+    "io": [],
+    "endpoint": [
+        "end"
+    ],
+    "access": [
+        "access"
+    ],
+    "key": [],
+    "secret": [
+        "secret"
+    ],
+    "bucket": [
+        "bucket"
+    ],
+    "custom": [
+        "cs",
+        "custom"
+    ],
+    "domain": [
+        "domain"
+    ],
+    "client": [
+        "client"
+    ],
+    "init": [
+        "init"
+    ],
+    "public": [
+        "public"
+    ],
+    "policy": [
+        "policy"
+    ],
+    "create": [
+        "create"
+    ],
+    "absent": [
+        "absent"
+    ],
+    "aliyun": [
+        "ai",
+        "aliyun"
+    ],
+    "id": [],
+    "oss": [],
+    "caffeine": [],
+    "config": [
+        "config"
+    ],
+    "spec": [
+        "sp",
+        "spec"
+    ],
+    "cache": [
+        "cache"
+    ],
+    "manager": [
+        "ma",
+        "manager"
+    ],
+    "redis": [
+        "redis"
+    ],
+    "template": [],
+    "configuration": [
+        "config"
+    ],
+    "my": [],
+    "meta": [
+        "meta"
+    ],
+    "object": [
+        "object"
+    ],
+    "handler": [
+        "handler"
+    ],
+    "insert": [
+        "insert"
+    ],
+    "fill": [
+        "fill"
+    ],
+    "update": [
+        "update"
+    ],
+    "mybatis": [
+        "my",
+        "mybatis"
+    ],
+    "plus": [
+        "plus"
+    ],
+    "interceptor": [
+        "ip"
+    ],
+    "global": [
+        "global"
+    ],
+    "data": [
+        "data"
+    ],
+    "permission": [
+        "perm",
+        "pr"
+    ],
+    "dept": [
+        "dep",
+        "dept"
+    ],
+    "table": [
+        "table"
+    ],
+    "column": [
+        "column"
+    ],
+    "tree": [
+        "tree"
+    ],
+    "get": [],
+    "sql": [],
+    "segment": [
+        "segment"
+    ],
+    "all": [],
+    "scope": [
+        "scope",
+        "sp"
+    ],
+    "filter": [
+        "filter"
+    ],
+    "union": [
+        "un",
+        "union"
+    ],
+    "build": [
+        "build"
+    ],
+    "role": [
+        "role"
+    ],
+    "expression": [],
+    "equals": [
+        "equals"
+    ],
+    "sub": [],
+    "token": [
+        "token"
+    ],
+    "security": [],
+    "properties": [
+        "pr"
+    ],
+    "generate": [
+        "gen"
+    ],
+    "parse": [
+        "parse",
+        "pr"
+    ],
+    "validate": [
+        "valid"
+    ],
+    "refresh": [
+        "refresh"
+    ],
+    "invalidate": [
+        "id",
+        "invalid"
+    ],
+    "user": [
+        "user"
+    ],
+    "sessions": [
+        "session"
+    ],
+    "store": [
+        "store"
+    ],
+    "tokens": [
+        "token",
+        "tokens",
+        "ts"
+    ],
+    "handle": [
+        "handle"
+    ],
+    "single": [
+        "single"
+    ],
+    "device": [
+        "device"
+    ],
+    "login": [
+        "log",
+        "login"
+    ],
+    "details": [
+        "detail",
+        "details"
+    ],
+    "format": [
+        "form",
+        "format"
+    ],
+    "set": [],
+    "value": [
+        "value"
+    ],
+    "clean": [
+        "clean"
+    ],
+    "bearer": [
+        "bearer"
+    ],
+    "prefix": [
+        "pr",
+        "prefix"
+    ],
+    "jwt": [],
+    "revoked": [
+        "revoke",
+        "revoked"
+    ],
+    "revoke": [
+        "revoke"
+    ],
+    "jti": [],
+    "authentication": [
+        "auth"
+    ],
+    "entry": [
+        "entry"
+    ],
+    "point": [
+        "point"
+    ],
+    "commence": [],
+    "denied": [
+        "denied"
+    ],
+    "utils": [
+        "utils"
+    ],
+    "username": [],
+    "scopes": [
+        "scope",
+        "scopes",
+        "sp"
+    ],
+    "roles": [
+        "role",
+        "roles"
+    ],
+    "root": [
+        "root"
+    ],
+    "password": [
+        "pr"
+    ],
+    "encoder": [
+        "encoder"
+    ],
+    "captcha": [
+        "captcha"
+    ],
+    "chain": [
+        "chain"
+    ],
+    "web": [],
+    "customizer": [
+        "cie"
+    ],
+    "dao": [],
+    "provider": [
+        "pr",
+        "pv"
+    ],
+    "sms": [],
+    "wechat": [
+        "wechat"
+    ],
+    "mini": [
+        "min",
+        "mini"
+    ],
+    "session": [
+        "session"
+    ],
+    "ignore": [
+        "ignore"
+    ],
+    "urls": [
+        "urls"
+    ],
+    "unsecured": [
+        "un"
+    ],
+    "type": [
+        "type"
+    ],
+    "time": [
+        "time"
+    ],
+    "live": [
+        "live"
+    ],
+    "allow": [
+        "all",
+        "allow"
+    ],
+    "multi": [
+        "multi"
+    ],
+    "authenticate": [
+        "auth"
+    ],
+    "supports": [
+        "sp"
+    ],
+    "wx": [],
+    "ma": [],
+    "sys": [],
+    "serial": [
+        "serial"
+    ],
+    "version": [
+        "version"
+    ],
+    "uid": [],
+    "principal": [
+        "pr"
+    ],
+    "credentials": [
+        "cs"
+    ],
+    "authenticated": [
+        "auth",
+        "authenticate"
+    ],
+    "expires": [
+        "expire",
+        "expires"
+    ],
+    "enabled": [
+        "enable",
+        "enabled"
+    ],
+    "authorities": [
+        "auth",
+        "author"
+    ],
+    "auth": [
+        "auth"
+    ],
+    "nickname": [],
+    "status": [
+        "status"
+    ],
+    "code": [
+        "code"
+    ],
+    "ids": [],
+    "self": [
+        "self"
+    ],
+    "validation": [
+        "valid"
+    ],
+    "request": [
+        "req",
+        "request"
+    ],
+    "matcher": [
+        "ma",
+        "matcher",
+        "mc"
+    ],
+    "param": [
+        "param"
+    ],
+    "internal": [],
+    "repeatable": [
+        "repeat"
+    ],
+    "read": [
+        "read"
+    ],
+    "wrapper": [
+        "wrapper"
+    ],
+    "cached": [
+        "cache",
+        "cached"
+    ],
+    "body": [
+        "body"
+    ],
+    "input": [
+        "input",
+        "ip"
+    ],
+    "stream": [
+        "stream"
+    ],
+    "finished": [],
+    "ready": [
+        "ready"
+    ],
+    "listener": [
+        "list"
+    ],
+    "reader": [
+        "read",
+        "reader"
+    ],
+    "content": [
+        "content"
+    ],
+    "length": [
+        "length"
+    ],
+    "long": [
+        "long"
+    ],
+    "resolve": [
+        "resolve"
+    ],
+    "social": [
+        "social"
+    ],
+    "load": [
+        "load"
+    ],
+    "bind": [
+        "bind"
+    ],
+    "open": [
+        "open"
+    ],
+    "menu": [
+        "menu"
+    ],
+    "perm": [
+        "perm",
+        "pr"
+    ],
+    "exception": [],
+    "need": [
+        "need"
+    ],
+    "mobile": [
+        "mobile"
+    ],
+    "jackson": [
+        "jackson"
+    ],
+    "mapper": [
+        "ma",
+        "map",
+        "mapper"
+    ],
+    "cors": [
+        "cors"
+    ],
+    "registration": [],
+    "bean": [
+        "bean"
+    ],
+    "process": [
+        "pr",
+        "process"
+    ],
+    "illegal": [
+        "illegal"
+    ],
+    "argument": [],
+    "bad": [],
+    "grammar": [
+        "grammar"
+    ],
+    "syntax": [
+        "syntax"
+    ],
+    "error": [
+        "error"
+    ],
+    "integrity": [],
+    "constraint": [
+        "cs"
+    ],
+    "violation": [],
+    "biz": [],
+    "convert": [
+        "convert"
+    ],
+    "message": [
+        "message",
+        "msg"
+    ],
+    "rate": [
+        "rate"
+    ],
+    "limiter": [
+        "limiter"
+    ],
+    "default": [
+        "default"
+    ],
+    "ip": [],
+    "limit": [
+        "limit"
+    ],
+    "log": [],
+    "should": [
+        "should"
+    ],
+    "before": [
+        "before"
+    ],
+    "after": [
+        "after"
+    ],
+    "region": [
+        "region"
+    ],
+    "sign": [
+        "sign"
+    ],
+    "templates": [
+        "template",
+        "tls",
+        "ts"
+    ],
+    "label": [
+        "label"
+    ],
+    "enum": [
+        "enum"
+    ],
+    "send": [
+        "send"
+    ],
+    "mail": [
+        "ma",
+        "mail"
+    ],
+    "java": [
+        "java"
+    ],
+    "sender": [
+        "send",
+        "sender"
+    ],
+    "host": [
+        "host"
+    ],
+    "port": [
+        "port",
+        "pr"
+    ],
+    "smtp": [
+        "smtp"
+    ],
+    "start": [
+        "start"
+    ],
+    "tls": [],
+    "enable": [
+        "enable"
+    ],
+    "attachment": [],
+    "app": [],
+    "api": [],
+    "environment": [
+        "env"
+    ],
+    "knife": [
+        "knife"
+    ],
+    "customise": [
+        "cs",
+        "custom"
+    ],
+    "add": [],
+    "order": [
+        "order"
+    ],
+    "extension": [],
+    "tag": [],
+    "scan": [
+        "scan"
+    ],
+    "package": [
+        "package"
+    ],
+    "annotation": [],
+    "generator": [
+        "gen"
+    ],
+    "font": [
+        "font"
+    ],
+    "width": [
+        "width"
+    ],
+    "height": [
+        "height"
+    ],
+    "interfere": [],
+    "count": [
+        "count"
+    ],
+    "text": [
+        "text"
+    ],
+    "alpha": [
+        "alpha"
+    ],
+    "expire": [
+        "expire"
+    ],
+    "seconds": [
+        "seconds"
+    ],
+    "weight": [
+        "weight"
+    ],
+    "size": [
+        "size"
+    ],
+    "base64": [
+        "base64"
+    ],
+    "result": [
+        "result"
+    ],
+    "xxl": [],
+    "job": [],
+    "admin": [
+        "admin"
+    ],
+    "addresses": [
+        "add",
+        "addr",
+        "address"
+    ],
+    "address": [
+        "add",
+        "addr",
+        "address"
+    ],
+    "retention": [],
+    "days": [
+        "days"
+    ],
+    "executor": [],
+    "logout": [
+        "log",
+        "logout"
+    ],
+    "silent": [
+        "silent"
+    ],
+    "phone": [
+        "phone"
+    ],
+    "req": [],
+    "resp": [
+        "resp"
+    ],
+    "new": [],
+    "impl": [
+        "impl"
+    ],
+    "number": [
+        "num",
+        "number"
+    ],
+    "find": [
+        "find"
+    ],
+    "online": [
+        "online"
+    ],
+    "dto": [],
+    "dict": [
+        "dict"
+    ],
+    "change": [
+        "change"
+    ],
+    "event": [
+        "event"
+    ],
+    "timestamp": [],
+    "sse": [],
+    "topics": [
+        "topics",
+        "ts"
+    ],
+    "system": [
+        "sys",
+        "system"
+    ],
+    "connect": [
+        "connect"
+    ],
+    "registry": [],
+    "execute": [
+        "execute"
+    ],
+    "emitters": [
+        "emitter"
+    ],
+    "map": [],
+    "emitter": [
+        "emitter"
+    ],
+    "connected": [
+        "connect"
+    ],
+    "remove": [
+        "remove"
+    ],
+    "disconnected": [],
+    "total": [
+        "total"
+    ],
+    "connection": [
+        "connect"
+    ],
+    "users": [
+        "user",
+        "users"
+    ],
+    "broadcast": [],
+    "heartbeat": [],
+    "destroy": [
+        "destroy"
+    ],
+    "timeout": [
+        "timeout"
+    ],
+    "gen": [],
+    "form": [
+        "form"
+    ],
+    "codegen": [
+        "codegen"
+    ],
+    "configs": [
+        "configs"
+    ],
+    "backend": [
+        "backend"
+    ],
+    "frontend": [],
+    "download": [],
+    "exclude": [
+        "exclude"
+    ],
+    "tables": [
+        "table",
+        "tables",
+        "tls",
+        "ts"
+    ],
+    "subpackage": [
+        "sp",
+        "sub"
+    ],
+    "author": [
+        "auth",
+        "author"
+    ],
+    "module": [
+        "module"
+    ],
+    "db": [],
+    "ts": [],
+    "normalize": [
+        "nl"
+    ],
+    "page": [
+        "page"
+    ],
+    "columns": [
+        "column",
+        "columns",
+        "cs"
+    ],
+    "metadata": [
+        "meta"
+    ],
+    "save": [
+        "save"
+    ],
+    "preview": [
+        "pr",
+        "preview",
+        "pv"
+    ],
+    "zip": [],
+    "vo": [],
+    "language": [],
+    "comment": [
+        "comment"
+    ],
+    "collation": [],
+    "engine": [
+        "engine"
+    ],
+    "charset": [
+        "charset"
+    ],
+    "configured": [
+        "config"
+    ],
+    "character": [],
+    "maximum": [
+        "ma",
+        "max",
+        "maximum"
+    ],
+    "primary": [
+        "pr",
+        "primary"
+    ],
+    "nullable": [
+        "nl",
+        "nla"
+    ],
+    "business": [],
+    "entity": [
+        "entity"
+    ],
+    "parent": [
+        "parent",
+        "pr"
+    ],
+    "field": [
+        "field"
+    ],
+    "sort": [
+        "sort"
+    ],
+    "show": [
+        "show"
+    ],
+    "list": [
+        "list"
+    ],
+    "query": [
+        "query"
+    ],
+    "required": [
+        "req"
+    ],
+    "max": [],
+    "keywords": [
+        "key"
+    ],
+    "database": [
+        "data",
+        "db"
+    ],
+    "converter": [],
+    "spring": [
+        "sp",
+        "spring"
+    ],
+    "profiles": [
+        "pr",
+        "profile"
+    ],
+    "active": [
+        "active"
+    ],
+    "sample": [
+        "sample",
+        "sp"
+    ],
+    "demo": [
+        "demo"
+    ],
+    "import": [
+        "import",
+        "ip"
+    ],
+    "excel": [
+        "excel"
+    ],
+    "gender": [
+        "gen",
+        "gender"
+    ],
+    "current": [
+        "current"
+    ],
+    "row": [],
+    "invoke": [
+        "invoke"
+    ],
+    "analysed": [],
+    "option": [
+        "option"
+    ],
+    "options": [
+        "option",
+        "options",
+        "os"
+    ],
+    "notice": [
+        "notice"
+    ],
+    "target": [
+        "target"
+    ],
+    "publish": [
+        "publish"
+    ],
+    "platform": [
+        "pr"
+    ],
+    "detail": [
+        "detail"
+    ],
+    "pv": [],
+    "counts": [
+        "count",
+        "counts",
+        "cs"
+    ],
+    "stats": [
+        "stats"
+    ],
+    "uv": [],
+    "select": [
+        "select"
+    ],
+    "codes": [
+        "codes",
+        "cs"
+    ],
+    "export": [
+        "export"
+    ],
+    "profile": [
+        "pr",
+        "profile"
+    ],
+    "item": [
+        "item"
+    ],
+    "perms": [
+        "perm",
+        "perms",
+        "pr"
+    ],
+    "menus": [
+        "menu",
+        "menus"
+    ],
+    "dictionaries": [
+        "dict"
+    ],
+    "items": [
+        "item",
+        "items"
+    ],
+    "routes": [
+        "routes"
+    ],
+    "visible": [
+        "visible"
+    ],
+    "assign": [
+        "assign"
+    ],
+    "notices": [
+        "notice",
+        "notices"
+    ],
+    "visit": [
+        "visit"
+    ],
+    "trend": [
+        "trend"
+    ],
+    "overview": [],
+    "departments": [
+        "dep"
+    ],
+    "reset": [
+        "reset"
+    ],
+    "unbind": [
+        "ub",
+        "un",
+        "unbind"
+    ],
+    "email": [
+        "email"
+    ],
+    "date": [
+        "date"
+    ],
+    "route": [
+        "route"
+    ],
+    "component": [],
+    "icon": [
+        "icon"
+    ],
+    "redirect": [],
+    "children": [],
+    "title": [
+        "title"
+    ],
+    "level": [
+        "level"
+    ],
+    "publisher": [
+        "pr"
+    ],
+    "dates": [
+        "date",
+        "dates"
+    ],
+    "remark": [
+        "remark"
+    ],
+    "avatar": [
+        "avatar"
+    ],
+    "names": [
+        "name",
+        "names"
+    ],
+    "action": [
+        "action"
+    ],
+    "operator": [],
+    "uri": [],
+    "method": [
+        "method"
+    ],
+    "os": [],
+    "browser": [
+        "browser"
+    ],
+    "execution": [],
+    "msg": [],
+    "hidden": [
+        "hidden"
+    ],
+    "keep": [
+        "keep"
+    ],
+    "alive": [
+        "alive"
+    ],
+    "always": [
+        "always"
+    ],
+    "params": [
+        "params"
+    ],
+    "today": [
+        "today"
+    ],
+    "growth": [
+        "growth"
+    ],
+    "verify": [
+        "verify"
+    ],
+    "old": [],
+    "confirm": [
+        "confirm"
+    ],
+    "deleted": [
+        "delete",
+        "deleted"
+    ],
+    "un": [],
+    "ion": [],
+    "verified": [
+        "verify"
+    ],
+    "province": [
+        "pr",
+        "pv"
+    ],
+    "city": [
+        "city"
+    ],
+    "end": [],
+    "unionid": [
+        "un",
+        "unionid"
+    ],
+    "edit": [
+        "edit"
+    ],
+    "dep": [],
+    "assigned": [
+        "assign"
+    ],
+    "recur": [
+        "recur"
+    ],
+    "response": [
+        "resp"
+    ],
+    "writer": [
+        "writer"
+    ],
+    "write": [
+        "write"
+    ],
+    "success": [
+        "success"
+    ],
+    "http": [
+        "http"
+    ],
+    "valid": [
+        "valid"
+    ],
+    "invalid": [
+        "id",
+        "invalid"
+    ],
+    "string": [
+        "string"
+    ],
+    "failed": [
+        "failed"
+    ],
+    "judge": [
+        "judge"
+    ],
+    "validator": [],
+    "allowed": [
+        "all",
+        "allow",
+        "allowed"
+    ],
+    "values": [
+        "value",
+        "values"
+    ],
+    "initialize": [
+        "init"
+    ],
+    "searcher": [],
+    "addr": [
+        "add",
+        "addr"
+    ],
+    "check": [
+        "check"
+    ],
+    "env": [],
+    "repeat": [
+        "repeat"
+    ],
+    "submit": [
+        "sub",
+        "submit"
+    ],
+    "aspect": [
+        "aspect"
+    ],
+    "son": [],
+    "cut": [],
+    "lock": [
+        "lock"
+    ],
+    "identifier": [
+        "id"
+    ],
+    "around": [
+        "around"
+    ],
+    "async": [
+        "async"
+    ],
+    "base": [
+        "base"
+    ],
+    "num": [],
+    "paged": [
+        "page",
+        "paged"
+    ]
+}

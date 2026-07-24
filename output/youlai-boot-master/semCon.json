@@ -1,0 +1,61 @@
+{
+  "surface": [
+    {
+      "type": "surface",
+      "property": "include",
+      "keywords": [
+        "login",
+        "auth",
+        "authenticate",
+        "authentication"
+      ],
+      "synonyms": [
+        "signin",
+        "sign_in",
+        "log_in",
+        "verify_user",
+        "check_credentials"
+      ],
+      "match_kind": "code_element",
+      "code_element_type": "function"
+    }
+  ],
+  "intention": [
+    {
+      "type": "intention",
+      "property": "include",
+      "intent": {
+        "action": "handle",
+        "object": "user login authentication"
+      },
+      "intent_statement": "Does this function serve as the primary entry point for processing user login and verifying credentials?",
+      "aspect": "functional",
+      "non_functional_type": "null",
+      "keywords": [
+        "entry",
+        "login handler",
+        "authentication endpoint",
+        "user verification"
+      ],
+      "description": "Identifies functions whose core purpose is to receive and process login requests, including credential validation."
+    }
+  ],
+  "relation": [
+    {
+      "type": "relation",
+      "property": "include",
+      "code_element_type": "function",
+      "file_path": null,
+      "container": null,
+      "graph_constraint": {
+        "anchor": "main_entry",
+        "relation": "distance_leq",
+        "value": 0
+      },
+      "caller": null,
+      "callee": null,
+      "code_ql": "import python\nfrom Callable c\nwhere c.hasName(\"login\") or c.hasName(\"authenticate\") or c.hasName(\"signin\") or c.getAnalyzedFile().getFilePath().matches(\"%route%\") or c.hasAnnotation(\"Route\") or c.hasAnnotation(\"APIRoute\") or c.hasAnnotation(\"app.route\") or c.hasAnnotation(\"@http_post\")\nselect c",
+      "description": "Finds top-level callable functions that are entry points (e.g., route handlers, API endpoints) and match login/authentication naming or annotation patterns."
+    }
+  ]
+}

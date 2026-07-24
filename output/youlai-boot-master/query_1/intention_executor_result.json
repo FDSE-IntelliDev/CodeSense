@@ -1,0 +1,1002 @@
+[
+  {
+    "symbol_id": 407,
+    "name": "phoneLogin",
+    "type": "method",
+    "file": "/Users/bytedance/old6ma/projects/youlai-boot-master/src/main/java/com/youlai/boot/auth/controller/WxMaAuthController.java",
+    "range": {
+      "start_line": 67,
+      "end_line": 73
+    },
+    "name_pos": [
+      70,
+      39
+    ],
+    "signature": "phoneLogin(@Valid @RequestBody WxMaPhoneLoginReq req)",
+    "language": "java",
+    "doc": "",
+    "container": "WxMaAuthController",
+    "matched_subtokens": "login",
+    "_cluster_id": 1,
+    "_cluster_score": 0.4546252191066742,
+    "_individual_score": 0.41182392835617065,
+    "_filter_reason": "priority_1_cluster",
+    "_cluster_tier": "priority_1",
+    "_tier_rank": "5",
+    "_embedding_score": 0.517989,
+    "_include_embedding_score": 0.517989,
+    "_exclude_embedding_score": 0.0,
+    "_normalized_cluster_score": 0.454625,
+    "_embedding_evidence": [
+      {
+        "query_term": "handle",
+        "candidate_term": "phone",
+        "score": 0.32733,
+        "co_score": 0.287,
+        "sem_score": 0.337413,
+        "rank_source": "semantic_and_co"
+      },
+      {
+        "query_term": "authentication",
+        "candidate_term": "auth",
+        "score": 0.720488,
+        "co_score": 0.21401,
+        "sem_score": 0.847107,
+        "rank_source": "semantic_and_co"
+      },
+      {
+        "query_term": "user",
+        "candidate_term": "login",
+        "score": 0.432575,
+        "co_score": 0.0,
+        "sem_score": 0.540719,
+        "rank_source": "semantic"
+      },
+      {
+        "query_term": "login",
+        "candidate_term": "login",
+        "score": 1.0,
+        "co_score": 1.0,
+        "sem_score": 1.0,
+        "rank_source": "semantic_and_co"
+      },
+      {
+        "query_term": "entry",
+        "candidate_term": "request",
+        "score": 0.349454,
+        "co_score": 0.289617,
+        "sem_score": 0.364413,
+        "rank_source": "semantic_and_co"
+      },
+      {
+        "query_term": "handler",
+        "candidate_term": "controller",
+        "score": 0.332519,
+        "co_score": 0.0,
+        "sem_score": 0.415649,
+        "rank_source": "semantic"
+      },
+      {
+        "query_term": "verification",
+        "candidate_term": "valid",
+        "score": 0.463557,
+        "co_score": 0.0,
+        "sem_score": 0.579446,
+        "rank_source": "semantic"
+      }
+    ],
+    "_include_embedding_evidence": [
+      {
+        "query_term": "handle",
+        "candidate_term": "phone",
+        "score": 0.32733,
+        "co_score": 0.287,
+        "sem_score": 0.337413,
+        "rank_source": "semantic_and_co"
+      },
+      {
+        "query_term": "authentication",
+        "candidate_term": "auth",
+        "score": 0.720488,
+        "co_score": 0.21401,
+        "sem_score": 0.847107,
+        "rank_source": "semantic_and_co"
+      },
+      {
+        "query_term": "user",
+        "candidate_term": "login",
+        "score": 0.432575,
+        "co_score": 0.0,
+        "sem_score": 0.540719,
+        "rank_source": "semantic"
+      },
+      {
+        "query_term": "login",
+        "candidate_term": "login",
+        "score": 1.0,
+        "co_score": 1.0,
+        "sem_score": 1.0,
+        "rank_source": "semantic_and_co"
+      },
+      {
+        "query_term": "entry",
+        "candidate_term": "request",
+        "score": 0.349454,
+        "co_score": 0.289617,
+        "sem_score": 0.364413,
+        "rank_source": "semantic_and_co"
+      },
+      {
+        "query_term": "handler",
+        "candidate_term": "controller",
+        "score": 0.332519,
+        "co_score": 0.0,
+        "sem_score": 0.415649,
+        "rank_source": "semantic"
+      },
+      {
+        "query_term": "verification",
+        "candidate_term": "valid",
+        "score": 0.463557,
+        "co_score": 0.0,
+        "sem_score": 0.579446,
+        "rank_source": "semantic"
+      }
+    ],
+    "_exclude_embedding_evidence": [],
+    "_candidate_terms": [
+      "phone",
+      "login",
+      "valid",
+      "request",
+      "body",
+      "wx",
+      "ma",
+      "req",
+      "auth",
+      "controller"
+    ],
+    "_final_filter_score": 0.492643,
+    "_embedding_conflicts": [],
+    "_embedding_decision": "auto_keep",
+    "_embedding_decision_reason": "adaptive_positive",
+    "_embedding_decision_reasons": [
+      "adaptive_positive"
+    ],
+    "_embedding_tier": "priority_1",
+    "_embedding_tier_rank": "1"
+  },
+  {
+    "symbol_id": 399,
+    "name": "login",
+    "type": "method",
+    "file": "/Users/bytedance/old6ma/projects/youlai-boot-master/src/main/java/com/youlai/boot/auth/controller/AuthController.java",
+    "range": {
+      "start_line": 41,
+      "end_line": 47
+    },
+    "name_pos": [
+      44,
+      39
+    ],
+    "signature": "login(@RequestBody @Valid LoginReq request)",
+    "language": "java",
+    "doc": "",
+    "container": "AuthController",
+    "matched_subtokens": "login",
+    "_cluster_id": 1,
+    "_cluster_score": 0.4546252191066742,
+    "_individual_score": 0.4754936695098877,
+    "_filter_reason": "priority_1_cluster",
+    "_cluster_tier": "priority_1",
+    "_tier_rank": "4",
+    "_embedding_score": 0.508946,
+    "_include_embedding_score": 0.508946,
+    "_exclude_embedding_score": 0.0,
+    "_normalized_cluster_score": 0.454625,
+    "_embedding_evidence": [
+      {
+        "query_term": "handle",
+        "candidate_term": "body",
+        "score": 0.264026,
+        "co_score": 0.0,
+        "sem_score": 0.330033,
+        "rank_source": "semantic"
+      },
+      {
+        "query_term": "authentication",
+        "candidate_term": "auth",
+        "score": 0.720488,
+        "co_score": 0.21401,
+        "sem_score": 0.847107,
+        "rank_source": "semantic_and_co"
+      },
+      {
+        "query_term": "user",
+        "candidate_term": "login",
+        "score": 0.432575,
+        "co_score": 0.0,
+        "sem_score": 0.540719,
+        "rank_source": "semantic"
+      },
+      {
+        "query_term": "login",
+        "candidate_term": "login",
+        "score": 1.0,
+        "co_score": 1.0,
+        "sem_score": 1.0,
+        "rank_source": "semantic_and_co"
+      },
+      {
+        "query_term": "entry",
+        "candidate_term": "request",
+        "score": 0.349454,
+        "co_score": 0.289617,
+        "sem_score": 0.364413,
+        "rank_source": "semantic_and_co"
+      },
+      {
+        "query_term": "handler",
+        "candidate_term": "controller",
+        "score": 0.332519,
+        "co_score": 0.0,
+        "sem_score": 0.415649,
+        "rank_source": "semantic"
+      },
+      {
+        "query_term": "verification",
+        "candidate_term": "valid",
+        "score": 0.463557,
+        "co_score": 0.0,
+        "sem_score": 0.579446,
+        "rank_source": "semantic"
+      }
+    ],
+    "_include_embedding_evidence": [
+      {
+        "query_term": "handle",
+        "candidate_term": "body",
+        "score": 0.264026,
+        "co_score": 0.0,
+        "sem_score": 0.330033,
+        "rank_source": "semantic"
+      },
+      {
+        "query_term": "authentication",
+        "candidate_term": "auth",
+        "score": 0.720488,
+        "co_score": 0.21401,
+        "sem_score": 0.847107,
+        "rank_source": "semantic_and_co"
+      },
+      {
+        "query_term": "user",
+        "candidate_term": "login",
+        "score": 0.432575,
+        "co_score": 0.0,
+        "sem_score": 0.540719,
+        "rank_source": "semantic"
+      },
+      {
+        "query_term": "login",
+        "candidate_term": "login",
+        "score": 1.0,
+        "co_score": 1.0,
+        "sem_score": 1.0,
+        "rank_source": "semantic_and_co"
+      },
+      {
+        "query_term": "entry",
+        "candidate_term": "request",
+        "score": 0.349454,
+        "co_score": 0.289617,
+        "sem_score": 0.364413,
+        "rank_source": "semantic_and_co"
+      },
+      {
+        "query_term": "handler",
+        "candidate_term": "controller",
+        "score": 0.332519,
+        "co_score": 0.0,
+        "sem_score": 0.415649,
+        "rank_source": "semantic"
+      },
+      {
+        "query_term": "verification",
+        "candidate_term": "valid",
+        "score": 0.463557,
+        "co_score": 0.0,
+        "sem_score": 0.579446,
+        "rank_source": "semantic"
+      }
+    ],
+    "_exclude_embedding_evidence": [],
+    "_candidate_terms": [
+      "login",
+      "request",
+      "body",
+      "valid",
+      "req",
+      "auth",
+      "controller"
+    ],
+    "_final_filter_score": 0.487217,
+    "_embedding_conflicts": [],
+    "_embedding_decision": "auto_keep",
+    "_embedding_decision_reason": "adaptive_positive",
+    "_embedding_decision_reasons": [
+      "adaptive_positive"
+    ],
+    "_embedding_tier": "priority_1",
+    "_embedding_tier_rank": "2"
+  },
+  {
+    "symbol_id": 400,
+    "name": "loginBySms",
+    "type": "method",
+    "file": "/Users/bytedance/old6ma/projects/youlai-boot-master/src/main/java/com/youlai/boot/auth/controller/AuthController.java",
+    "range": {
+      "start_line": 49,
+      "end_line": 58
+    },
+    "name_pos": [
+      52,
+      39
+    ],
+    "signature": "loginBySms(\n            @Parameter(description = \"手机号\", example = \"18888888888\") @RequestParam String mobile,\n            @Parameter(description = \"验证码\", example = \"123456\") @RequestParam String code\n    )",
+    "language": "java",
+    "doc": "",
+    "container": "AuthController",
+    "matched_subtokens": "login",
+    "_cluster_id": 1,
+    "_cluster_score": 0.4546252191066742,
+    "_individual_score": 0.38600924611091614,
+    "_filter_reason": "priority_1_cluster",
+    "_cluster_tier": "priority_1",
+    "_tier_rank": "7",
+    "_embedding_score": 0.496756,
+    "_include_embedding_score": 0.496756,
+    "_exclude_embedding_score": 0.0,
+    "_normalized_cluster_score": 0.454625,
+    "_embedding_evidence": [
+      {
+        "query_term": "handle",
+        "candidate_term": "string",
+        "score": 0.282924,
+        "co_score": 0.267975,
+        "sem_score": 0.286661,
+        "rank_source": "semantic_and_co"
+      },
+      {
+        "query_term": "authentication",
+        "candidate_term": "auth",
+        "score": 0.720488,
+        "co_score": 0.21401,
+        "sem_score": 0.847107,
+        "rank_source": "semantic_and_co"
+      },
+      {
+        "query_term": "user",
+        "candidate_term": "login",
+        "score": 0.432575,
+        "co_score": 0.0,
+        "sem_score": 0.540719,
+        "rank_source": "semantic"
+      },
+      {
+        "query_term": "login",
+        "candidate_term": "login",
+        "score": 1.0,
+        "co_score": 1.0,
+        "sem_score": 1.0,
+        "rank_source": "semantic_and_co"
+      },
+      {
+        "query_term": "entry",
+        "candidate_term": "code",
+        "score": 0.35125,
+        "co_score": 0.0,
+        "sem_score": 0.439063,
+        "rank_source": "semantic"
+      },
+      {
+        "query_term": "handler",
+        "candidate_term": "controller",
+        "score": 0.332519,
+        "co_score": 0.0,
+        "sem_score": 0.415649,
+        "rank_source": "semantic"
+      },
+      {
+        "query_term": "verification",
+        "candidate_term": "code",
+        "score": 0.357533,
+        "co_score": 0.0,
+        "sem_score": 0.446916,
+        "rank_source": "semantic"
+      }
+    ],
+    "_include_embedding_evidence": [
+      {
+        "query_term": "handle",
+        "candidate_term": "string",
+        "score": 0.282924,
+        "co_score": 0.267975,
+        "sem_score": 0.286661,
+        "rank_source": "semantic_and_co"
+      },
+      {
+        "query_term": "authentication",
+        "candidate_term": "auth",
+        "score": 0.720488,
+        "co_score": 0.21401,
+        "sem_score": 0.847107,
+        "rank_source": "semantic_and_co"
+      },
+      {
+        "query_term": "user",
+        "candidate_term": "login",
+        "score": 0.432575,
+        "co_score": 0.0,
+        "sem_score": 0.540719,
+        "rank_source": "semantic"
+      },
+      {
+        "query_term": "login",
+        "candidate_term": "login",
+        "score": 1.0,
+        "co_score": 1.0,
+        "sem_score": 1.0,
+        "rank_source": "semantic_and_co"
+      },
+      {
+        "query_term": "entry",
+        "candidate_term": "code",
+        "score": 0.35125,
+        "co_score": 0.0,
+        "sem_score": 0.439063,
+        "rank_source": "semantic"
+      },
+      {
+        "query_term": "handler",
+        "candidate_term": "controller",
+        "score": 0.332519,
+        "co_score": 0.0,
+        "sem_score": 0.415649,
+        "rank_source": "semantic"
+      },
+      {
+        "query_term": "verification",
+        "candidate_term": "code",
+        "score": 0.357533,
+        "co_score": 0.0,
+        "sem_score": 0.446916,
+        "rank_source": "semantic"
+      }
+    ],
+    "_exclude_embedding_evidence": [],
+    "_candidate_terms": [
+      "login",
+      "sms",
+      "parameter",
+      "description",
+      "example",
+      "18888888888",
+      "request",
+      "param",
+      "string",
+      "mobile",
+      "123456",
+      "code",
+      "auth",
+      "controller"
+    ],
+    "_final_filter_score": 0.479903,
+    "_embedding_conflicts": [],
+    "_embedding_decision": "auto_keep",
+    "_embedding_decision_reason": "adaptive_positive",
+    "_embedding_decision_reasons": [
+      "adaptive_positive"
+    ],
+    "_embedding_tier": "priority_1",
+    "_embedding_tier_rank": "3"
+  },
+  {
+    "symbol_id": 406,
+    "name": "silentLogin",
+    "type": "method",
+    "file": "/Users/bytedance/old6ma/projects/youlai-boot-master/src/main/java/com/youlai/boot/auth/controller/WxMaAuthController.java",
+    "range": {
+      "start_line": 49,
+      "end_line": 58
+    },
+    "name_pos": [
+      52,
+      33
+    ],
+    "signature": "silentLogin(\n            @Parameter(description = \"微信登录凭证（wx.login 获取）\", required = true, example = \"0xxx\")\n            @RequestParam String code\n    )",
+    "language": "java",
+    "doc": "",
+    "container": "WxMaAuthController",
+    "matched_subtokens": "login",
+    "_cluster_id": 1,
+    "_cluster_score": 0.4546252191066742,
+    "_individual_score": 0.3917943239212036,
+    "_filter_reason": "priority_1_cluster",
+    "_cluster_tier": "priority_1",
+    "_tier_rank": "6",
+    "_embedding_score": 0.496756,
+    "_include_embedding_score": 0.496756,
+    "_exclude_embedding_score": 0.0,
+    "_normalized_cluster_score": 0.454625,
+    "_embedding_evidence": [
+      {
+        "query_term": "handle",
+        "candidate_term": "string",
+        "score": 0.282924,
+        "co_score": 0.267975,
+        "sem_score": 0.286661,
+        "rank_source": "semantic_and_co"
+      },
+      {
+        "query_term": "authentication",
+        "candidate_term": "auth",
+        "score": 0.720488,
+        "co_score": 0.21401,
+        "sem_score": 0.847107,
+        "rank_source": "semantic_and_co"
+      },
+      {
+        "query_term": "user",
+        "candidate_term": "login",
+        "score": 0.432575,
+        "co_score": 0.0,
+        "sem_score": 0.540719,
+        "rank_source": "semantic"
+      },
+      {
+        "query_term": "login",
+        "candidate_term": "login",
+        "score": 1.0,
+        "co_score": 1.0,
+        "sem_score": 1.0,
+        "rank_source": "semantic_and_co"
+      },
+      {
+        "query_term": "entry",
+        "candidate_term": "code",
+        "score": 0.35125,
+        "co_score": 0.0,
+        "sem_score": 0.439063,
+        "rank_source": "semantic"
+      },
+      {
+        "query_term": "handler",
+        "candidate_term": "controller",
+        "score": 0.332519,
+        "co_score": 0.0,
+        "sem_score": 0.415649,
+        "rank_source": "semantic"
+      },
+      {
+        "query_term": "verification",
+        "candidate_term": "code",
+        "score": 0.357533,
+        "co_score": 0.0,
+        "sem_score": 0.446916,
+        "rank_source": "semantic"
+      }
+    ],
+    "_include_embedding_evidence": [
+      {
+        "query_term": "handle",
+        "candidate_term": "string",
+        "score": 0.282924,
+        "co_score": 0.267975,
+        "sem_score": 0.286661,
+        "rank_source": "semantic_and_co"
+      },
+      {
+        "query_term": "authentication",
+        "candidate_term": "auth",
+        "score": 0.720488,
+        "co_score": 0.21401,
+        "sem_score": 0.847107,
+        "rank_source": "semantic_and_co"
+      },
+      {
+        "query_term": "user",
+        "candidate_term": "login",
+        "score": 0.432575,
+        "co_score": 0.0,
+        "sem_score": 0.540719,
+        "rank_source": "semantic"
+      },
+      {
+        "query_term": "login",
+        "candidate_term": "login",
+        "score": 1.0,
+        "co_score": 1.0,
+        "sem_score": 1.0,
+        "rank_source": "semantic_and_co"
+      },
+      {
+        "query_term": "entry",
+        "candidate_term": "code",
+        "score": 0.35125,
+        "co_score": 0.0,
+        "sem_score": 0.439063,
+        "rank_source": "semantic"
+      },
+      {
+        "query_term": "handler",
+        "candidate_term": "controller",
+        "score": 0.332519,
+        "co_score": 0.0,
+        "sem_score": 0.415649,
+        "rank_source": "semantic"
+      },
+      {
+        "query_term": "verification",
+        "candidate_term": "code",
+        "score": 0.357533,
+        "co_score": 0.0,
+        "sem_score": 0.446916,
+        "rank_source": "semantic"
+      }
+    ],
+    "_exclude_embedding_evidence": [],
+    "_candidate_terms": [
+      "silent",
+      "login",
+      "parameter",
+      "description",
+      "wx",
+      "required",
+      "true",
+      "example",
+      "xxx",
+      "request",
+      "param",
+      "string",
+      "code",
+      "ma",
+      "auth",
+      "controller"
+    ],
+    "_final_filter_score": 0.479903,
+    "_embedding_conflicts": [],
+    "_embedding_decision": "auto_keep",
+    "_embedding_decision_reason": "adaptive_positive",
+    "_embedding_decision_reasons": [
+      "adaptive_positive"
+    ],
+    "_embedding_tier": "priority_2",
+    "_embedding_tier_rank": "1"
+  },
+  {
+    "symbol_id": 159,
+    "name": "authenticate",
+    "type": "method",
+    "file": "/Users/bytedance/old6ma/projects/youlai-boot-master/src/main/java/com/youlai/boot/framework/security/provider/WxMaAuthenticationProvider.java",
+    "range": {
+      "start_line": 31,
+      "end_line": 85
+    },
+    "name_pos": [
+      32,
+      26
+    ],
+    "signature": "authenticate(Authentication authentication)",
+    "language": "java",
+    "doc": "",
+    "container": "WxMaAuthenticationProvider",
+    "matched_subtokens": "authenticate",
+    "_cluster_id": 8,
+    "_cluster_score": 0.4028412997722626,
+    "_individual_score": 0.4028412401676178,
+    "_filter_reason": "priority_2_cluster",
+    "_cluster_tier": "priority_2",
+    "_tier_rank": "1",
+    "_embedding_score": 0.451835,
+    "_include_embedding_score": 0.451835,
+    "_exclude_embedding_score": 0.0,
+    "_normalized_cluster_score": 0.402841,
+    "_embedding_evidence": [
+      {
+        "query_term": "handle",
+        "candidate_term": "ma",
+        "score": 0.219864,
+        "co_score": 0.0,
+        "sem_score": 0.27483,
+        "rank_source": "semantic"
+      },
+      {
+        "query_term": "authentication",
+        "candidate_term": "authentication",
+        "score": 1.0,
+        "co_score": 1.0,
+        "sem_score": 1.0,
+        "rank_source": "semantic_and_co"
+      },
+      {
+        "query_term": "user",
+        "candidate_term": "authenticate",
+        "score": 0.290599,
+        "co_score": 0.041743,
+        "sem_score": 0.352813,
+        "rank_source": "semantic_and_co"
+      },
+      {
+        "query_term": "login",
+        "candidate_term": "authentication",
+        "score": 0.540968,
+        "co_score": 0.340397,
+        "sem_score": 0.591111,
+        "rank_source": "semantic_and_co"
+      },
+      {
+        "query_term": "entry",
+        "candidate_term": "authentication",
+        "score": 0.370963,
+        "co_score": 0.486859,
+        "sem_score": 0.341989,
+        "rank_source": "semantic_and_co"
+      },
+      {
+        "query_term": "handler",
+        "candidate_term": "provider",
+        "score": 0.306027,
+        "co_score": 0.282331,
+        "sem_score": 0.311951,
+        "rank_source": "semantic_and_co"
+      },
+      {
+        "query_term": "verification",
+        "candidate_term": "authenticate",
+        "score": 0.434423,
+        "co_score": 0.0,
+        "sem_score": 0.543029,
+        "rank_source": "semantic"
+      }
+    ],
+    "_include_embedding_evidence": [
+      {
+        "query_term": "handle",
+        "candidate_term": "ma",
+        "score": 0.219864,
+        "co_score": 0.0,
+        "sem_score": 0.27483,
+        "rank_source": "semantic"
+      },
+      {
+        "query_term": "authentication",
+        "candidate_term": "authentication",
+        "score": 1.0,
+        "co_score": 1.0,
+        "sem_score": 1.0,
+        "rank_source": "semantic_and_co"
+      },
+      {
+        "query_term": "user",
+        "candidate_term": "authenticate",
+        "score": 0.290599,
+        "co_score": 0.041743,
+        "sem_score": 0.352813,
+        "rank_source": "semantic_and_co"
+      },
+      {
+        "query_term": "login",
+        "candidate_term": "authentication",
+        "score": 0.540968,
+        "co_score": 0.340397,
+        "sem_score": 0.591111,
+        "rank_source": "semantic_and_co"
+      },
+      {
+        "query_term": "entry",
+        "candidate_term": "authentication",
+        "score": 0.370963,
+        "co_score": 0.486859,
+        "sem_score": 0.341989,
+        "rank_source": "semantic_and_co"
+      },
+      {
+        "query_term": "handler",
+        "candidate_term": "provider",
+        "score": 0.306027,
+        "co_score": 0.282331,
+        "sem_score": 0.311951,
+        "rank_source": "semantic_and_co"
+      },
+      {
+        "query_term": "verification",
+        "candidate_term": "authenticate",
+        "score": 0.434423,
+        "co_score": 0.0,
+        "sem_score": 0.543029,
+        "rank_source": "semantic"
+      }
+    ],
+    "_exclude_embedding_evidence": [],
+    "_candidate_terms": [
+      "authenticate",
+      "authentication",
+      "wx",
+      "ma",
+      "provider"
+    ],
+    "_final_filter_score": 0.432237,
+    "_embedding_conflicts": [],
+    "_embedding_decision": "gray",
+    "_embedding_decision_reason": "adaptive_high_unresolved",
+    "_embedding_decision_reasons": [
+      "adaptive_high_unresolved"
+    ],
+    "_embedding_gray_zone": "gray_high",
+    "_embedding_tier": "priority_2",
+    "_embedding_tier_rank": "4"
+  },
+  {
+    "symbol_id": 154,
+    "name": "authenticate",
+    "type": "method",
+    "file": "/Users/bytedance/old6ma/projects/youlai-boot-master/src/main/java/com/youlai/boot/framework/security/provider/SmsAuthenticationProvider.java",
+    "range": {
+      "start_line": 57,
+      "end_line": 110
+    },
+    "name_pos": [
+      58,
+      26
+    ],
+    "signature": "authenticate(Authentication authentication)",
+    "language": "java",
+    "doc": "",
+    "container": "SmsAuthenticationProvider",
+    "matched_subtokens": "authenticate",
+    "_cluster_id": 7,
+    "_cluster_score": 0.3887384235858917,
+    "_individual_score": 0.38873836398124695,
+    "_filter_reason": "priority_2_cluster",
+    "_cluster_tier": "priority_2",
+    "_tier_rank": "2",
+    "_embedding_score": 0.448751,
+    "_include_embedding_score": 0.448751,
+    "_exclude_embedding_score": 0.0,
+    "_normalized_cluster_score": 0.388738,
+    "_embedding_evidence": [
+      {
+        "query_term": "handle",
+        "candidate_term": "provider",
+        "score": 0.198275,
+        "co_score": 0.134743,
+        "sem_score": 0.214158,
+        "rank_source": "semantic_and_co"
+      },
+      {
+        "query_term": "authentication",
+        "candidate_term": "authentication",
+        "score": 1.0,
+        "co_score": 1.0,
+        "sem_score": 1.0,
+        "rank_source": "semantic_and_co"
+      },
+      {
+        "query_term": "user",
+        "candidate_term": "authenticate",
+        "score": 0.290599,
+        "co_score": 0.041743,
+        "sem_score": 0.352813,
+        "rank_source": "semantic_and_co"
+      },
+      {
+        "query_term": "login",
+        "candidate_term": "authentication",
+        "score": 0.540968,
+        "co_score": 0.340397,
+        "sem_score": 0.591111,
+        "rank_source": "semantic_and_co"
+      },
+      {
+        "query_term": "entry",
+        "candidate_term": "authentication",
+        "score": 0.370963,
+        "co_score": 0.486859,
+        "sem_score": 0.341989,
+        "rank_source": "semantic_and_co"
+      },
+      {
+        "query_term": "handler",
+        "candidate_term": "provider",
+        "score": 0.306027,
+        "co_score": 0.282331,
+        "sem_score": 0.311951,
+        "rank_source": "semantic_and_co"
+      },
+      {
+        "query_term": "verification",
+        "candidate_term": "authenticate",
+        "score": 0.434423,
+        "co_score": 0.0,
+        "sem_score": 0.543029,
+        "rank_source": "semantic"
+      }
+    ],
+    "_include_embedding_evidence": [
+      {
+        "query_term": "handle",
+        "candidate_term": "provider",
+        "score": 0.198275,
+        "co_score": 0.134743,
+        "sem_score": 0.214158,
+        "rank_source": "semantic_and_co"
+      },
+      {
+        "query_term": "authentication",
+        "candidate_term": "authentication",
+        "score": 1.0,
+        "co_score": 1.0,
+        "sem_score": 1.0,
+        "rank_source": "semantic_and_co"
+      },
+      {
+        "query_term": "user",
+        "candidate_term": "authenticate",
+        "score": 0.290599,
+        "co_score": 0.041743,
+        "sem_score": 0.352813,
+        "rank_source": "semantic_and_co"
+      },
+      {
+        "query_term": "login",
+        "candidate_term": "authentication",
+        "score": 0.540968,
+        "co_score": 0.340397,
+        "sem_score": 0.591111,
+        "rank_source": "semantic_and_co"
+      },
+      {
+        "query_term": "entry",
+        "candidate_term": "authentication",
+        "score": 0.370963,
+        "co_score": 0.486859,
+        "sem_score": 0.341989,
+        "rank_source": "semantic_and_co"
+      },
+      {
+        "query_term": "handler",
+        "candidate_term": "provider",
+        "score": 0.306027,
+        "co_score": 0.282331,
+        "sem_score": 0.311951,
+        "rank_source": "semantic_and_co"
+      },
+      {
+        "query_term": "verification",
+        "candidate_term": "authenticate",
+        "score": 0.434423,
+        "co_score": 0.0,
+        "sem_score": 0.543029,
+        "rank_source": "semantic"
+      }
+    ],
+    "_exclude_embedding_evidence": [],
+    "_candidate_terms": [
+      "authenticate",
+      "authentication",
+      "sms",
+      "provider"
+    ],
+    "_final_filter_score": 0.424746,
+    "_embedding_conflicts": [],
+    "_embedding_decision": "gray",
+    "_embedding_decision_reason": "adaptive_middle_unresolved",
+    "_embedding_decision_reasons": [
+      "adaptive_middle_unresolved"
+    ],
+    "_embedding_gray_zone": "gray_middle",
+    "_embedding_tier": "priority_3",
+    "_embedding_tier_rank": "1"
+  }
+]

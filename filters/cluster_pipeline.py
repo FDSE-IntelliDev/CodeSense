@@ -1,13 +1,10 @@
-import os
 import json
 import numpy as np
-from typing import List, Dict, Any, Tuple
+from typing import List, Dict, Any
 from sentence_transformers import SentenceTransformer
 from parsers.read_tools import get_symbol_code
 from sklearn.cluster import AgglomerativeClustering
-from sklearn.metrics.pairwise import cosine_similarity
 from definition import QUERY_OUTPUT_DIR
-from query_processing.semql_utils import extract_semql_text_terms
 
 from pathlib import Path
 
@@ -114,36 +111,27 @@ class FiltrationDispatcher:
         self.embedder = embedder
         self.clusterer = clusterer
 
-    def run_pipeline(self, search_results: List[Dict[str, Any]], semql_query: Dict[str, Any]) -> Dict[str, Any]:
+    def run_pipeline(
+        self,
+        search_results: List[Dict[str, Any]],
+        query_text: str,
+        policy: Dict[str, Any],
+    ) -> Dict[str, Any]:
         """
-        完整运行“提取-聚类-打分-过滤”流水线
+        Execute the cluster policy produced by IntentionPlanner.
+
+        Runtime facts such as cluster count and score spread are evaluated here,
+        but all thresholds and keep rules come from ``policy``.
         """
         if not search_results:
             return {"kept": [], "discarded": [], "stats": {}}
 
-        # 1. 构建 Query 向量
-        # 使用 raw_query 和 keyword 的组合，加强意图
-        raw_query = " ".join(extract_semql_text_terms(semql_query, term_name="raw_query"))
-        keywords = []
-        for condition_type, term_name in (
-            ("surface", "keywords"),
-            ("surface", "synonyms"),
-            ("intention", "keywords"),
-            ("intention", "intent"),
-        ):
-            keywords.extend(
-                extract_semql_text_terms(
-                    semql_query,
-                    properties=("include",),
-                    condition_type=condition_type,
-                    term_name=term_name,
-                )
-            )
-        query_text = raw_query + " " + " ".join(keywords)
-        query_embedding = self.embedder.encode([query_text])[0]
+        query_embedding = self.embedder.encode([str(query_text or "")])[0]
 
         # 2. 构建 Code 向量
-        feature_texts = [self.embedder.build_feature_text(sym) for sym in search_results]
+        feature_texts = [
+            self.embedder.build_feature_text(sym) for sym in search_results
+        ]
         code_embeddings = self.embedder.encode(feature_texts)
 
         # 3. 执行聚类并计算簇质心
@@ -151,19 +139,18 @@ class FiltrationDispatcher:
         centroids = self.clusterer.compute_centroids(code_embeddings, labels)
 
         # 4. 簇级打分：使用 Query 与每个簇的质心算余弦相似度
-        cluster_scores = {}
-        for c_id, centroid in centroids.items():
-            sim = np.dot(query_embedding, centroid)
-            cluster_scores[c_id] = sim
+        cluster_scores = {
+            c_id: float(np.dot(query_embedding, centroid))
+            for c_id, centroid in centroids.items()
+        }
 
         # 将簇按照相关性从高到低排序
-        sorted_clusters = sorted(cluster_scores.items(), key=lambda x: x[1], reverse=True)
+        sorted_clusters = sorted(
+            cluster_scores.items(),
+            key=lambda item: item[1],
+            reverse=True,
+        )
 
-        # 5. 按簇相关性分层返回
-        # - priority_1: 相关性最高的一档，直接保留
-        # - priority_2: 次高相关的一档，保留
-        # - priority_3: 中低相关的一档，保留
-        # - priority_4_discarded: 最低相关的一档，直接丢弃
         ranked_cluster_ids = [cid for cid, _ in sorted_clusters]
         num_clusters = len(ranked_cluster_ids)
 
@@ -172,53 +159,114 @@ class FiltrationDispatcher:
                 return 0
             return int(np.ceil(num_clusters * ratio))
 
-        priority_1_count = max(1, _ceil_count(0.10)) if num_clusters else 0
-        priority_2_count = _ceil_count(0.20)
-        priority_3_count = _ceil_count(0.30)
+        min_cluster_count = max(
+            1,
+            int(policy.get("min_cluster_count_to_filter", 3)),
+        )
+        min_score_spread = max(0.0, float(policy.get("min_score_spread", 0.05)))
+        score_values = [score for _, score in sorted_clusters]
+        score_spread = (
+            float(max(score_values) - min(score_values)) if score_values else 0.0
+        )
+
+        guard_reason = None
+        if num_clusters < min_cluster_count:
+            guard_reason = "cluster_count_below_filter_minimum"
+        elif score_spread < min_score_spread:
+            guard_reason = "cluster_score_spread_below_filter_minimum"
+
+        keep_ratio = min(
+            1.0,
+            max(0.0, float(policy.get("keep_top_cluster_ratio", 0.6))),
+        )
+        if guard_reason is None:
+            kept_cluster_count = max(1, int(np.ceil(num_clusters * keep_ratio)))
+        else:
+            kept_cluster_count = num_clusters
+
+        priority_1_count = min(
+            kept_cluster_count,
+            max(1, _ceil_count(float(policy.get("priority_1_ratio", 0.1))))
+            if kept_cluster_count
+            else 0,
+        )
+        priority_2_count = min(
+            max(0, kept_cluster_count - priority_1_count),
+            _ceil_count(float(policy.get("priority_2_ratio", 0.2))),
+        )
+        priority_3_count = max(
+            0,
+            kept_cluster_count - priority_1_count - priority_2_count,
+        )
 
         priority_1_clusters = set(ranked_cluster_ids[:priority_1_count])
         priority_2_start = priority_1_count
         priority_2_end = min(num_clusters, priority_2_start + priority_2_count)
-        priority_2_clusters = set(ranked_cluster_ids[priority_2_start:priority_2_end])
+        priority_2_clusters = set(
+            ranked_cluster_ids[priority_2_start:priority_2_end]
+        )
         priority_3_start = priority_2_end
-        priority_3_end = min(num_clusters, priority_3_start + priority_3_count)
-        priority_3_clusters = set(ranked_cluster_ids[priority_3_start:priority_3_end])
+        priority_3_end = priority_3_start + priority_3_count
+        priority_3_clusters = set(
+            ranked_cluster_ids[priority_3_start:priority_3_end]
+        )
         priority_4_clusters = set(ranked_cluster_ids[priority_3_end:])
 
         tiered_symbols = {
             "priority_1": [],
             "priority_2": [],
             "priority_3": [],
-            "priority_4_discarded": [],
+            "priority_4_low_relevance": [],
         }
         kept_symbols = []
+        rescue_symbols = []
         discarded_symbols = []
+        forwarded_symbols = []
+        defer_low_clusters = bool(
+            policy.get("defer_low_cluster_discard_to_embedding", False)
+        )
 
-        for symbol, label, emb in zip(search_results, labels, code_embeddings):
+        individual_scores = np.dot(code_embeddings, query_embedding)
+        for symbol, label, individual_score in zip(
+            search_results,
+            labels,
+            individual_scores,
+        ):
             symbol["_cluster_id"] = int(label)
             symbol["_cluster_score"] = float(cluster_scores.get(label, 0.0))
-            symbol["_individual_score"] = float(np.dot(query_embedding, emb))
+            symbol["_individual_score"] = float(individual_score)
 
             if label in priority_1_clusters:
                 symbol["_filter_reason"] = "priority_1_cluster"
                 symbol["_cluster_tier"] = "priority_1"
                 tiered_symbols["priority_1"].append(symbol)
                 kept_symbols.append(symbol)
+                forwarded_symbols.append(symbol)
             elif label in priority_2_clusters:
                 symbol["_filter_reason"] = "priority_2_cluster"
                 symbol["_cluster_tier"] = "priority_2"
                 tiered_symbols["priority_2"].append(symbol)
                 kept_symbols.append(symbol)
+                forwarded_symbols.append(symbol)
             elif label in priority_3_clusters:
                 symbol["_filter_reason"] = "priority_3_cluster"
                 symbol["_cluster_tier"] = "priority_3"
                 tiered_symbols["priority_3"].append(symbol)
                 kept_symbols.append(symbol)
+                forwarded_symbols.append(symbol)
             else:
-                symbol["_filter_reason"] = "priority_4_cluster_discarded"
-                symbol["_cluster_tier"] = "priority_4_discarded"
-                tiered_symbols["priority_4_discarded"].append(symbol)
-                discarded_symbols.append(symbol)
+                symbol["_cluster_tier"] = "priority_4_low_relevance"
+                tiered_symbols["priority_4_low_relevance"].append(symbol)
+                if defer_low_clusters:
+                    # Cluster is a coarse signal. Defer the irreversible decision
+                    # so candidate-level Term Embedding can rescue a strong item
+                    # from an otherwise weak cluster.
+                    symbol["_filter_reason"] = "priority_4_cluster_rescue_candidate"
+                    rescue_symbols.append(symbol)
+                    forwarded_symbols.append(symbol)
+                else:
+                    symbol["_filter_reason"] = "priority_4_cluster_discarded"
+                    discarded_symbols.append(symbol)
 
         for tier_name, symbols in tiered_symbols.items():
             symbols.sort(
@@ -235,23 +283,36 @@ class FiltrationDispatcher:
         stats = {
             "total_initial": len(search_results),
             "total_kept": len(kept_symbols),
+            "total_rescue": len(rescue_symbols),
+            "total_forwarded": len(forwarded_symbols),
             "total_discarded": len(discarded_symbols),
             "num_clusters": len(unique_labels),
-            "cluster_ranking": [{"cluster_id": int(cid), "score": float(score)} for cid, score in sorted_clusters],
+            "filter_applied": guard_reason is None,
+            "guard_reason": guard_reason,
+            "cluster_score_spread": score_spread,
+            "keep_top_cluster_ratio": keep_ratio,
+            "cluster_ranking": [
+                {"cluster_id": int(cid), "score": float(score)}
+                for cid, score in sorted_clusters
+            ],
             "tier_cluster_counts": {
                 "priority_1": len(priority_1_clusters),
                 "priority_2": len(priority_2_clusters),
                 "priority_3": len(priority_3_clusters),
-                "priority_4_discarded": len(priority_4_clusters),
+                "priority_4_low_relevance": len(priority_4_clusters),
             },
-            "tier_symbol_counts": {tier: len(items) for tier, items in tiered_symbols.items()},
+            "tier_symbol_counts": {
+                tier: len(items) for tier, items in tiered_symbols.items()
+            },
         }
 
         return {
             "kept": kept_symbols,
+            "rescue_candidates": rescue_symbols,
+            "forwarded": forwarded_symbols,
             "discarded": discarded_symbols,
             "tiers": tiered_symbols,
-            "stats": stats
+            "stats": stats,
         }
 
 
@@ -268,8 +329,8 @@ if __name__ == "__main__":
         real_search_results = json.load(f)
     print(f"成功加载，共计 {len(real_search_results)} 个代码元素。")
 
-    with open(Path(QUERY_OUTPUT_DIR) / "semQL.json", "r", encoding="utf-8") as f:
-        semql = json.load(f)
+    with open(Path(QUERY_OUTPUT_DIR) / "intention_semql.json", "r", encoding="utf-8") as f:
+        intention_plan = json.load(f)
 
     print("\n正在加载本地 Embedding 模型...")
     # 3. 初始化组件
@@ -279,7 +340,11 @@ if __name__ == "__main__":
 
     print("开始运行过滤 Pipeline...")
     # 4. 运行调度器
-    result_dict = dispatcher.run_pipeline(real_search_results, semql)
+    result_dict = dispatcher.run_pipeline(
+        real_search_results,
+        intention_plan.get("query_profile", {}).get("semantic_text", ""),
+        intention_plan.get("execution_plan", {}).get("cluster", {}),
+    )
 
     # 5. 存储结果
     output_dir = Path(QUERY_OUTPUT_DIR)

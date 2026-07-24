@@ -1,0 +1,28 @@
+{
+  "version": "1.0",
+  "kind": "relation",
+  "raw_query": "Find the entry function that handles user login authentication.",
+  "filters": {
+    "include": [
+      {
+        "clause_id": "relation_0",
+        "file_path": null,
+        "graph_constraint": {
+          "role": "entry_point"
+        },
+        "caller": null,
+        "callee": null,
+        "code_ql": null,
+        "description": "Function must be an entrypoint: no incoming calls (in_degree = 0) and at least one outgoing call (out_degree > 0), indicating it is invoked from outside the application logic (e.g., HTTP route, CLI command)"
+      }
+    ],
+    "exclude": []
+  },
+  "result_logic": {
+    "clause_operator": "intersect",
+    "include_clause_operator": "intersect",
+    "include_operator": "intersect_candidates",
+    "exclude_clause_operator": "union",
+    "exclude_operator": "subtract"
+  }
+}

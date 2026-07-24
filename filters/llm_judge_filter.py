@@ -2,9 +2,8 @@
 LLM-as-a-Judge intention filter.
 
 This module is the final high-precision semantic filter for intention
-conditions. It sends only include/exclude intent_statement/aspect/description
-requirements and a compact symbol schema to the LLM, then keeps the symbol_ids
-selected by the model.
+conditions. The executor sends only gray-zone candidates and the normalized
+include/exclude requirements produced by IntentionPlanner.
 """
 
 from __future__ import annotations
@@ -29,8 +28,8 @@ JudgeCaller = Callable[[List[Dict[str, str]], str, float], str]
 class LLMJudgeConfig:
     model: str = BASE_MODEL
     temperature: float = 0.0
-    batch_size: int = 20
-    max_code_chars: int = 4000
+    batch_size: int = 5
+    max_code_chars: int = 3000
 
 
 class LLMJudgeFilter:
@@ -49,12 +48,13 @@ class LLMJudgeFilter:
     def run_filter(
         self,
         candidates: List[Dict[str, Any]],
-        semql_query: Dict[str, Any],
+        intention_plan: Dict[str, Any],
     ) -> Dict[str, Any]:
         if not candidates:
             return self._empty_result()
 
-        requirements = extract_intention_requirements(semql_query)
+        requirements = extract_intention_requirements(intention_plan)
+        result_logic = intention_plan.get("result_logic", {})
         if not requirements["include"] and not requirements["exclude"]:
             return {
                 "kept": candidates,
@@ -93,7 +93,11 @@ class LLMJudgeFilter:
             if not prompt_candidates:
                 continue
 
-            messages = build_judge_messages(requirements, prompt_candidates)
+            messages = build_judge_messages(
+                requirements,
+                prompt_candidates,
+                result_logic,
+            )
             raw_text = self._call_llm(messages)
             parsed = parse_judge_response(raw_text)
             batch_ids = {
@@ -117,6 +121,14 @@ class LLMJudgeFilter:
                 parsed.get("uncertain", []),
                 valid_ids=batch_ids,
             )
+            batch_discarded_ids = {
+                item["symbol_id"] for item in batch_discarded
+            }
+            batch_uncertain = [
+                item
+                for item in batch_uncertain
+                if item["symbol_id"] not in batch_discarded_ids
+            ]
 
             explained_ids = batch_kept | {
                 item["symbol_id"] for item in batch_discarded + batch_uncertain
@@ -198,33 +210,18 @@ class LLMJudgeFilter:
 
 
 def extract_intention_requirements(semql_query: Dict[str, Any]) -> Dict[str, List[Dict[str, Any]]]:
-    """Extract only intent_statement/aspect/description from include/exclude intention conditions."""
+    """Read normalized requirements from an intention-only execution plan."""
     requirements = {"include": [], "exclude": []}
     if not isinstance(semql_query, dict):
         return requirements
 
-    conditions = semql_query.get("conditions")
-    if isinstance(conditions, dict):
-        intention = conditions.get("intention")
-        if isinstance(intention, dict):
-            for property_name in ("include", "exclude"):
-                requirements[property_name].extend(
-                    _normalize_requirement_items(intention.get(property_name, []))
-                )
-            return requirements
-
-    # Legacy SemCon-style fallback: {"intention": [{"property": "include", ...}]}
-    intention_items = semql_query.get("intention")
-    if isinstance(intention_items, list):
-        for item in intention_items:
-            if not isinstance(item, dict):
-                continue
-            property_name = str(item.get("property") or "include").strip().lower()
-            if property_name not in requirements:
-                continue
-            normalized = _normalize_requirement_item(item)
-            if normalized is not None:
-                requirements[property_name].append(normalized)
+    plan_requirements = semql_query.get("requirements")
+    if not isinstance(plan_requirements, dict):
+        return requirements
+    for property_name in ("include", "exclude"):
+        requirements[property_name] = _normalize_requirement_items(
+            plan_requirements.get(property_name, [])
+        )
 
     return requirements
 
@@ -255,18 +252,24 @@ def build_candidate_payload(
 def build_judge_messages(
     requirements: Dict[str, List[Dict[str, Any]]],
     candidate_set: List[Dict[str, Any]],
+    result_logic: Optional[Dict[str, Any]] = None,
 ) -> List[Dict[str, str]]:
+    result_logic = result_logic if isinstance(result_logic, dict) else {}
+    include_operator = str(result_logic.get("include_operator") or "all")
+    exclude_operator = str(result_logic.get("exclude_operator") or "any")
     system_prompt = (
         "You are an LLM-as-a-Judge module in a code search pipeline.\n\n"
         "Your task is to judge whether each candidate code symbol satisfies the "
         "user's semantic intention.\n\n"
+        "The candidate_set contains only gray-zone candidates that earlier static "
+        "semantic filters could not decide confidently.\n\n"
         "You will receive:\n"
         "1. Include requirements: code symbols must satisfy these.\n"
         "2. Exclude requirements: code symbols must NOT satisfy these.\n"
         "3. A candidate_set: code symbols represented with a fixed symbol schema.\n\n"
         "Rules:\n"
-        "- Keep a candidate only if it satisfies all include requirements.\n"
-        "- Discard a candidate if it satisfies any exclude requirement.\n"
+        f"- Include requirement operator is {include_operator}.\n"
+        f"- Exclude requirement operator is {exclude_operator}.\n"
         "- When include requirements are empty, do not reject candidates for missing include evidence.\n"
         "- When exclude requirements are empty, ignore exclude matching.\n"
         "- Judge the candidate's own responsibility, not merely related code around it.\n"
@@ -286,8 +289,12 @@ Exclude requirements:
 {json.dumps(requirements.get("exclude", []), ensure_ascii=False, indent=2)}
 
 Each requirement has:
+- clause_id: stable requirement id
+- intent.action / intent.object: normalized behavior and target entity
 - intent_statement: a yes/no semantic requirement
 - aspect: functional | non_functional | domain
+- non_functional_type: optional quality category
+- keywords: normalized intention terms
 - description: a short explanation of the requirement
 
 Candidate symbol schema:
@@ -359,7 +366,7 @@ def parse_judge_response(text: str) -> Dict[str, Any]:
 
 def run_llm_judge_filter(
     candidates: List[Dict[str, Any]],
-    semql_query: Dict[str, Any],
+    intention_plan: Dict[str, Any],
     *,
     config: Optional[LLMJudgeConfig] = None,
     client: Any = None,
@@ -367,32 +374,34 @@ def run_llm_judge_filter(
 ) -> Dict[str, Any]:
     return LLMJudgeFilter(config=config, client=client, caller=caller).run_filter(
         candidates,
-        semql_query,
+        intention_plan,
     )
 
 
 def llm_judge_filter(
-    semQL_path: str,
+    intention_plan_path: str,
     candidate_path: str,
     output_path: str,
     *,
     judge_output_path: Optional[str] = None,
-    batch_size: int = 20,
-    max_code_chars: int = 4000,
+    batch_size: int = 5,
+    max_code_chars: int = 3000,
     model: str = BASE_MODEL,
     client: Any = None,
     caller: Optional[JudgeCaller] = None,
 ) -> List[Dict[str, Any]]:
-    semql = load_res(semQL_path)
+    intention_plan = load_res(intention_plan_path)
     candidates = load_res(candidate_path)
-    if not isinstance(semql, dict):
-        raise ValueError(f"SemQL must be a JSON object: {semQL_path}")
+    if not isinstance(intention_plan, dict):
+        raise ValueError(
+            f"Intention plan must be a JSON object: {intention_plan_path}"
+        )
     if not isinstance(candidates, list):
         raise ValueError(f"Candidate set must be a JSON array: {candidate_path}")
 
     result = run_llm_judge_filter(
         candidates,
-        semql,
+        intention_plan,
         config=LLMJudgeConfig(
             model=model,
             batch_size=batch_size,
@@ -430,12 +439,33 @@ def _normalize_requirement_items(items: Any) -> List[Dict[str, Any]]:
 
 
 def _normalize_requirement_item(item: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    intent = item.get("intent")
+    if not isinstance(intent, dict):
+        intent = {}
     req = {
+        "clause_id": item.get("clause_id"),
+        "intent": {
+            "action": intent.get("action"),
+            "object": intent.get("object"),
+        },
         "intent_statement": item.get("intent_statement"),
         "aspect": item.get("aspect"),
+        "non_functional_type": item.get("non_functional_type"),
+        "keywords": item.get("keywords", [])
+        if isinstance(item.get("keywords", []), list)
+        else [],
         "description": item.get("description"),
     }
-    if not any(req.values()):
+    meaningful_values = [
+        req["intent"]["action"],
+        req["intent"]["object"],
+        req["intent_statement"],
+        req["aspect"],
+        req["non_functional_type"],
+        req["description"],
+        *req["keywords"],
+    ]
+    if not any(meaningful_values):
         return None
     return req
 
@@ -493,12 +523,12 @@ def _is_int_like(value: Any) -> bool:
 
 def main() -> None:
     kept = llm_judge_filter(
-        semQL_path=f"{QUERY_OUTPUT_DIR}/semQL.json",
+        intention_plan_path=f"{QUERY_OUTPUT_DIR}/intention_semql.json",
         candidate_path=f"{QUERY_OUTPUT_DIR}/filtered_by_embedding.json",
         output_path=f"{QUERY_OUTPUT_DIR}/LLM_judge_result.json",
         judge_output_path=f"{QUERY_OUTPUT_DIR}/LLM_judge_result_debug.json",
-        batch_size=20,
-        max_code_chars=4000,
+        batch_size=5,
+        max_code_chars=3000,
         model=BASE_MODEL,
     )
     print(json.dumps({"kept": len(kept), "output_path": f"{QUERY_OUTPUT_DIR}/LLM_judge_result.json"}, ensure_ascii=False, indent=2))

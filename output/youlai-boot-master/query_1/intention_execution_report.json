@@ -1,0 +1,234 @@
+{
+  "kind": "intention_execution_report",
+  "input_candidate_count": 24,
+  "final_candidate_count": 6,
+  "stages": {
+    "cluster": {
+      "executed": true,
+      "reason": null,
+      "input_count": 24,
+      "output_count": 24,
+      "duration_ms": 211993.956,
+      "policy": {
+        "enabled": true,
+        "min_candidate_count": 8,
+        "distance_threshold": 0.3,
+        "keep_top_cluster_ratio": 0.6,
+        "min_cluster_count_to_filter": 3,
+        "min_score_spread": 0.05,
+        "priority_1_ratio": 0.1,
+        "priority_2_ratio": 0.2,
+        "defer_low_cluster_discard_to_embedding": true
+      },
+      "stats": {
+        "total_initial": 24,
+        "total_kept": 19,
+        "total_rescue": 5,
+        "total_forwarded": 24,
+        "total_discarded": 0,
+        "num_clusters": 13,
+        "filter_applied": true,
+        "guard_reason": null,
+        "cluster_score_spread": 0.29566265642642975,
+        "keep_top_cluster_ratio": 0.6,
+        "cluster_ranking": [
+          {
+            "cluster_id": 3,
+            "score": 0.47011634707450867
+          },
+          {
+            "cluster_id": 1,
+            "score": 0.4546252191066742
+          },
+          {
+            "cluster_id": 8,
+            "score": 0.4028412997722626
+          },
+          {
+            "cluster_id": 7,
+            "score": 0.3887384235858917
+          },
+          {
+            "cluster_id": 9,
+            "score": 0.36955010890960693
+          },
+          {
+            "cluster_id": 2,
+            "score": 0.33071061968803406
+          },
+          {
+            "cluster_id": 0,
+            "score": 0.3202018737792969
+          },
+          {
+            "cluster_id": 11,
+            "score": 0.3200438320636749
+          },
+          {
+            "cluster_id": 4,
+            "score": 0.29499495029449463
+          },
+          {
+            "cluster_id": 6,
+            "score": 0.2624243497848511
+          },
+          {
+            "cluster_id": 12,
+            "score": 0.24255405366420746
+          },
+          {
+            "cluster_id": 5,
+            "score": 0.21014609932899475
+          },
+          {
+            "cluster_id": 10,
+            "score": 0.17445369064807892
+          }
+        ],
+        "tier_cluster_counts": {
+          "priority_1": 2,
+          "priority_2": 3,
+          "priority_3": 3,
+          "priority_4_low_relevance": 5
+        },
+        "tier_symbol_counts": {
+          "priority_1": 7,
+          "priority_2": 3,
+          "priority_3": 9,
+          "priority_4_low_relevance": 5
+        }
+      }
+    },
+    "embedding": {
+      "executed": true,
+      "reason": null,
+      "input_count": 24,
+      "output_count": 24,
+      "duration_ms": 8675.287,
+      "policy": {
+        "enabled": true,
+        "include_hard_discard_threshold": 0.2,
+        "include_accept_threshold": 0.55,
+        "exclude_gray_threshold": 0.35,
+        "exclude_discard_threshold": 0.6,
+        "cluster_weight": 0.4,
+        "include_weight": 0.6,
+        "exclude_penalty_weight": 0.4,
+        "max_candidate_terms": 80,
+        "no_term_policy": "gray_for_llm",
+        "priority_1_ratio": 0.1,
+        "priority_2_ratio": 0.2,
+        "decision_order": [
+          "exclude_hard_veto",
+          "absolute_positive",
+          "absolute_weak_negative",
+          "collect_unresolved",
+          "distribution_guard",
+          "adaptive_distribution"
+        ],
+        "conflict_policy": {
+          "cluster_support_tiers": [
+            "priority_1",
+            "priority_2"
+          ],
+          "cluster_support_include_ceiling": 0.35,
+          "cluster_support_min_gap": 0.25,
+          "polarity_include_floor": 0.45
+        },
+        "adaptive_distribution": {
+          "enabled": true,
+          "min_candidate_count": 10,
+          "min_unresolved_candidate_count": 8,
+          "robust_spread_lower_quantile": 0.1,
+          "robust_spread_upper_quantile": 0.9,
+          "min_robust_score_spread": 0.1,
+          "lower_quantile": 0.4,
+          "upper_quantile": 0.8,
+          "tie_tolerance": 0.01,
+          "adaptive_accept_include_floor": 0.45,
+          "adaptive_accept_exclude_ceiling": 0.25,
+          "adaptive_discard_include_ceiling": 0.35
+        }
+      },
+      "stats": {
+        "total_initial": 24,
+        "total_kept": 24,
+        "total_discarded": 0,
+        "total_auto_kept": 4,
+        "total_gray": 20,
+        "include_terms": [
+          "handle",
+          "authentication",
+          "user",
+          "login",
+          "entry",
+          "handler",
+          "verification"
+        ],
+        "exclude_terms": [],
+        "decision_order": [
+          "exclude_hard_veto",
+          "absolute_positive",
+          "absolute_weak_negative",
+          "collect_unresolved",
+          "distribution_guard",
+          "adaptive_distribution"
+        ],
+        "distribution": {
+          "enabled": true,
+          "applied": true,
+          "unresolved_count": 24,
+          "guard_reasons": [],
+          "robust_low_score": 0.358703,
+          "robust_high_score": 0.479903,
+          "robust_score_spread": 0.1212,
+          "lower_boundary": 0.392133,
+          "upper_boundary": 0.436426
+        },
+        "gray_zone_counts": {
+          "gray_high": 4,
+          "gray_middle": 11,
+          "gray_low": 5
+        },
+        "decision_reason_counts": {
+          "adaptive_positive": 4,
+          "adaptive_high_unresolved": 4,
+          "adaptive_middle_unresolved": 11,
+          "adaptive_low_unresolved": 5
+        },
+        "tier_symbol_counts": {
+          "priority_1": 3,
+          "priority_2": 5,
+          "priority_3": 16,
+          "priority_4_discarded": 0
+        }
+      }
+    },
+    "llm_judge": {
+      "executed": true,
+      "reason": null,
+      "input_count": 20,
+      "output_count": 2,
+      "duration_ms": 1287852.726,
+      "policy": {
+        "enabled": true,
+        "candidate_source": "embedding_gray_zone",
+        "model": "qwen-plus",
+        "batch_size": 5,
+        "max_code_chars": 3000,
+        "failure_policy": "keep_uncertain",
+        "disabled_gray_policy": "keep"
+      },
+      "stats": {
+        "total_initial": 20,
+        "total_kept": 2,
+        "total_discarded": 18,
+        "total_uncertain": 0,
+        "batch_count": 4
+      },
+      "auto_kept_count": 4,
+      "gray_candidate_count": 20
+    }
+  },
+  "total_duration_ms": 2224922.594
+}

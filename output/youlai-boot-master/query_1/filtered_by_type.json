@@ -1,0 +1,1560 @@
+[
+  {
+    "symbol_id": 1355,
+    "name": "getAuthInfoByUsername",
+    "type": "method",
+    "file": "/Users/bytedance/old6ma/projects/youlai-boot-master/src/main/java/com/youlai/boot/system/service/UserService.java",
+    "range": {
+      "start_line": 74,
+      "end_line": 74
+    },
+    "name_pos": [
+      74,
+      17
+    ],
+    "signature": "getAuthInfoByUsername(String username)",
+    "language": "java",
+    "doc": "",
+    "container": "",
+    "matched_subtokens": "auth"
+  },
+  {
+    "symbol_id": 1339,
+    "name": "listCurrentUserRoutes",
+    "type": "method",
+    "file": "/Users/bytedance/old6ma/projects/youlai-boot-master/src/main/java/com/youlai/boot/system/service/MenuService.java",
+    "range": {
+      "start_line": 44,
+      "end_line": 44
+    },
+    "name_pos": [
+      44,
+      18
+    ],
+    "signature": "listCurrentUserRoutes()",
+    "language": "java",
+    "doc": "",
+    "container": "",
+    "matched_subtokens": "user"
+  },
+  {
+    "symbol_id": 1357,
+    "name": "listExportUsers",
+    "type": "method",
+    "file": "/Users/bytedance/old6ma/projects/youlai-boot-master/src/main/java/com/youlai/boot/system/service/UserService.java",
+    "range": {
+      "start_line": 87,
+      "end_line": 87
+    },
+    "name_pos": [
+      87,
+      23
+    ],
+    "signature": "listExportUsers(UserQuery queryParams)",
+    "language": "java",
+    "doc": "",
+    "container": "",
+    "matched_subtokens": "users"
+  },
+  {
+    "symbol_id": 1530,
+    "name": "listExportUsers",
+    "type": "method",
+    "file": "/Users/bytedance/old6ma/projects/youlai-boot-master/src/main/java/com/youlai/boot/system/service/impl/UserServiceImpl.java",
+    "range": {
+      "start_line": 250,
+      "end_line": 281
+    },
+    "name_pos": [
+      251,
+      30
+    ],
+    "signature": "listExportUsers(UserQuery queryParams)",
+    "language": "java",
+    "doc": "",
+    "container": "UserServiceImpl",
+    "matched_subtokens": "users"
+  },
+  {
+    "symbol_id": 1569,
+    "name": "listCurrentUserRoutes",
+    "type": "method",
+    "file": "/Users/bytedance/old6ma/projects/youlai-boot-master/src/main/java/com/youlai/boot/system/service/impl/MenuServiceImpl.java",
+    "range": {
+      "start_line": 141,
+      "end_line": 184
+    },
+    "name_pos": [
+      142,
+      25
+    ],
+    "signature": "listCurrentUserRoutes()",
+    "language": "java",
+    "doc": "",
+    "container": "MenuServiceImpl",
+    "matched_subtokens": "user"
+  },
+  {
+    "symbol_id": 198,
+    "name": "SysUserDetails",
+    "type": "method",
+    "file": "/Users/bytedance/old6ma/projects/youlai-boot-master/src/main/java/com/youlai/boot/framework/security/model/SysUserDetails.java",
+    "range": {
+      "start_line": 70,
+      "end_line": 85
+    },
+    "name_pos": [
+      70,
+      11
+    ],
+    "signature": "SysUserDetails(UserAuthInfo user)",
+    "language": "java",
+    "doc": "",
+    "container": "SysUserDetails",
+    "matched_subtokens": "user"
+  },
+  {
+    "symbol_id": 250,
+    "name": "loadUserByUsername",
+    "type": "method",
+    "file": "/Users/bytedance/old6ma/projects/youlai-boot-master/src/main/java/com/youlai/boot/framework/security/service/SysUserDetailsService.java",
+    "range": {
+      "start_line": 37,
+      "end_line": 51
+    },
+    "name_pos": [
+      38,
+      23
+    ],
+    "signature": "loadUserByUsername(String username)",
+    "language": "java",
+    "doc": "",
+    "container": "SysUserDetailsService",
+    "matched_subtokens": "user"
+  },
+  {
+    "symbol_id": 706,
+    "name": "UserImportListener",
+    "type": "method",
+    "file": "/Users/bytedance/old6ma/projects/youlai-boot-master/src/main/java/com/youlai/boot/system/listener/UserImportListener.java",
+    "range": {
+      "start_line": 65,
+      "end_line": 78
+    },
+    "name_pos": [
+      65,
+      11
+    ],
+    "signature": "UserImportListener()",
+    "language": "java",
+    "doc": "",
+    "container": "UserImportListener",
+    "matched_subtokens": "user"
+  },
+  {
+    "symbol_id": 77,
+    "name": "buildUserDetails",
+    "type": "method",
+    "file": "/Users/bytedance/old6ma/projects/youlai-boot-master/src/main/java/com/youlai/boot/framework/security/token/RedisTokenManager.java",
+    "range": {
+      "start_line": 279,
+      "end_line": 287
+    },
+    "name_pos": [
+      279,
+      27
+    ],
+    "signature": "buildUserDetails(UserSession userSession, Set<SimpleGrantedAuthority> authorities)",
+    "language": "java",
+    "doc": "",
+    "container": "RedisTokenManager",
+    "matched_subtokens": "user"
+  },
+  {
+    "symbol_id": 1356,
+    "name": "getAuthCredentialsByUsername",
+    "type": "method",
+    "file": "/Users/bytedance/old6ma/projects/youlai-boot-master/src/main/java/com/youlai/boot/system/service/UserService.java",
+    "range": {
+      "start_line": 76,
+      "end_line": 78
+    },
+    "name_pos": [
+      76,
+      25
+    ],
+    "signature": "getAuthCredentialsByUsername(String username)",
+    "language": "java",
+    "doc": "",
+    "container": "",
+    "matched_subtokens": "auth"
+  },
+  {
+    "symbol_id": 1370,
+    "name": "getAuthInfoByMobile",
+    "type": "method",
+    "file": "/Users/bytedance/old6ma/projects/youlai-boot-master/src/main/java/com/youlai/boot/system/service/UserService.java",
+    "range": {
+      "start_line": 190,
+      "end_line": 190
+    },
+    "name_pos": [
+      190,
+      17
+    ],
+    "signature": "getAuthInfoByMobile(String mobile)",
+    "language": "java",
+    "doc": "",
+    "container": "",
+    "matched_subtokens": "auth"
+  },
+  {
+    "symbol_id": 451,
+    "name": "findOrCreateUser",
+    "type": "method",
+    "file": "/Users/bytedance/old6ma/projects/youlai-boot-master/src/main/java/com/youlai/boot/auth/service/impl/WxMaAuthServiceImpl.java",
+    "range": {
+      "start_line": 162,
+      "end_line": 173
+    },
+    "name_pos": [
+      162,
+      20
+    ],
+    "signature": "findOrCreateUser(String mobile)",
+    "language": "java",
+    "doc": "",
+    "container": "WxMaAuthServiceImpl",
+    "matched_subtokens": "user"
+  },
+  {
+    "symbol_id": 1371,
+    "name": "getAuthCredentialsByMobile",
+    "type": "method",
+    "file": "/Users/bytedance/old6ma/projects/youlai-boot-master/src/main/java/com/youlai/boot/system/service/UserService.java",
+    "range": {
+      "start_line": 192,
+      "end_line": 194
+    },
+    "name_pos": [
+      192,
+      25
+    ],
+    "signature": "getAuthCredentialsByMobile(String mobile)",
+    "language": "java",
+    "doc": "",
+    "container": "",
+    "matched_subtokens": "auth"
+  },
+  {
+    "symbol_id": 1376,
+    "name": "getAuthInfoByOpenid",
+    "type": "method",
+    "file": "/Users/bytedance/old6ma/projects/youlai-boot-master/src/main/java/com/youlai/boot/system/service/UserSocialService.java",
+    "range": {
+      "start_line": 60,
+      "end_line": 60
+    },
+    "name_pos": [
+      60,
+      17
+    ],
+    "signature": "getAuthInfoByOpenid(SocialPlatformEnum platform, String openid)",
+    "language": "java",
+    "doc": "",
+    "container": "",
+    "matched_subtokens": "auth"
+  },
+  {
+    "symbol_id": 784,
+    "name": "getAuthInfoByUserId",
+    "type": "method",
+    "file": "/Users/bytedance/old6ma/projects/youlai-boot-master/src/main/java/com/youlai/boot/system/mapper/UserSocialMapper.java",
+    "range": {
+      "start_line": 20,
+      "end_line": 20
+    },
+    "name_pos": [
+      20,
+      17
+    ],
+    "signature": "getAuthInfoByUserId(Long userId)",
+    "language": "java",
+    "doc": "",
+    "container": "",
+    "matched_subtokens": "user"
+  },
+  {
+    "symbol_id": 1449,
+    "name": "getAuthInfoByOpenid",
+    "type": "method",
+    "file": "/Users/bytedance/old6ma/projects/youlai-boot-master/src/main/java/com/youlai/boot/system/service/impl/UserSocialServiceImpl.java",
+    "range": {
+      "start_line": 88,
+      "end_line": 95
+    },
+    "name_pos": [
+      89,
+      24
+    ],
+    "signature": "getAuthInfoByOpenid(SocialPlatformEnum platform, String openid)",
+    "language": "java",
+    "doc": "",
+    "container": "UserSocialServiceImpl",
+    "matched_subtokens": "auth"
+  },
+  {
+    "symbol_id": 1528,
+    "name": "getAuthInfoByUsername",
+    "type": "method",
+    "file": "/Users/bytedance/old6ma/projects/youlai-boot-master/src/main/java/com/youlai/boot/system/service/impl/UserServiceImpl.java",
+    "range": {
+      "start_line": 211,
+      "end_line": 221
+    },
+    "name_pos": [
+      212,
+      24
+    ],
+    "signature": "getAuthInfoByUsername(String username)",
+    "language": "java",
+    "doc": "",
+    "container": "UserServiceImpl",
+    "matched_subtokens": "auth"
+  },
+  {
+    "symbol_id": 1529,
+    "name": "getAuthInfoByMobile",
+    "type": "method",
+    "file": "/Users/bytedance/old6ma/projects/youlai-boot-master/src/main/java/com/youlai/boot/system/service/impl/UserServiceImpl.java",
+    "range": {
+      "start_line": 229,
+      "end_line": 242
+    },
+    "name_pos": [
+      230,
+      24
+    ],
+    "signature": "getAuthInfoByMobile(String mobile)",
+    "language": "java",
+    "doc": "",
+    "container": "UserServiceImpl",
+    "matched_subtokens": "auth"
+  },
+  {
+    "symbol_id": 154,
+    "name": "authenticate",
+    "type": "method",
+    "file": "/Users/bytedance/old6ma/projects/youlai-boot-master/src/main/java/com/youlai/boot/framework/security/provider/SmsAuthenticationProvider.java",
+    "range": {
+      "start_line": 57,
+      "end_line": 110
+    },
+    "name_pos": [
+      58,
+      26
+    ],
+    "signature": "authenticate(Authentication authentication)",
+    "language": "java",
+    "doc": "",
+    "container": "SmsAuthenticationProvider",
+    "matched_subtokens": "authenticate"
+  },
+  {
+    "symbol_id": 159,
+    "name": "authenticate",
+    "type": "method",
+    "file": "/Users/bytedance/old6ma/projects/youlai-boot-master/src/main/java/com/youlai/boot/framework/security/provider/WxMaAuthenticationProvider.java",
+    "range": {
+      "start_line": 31,
+      "end_line": 85
+    },
+    "name_pos": [
+      32,
+      26
+    ],
+    "signature": "authenticate(Authentication authentication)",
+    "language": "java",
+    "doc": "",
+    "container": "WxMaAuthenticationProvider",
+    "matched_subtokens": "authenticate"
+  },
+  {
+    "symbol_id": 166,
+    "name": "SmsAuthenticationToken",
+    "type": "method",
+    "file": "/Users/bytedance/old6ma/projects/youlai-boot-master/src/main/java/com/youlai/boot/framework/security/model/SmsAuthenticationToken.java",
+    "range": {
+      "start_line": 64,
+      "end_line": 69
+    },
+    "name_pos": [
+      64,
+      11
+    ],
+    "signature": "SmsAuthenticationToken(Object principal, Collection<? extends GrantedAuthority> authorities)",
+    "language": "java",
+    "doc": "",
+    "container": "SmsAuthenticationToken",
+    "matched_subtokens": "authentication"
+  },
+  {
+    "symbol_id": 167,
+    "name": "authenticated",
+    "type": "method",
+    "file": "/Users/bytedance/old6ma/projects/youlai-boot-master/src/main/java/com/youlai/boot/framework/security/model/SmsAuthenticationToken.java",
+    "range": {
+      "start_line": 78,
+      "end_line": 80
+    },
+    "name_pos": [
+      78,
+      41
+    ],
+    "signature": "authenticated(Object principal, Collection<? extends GrantedAuthority> authorities)",
+    "language": "java",
+    "doc": "",
+    "container": "SmsAuthenticationToken",
+    "matched_subtokens": "authenticated"
+  },
+  {
+    "symbol_id": 175,
+    "name": "WxMaAuthenticationToken",
+    "type": "method",
+    "file": "/Users/bytedance/old6ma/projects/youlai-boot-master/src/main/java/com/youlai/boot/framework/security/model/WxMaAuthenticationToken.java",
+    "range": {
+      "start_line": 53,
+      "end_line": 58
+    },
+    "name_pos": [
+      53,
+      11
+    ],
+    "signature": "WxMaAuthenticationToken(Object principal, Collection<? extends GrantedAuthority> authorities)",
+    "language": "java",
+    "doc": "",
+    "container": "WxMaAuthenticationToken",
+    "matched_subtokens": "authentication"
+  },
+  {
+    "symbol_id": 176,
+    "name": "authenticated",
+    "type": "method",
+    "file": "/Users/bytedance/old6ma/projects/youlai-boot-master/src/main/java/com/youlai/boot/framework/security/model/WxMaAuthenticationToken.java",
+    "range": {
+      "start_line": 63,
+      "end_line": 65
+    },
+    "name_pos": [
+      63,
+      42
+    ],
+    "signature": "authenticated(Object principal, Collection<? extends GrantedAuthority> authorities)",
+    "language": "java",
+    "doc": "",
+    "container": "WxMaAuthenticationToken",
+    "matched_subtokens": "authenticated"
+  },
+  {
+    "symbol_id": 199,
+    "name": "getAuthorities",
+    "type": "method",
+    "file": "/Users/bytedance/old6ma/projects/youlai-boot-master/src/main/java/com/youlai/boot/framework/security/model/SysUserDetails.java",
+    "range": {
+      "start_line": 88,
+      "end_line": 91
+    },
+    "name_pos": [
+      89,
+      50
+    ],
+    "signature": "getAuthorities()",
+    "language": "java",
+    "doc": "",
+    "container": "SysUserDetails",
+    "matched_subtokens": "authorities"
+  },
+  {
+    "symbol_id": 252,
+    "name": "getAuthInfoByWechatOpenid",
+    "type": "method",
+    "file": "/Users/bytedance/old6ma/projects/youlai-boot-master/src/main/java/com/youlai/boot/framework/security/service/SysUserDetailsService.java",
+    "range": {
+      "start_line": 69,
+      "end_line": 71
+    },
+    "name_pos": [
+      69,
+      24
+    ],
+    "signature": "getAuthInfoByWechatOpenid(String openid)",
+    "language": "java",
+    "doc": "",
+    "container": "SysUserDetailsService",
+    "matched_subtokens": "auth"
+  },
+  {
+    "symbol_id": 399,
+    "name": "login",
+    "type": "method",
+    "file": "/Users/bytedance/old6ma/projects/youlai-boot-master/src/main/java/com/youlai/boot/auth/controller/AuthController.java",
+    "range": {
+      "start_line": 41,
+      "end_line": 47
+    },
+    "name_pos": [
+      44,
+      39
+    ],
+    "signature": "login(@RequestBody @Valid LoginReq request)",
+    "language": "java",
+    "doc": "",
+    "container": "AuthController",
+    "matched_subtokens": "login"
+  },
+  {
+    "symbol_id": 112,
+    "name": "getUserId",
+    "type": "method",
+    "file": "/Users/bytedance/old6ma/projects/youlai-boot-master/src/main/java/com/youlai/boot/framework/security/util/SecurityUtils.java",
+    "range": {
+      "start_line": 50,
+      "end_line": 52
+    },
+    "name_pos": [
+      50,
+      23
+    ],
+    "signature": "getUserId()",
+    "language": "java",
+    "doc": "",
+    "container": "SecurityUtils",
+    "matched_subtokens": "user"
+  },
+  {
+    "symbol_id": 1351,
+    "name": "getUserFormData",
+    "type": "method",
+    "file": "/Users/bytedance/old6ma/projects/youlai-boot-master/src/main/java/com/youlai/boot/system/service/UserService.java",
+    "range": {
+      "start_line": 38,
+      "end_line": 38
+    },
+    "name_pos": [
+      38,
+      13
+    ],
+    "signature": "getUserFormData(Long userId)",
+    "language": "java",
+    "doc": "",
+    "container": "",
+    "matched_subtokens": "user"
+  },
+  {
+    "symbol_id": 1358,
+    "name": "getCurrentUserInfo",
+    "type": "method",
+    "file": "/Users/bytedance/old6ma/projects/youlai-boot-master/src/main/java/com/youlai/boot/system/service/UserService.java",
+    "range": {
+      "start_line": 95,
+      "end_line": 95
+    },
+    "name_pos": [
+      95,
+      18
+    ],
+    "signature": "getCurrentUserInfo()",
+    "language": "java",
+    "doc": "",
+    "container": "",
+    "matched_subtokens": "user"
+  },
+  {
+    "symbol_id": 1359,
+    "name": "getUserProfile",
+    "type": "method",
+    "file": "/Users/bytedance/old6ma/projects/youlai-boot-master/src/main/java/com/youlai/boot/system/service/UserService.java",
+    "range": {
+      "start_line": 102,
+      "end_line": 102
+    },
+    "name_pos": [
+      102,
+      18
+    ],
+    "signature": "getUserProfile(Long userId)",
+    "language": "java",
+    "doc": "",
+    "container": "",
+    "matched_subtokens": "user"
+  },
+  {
+    "symbol_id": 1369,
+    "name": "listUserOptions",
+    "type": "method",
+    "file": "/Users/bytedance/old6ma/projects/youlai-boot-master/src/main/java/com/youlai/boot/system/service/UserService.java",
+    "range": {
+      "start_line": 182,
+      "end_line": 182
+    },
+    "name_pos": [
+      182,
+      25
+    ],
+    "signature": "listUserOptions()",
+    "language": "java",
+    "doc": "",
+    "container": "",
+    "matched_subtokens": "user"
+  },
+  {
+    "symbol_id": 1524,
+    "name": "getUserFormData",
+    "type": "method",
+    "file": "/Users/bytedance/old6ma/projects/youlai-boot-master/src/main/java/com/youlai/boot/system/service/impl/UserServiceImpl.java",
+    "range": {
+      "start_line": 108,
+      "end_line": 111
+    },
+    "name_pos": [
+      109,
+      20
+    ],
+    "signature": "getUserFormData(Long userId)",
+    "language": "java",
+    "doc": "",
+    "container": "UserServiceImpl",
+    "matched_subtokens": "user"
+  },
+  {
+    "symbol_id": 1531,
+    "name": "getCurrentUserInfo",
+    "type": "method",
+    "file": "/Users/bytedance/old6ma/projects/youlai-boot-master/src/main/java/com/youlai/boot/system/service/impl/UserServiceImpl.java",
+    "range": {
+      "start_line": 288,
+      "end_line": 341
+    },
+    "name_pos": [
+      289,
+      25
+    ],
+    "signature": "getCurrentUserInfo()",
+    "language": "java",
+    "doc": "",
+    "container": "UserServiceImpl",
+    "matched_subtokens": "user"
+  },
+  {
+    "symbol_id": 1532,
+    "name": "getUserProfile",
+    "type": "method",
+    "file": "/Users/bytedance/old6ma/projects/youlai-boot-master/src/main/java/com/youlai/boot/system/service/impl/UserServiceImpl.java",
+    "range": {
+      "start_line": 349,
+      "end_line": 352
+    },
+    "name_pos": [
+      350,
+      25
+    ],
+    "signature": "getUserProfile(Long userId)",
+    "language": "java",
+    "doc": "",
+    "container": "UserServiceImpl",
+    "matched_subtokens": "user"
+  },
+  {
+    "symbol_id": 1542,
+    "name": "listUserOptions",
+    "type": "method",
+    "file": "/Users/bytedance/old6ma/projects/youlai-boot-master/src/main/java/com/youlai/boot/system/service/impl/UserServiceImpl.java",
+    "range": {
+      "start_line": 672,
+      "end_line": 678
+    },
+    "name_pos": [
+      673,
+      32
+    ],
+    "signature": "listUserOptions()",
+    "language": "java",
+    "doc": "",
+    "container": "UserServiceImpl",
+    "matched_subtokens": "user"
+  },
+  {
+    "symbol_id": 518,
+    "name": "getOnlineUserCount",
+    "type": "method",
+    "file": "/Users/bytedance/old6ma/projects/youlai-boot-master/src/main/java/com/youlai/boot/message/service/SseService.java",
+    "range": {
+      "start_line": 119,
+      "end_line": 121
+    },
+    "name_pos": [
+      119,
+      15
+    ],
+    "signature": "getOnlineUserCount()",
+    "language": "java",
+    "doc": "",
+    "container": "SseService",
+    "matched_subtokens": "user"
+  },
+  {
+    "symbol_id": 817,
+    "name": "getCurrentUserRoutes",
+    "type": "method",
+    "file": "/Users/bytedance/old6ma/projects/youlai-boot-master/src/main/java/com/youlai/boot/system/controller/MenuController.java",
+    "range": {
+      "start_line": 57,
+      "end_line": 62
+    },
+    "name_pos": [
+      59,
+      33
+    ],
+    "signature": "getCurrentUserRoutes()",
+    "language": "java",
+    "doc": "",
+    "container": "MenuController",
+    "matched_subtokens": "user"
+  },
+  {
+    "symbol_id": 866,
+    "name": "getUserForm",
+    "type": "method",
+    "file": "/Users/bytedance/old6ma/projects/youlai-boot-master/src/main/java/com/youlai/boot/system/controller/UserController.java",
+    "range": {
+      "start_line": 83,
+      "end_line": 91
+    },
+    "name_pos": [
+      86,
+      28
+    ],
+    "signature": "getUserForm(\n            @Parameter(description = \"用户ID\") @PathVariable Long userId\n    )",
+    "language": "java",
+    "doc": "",
+    "container": "UserController",
+    "matched_subtokens": "user"
+  },
+  {
+    "symbol_id": 871,
+    "name": "getCurrentUser",
+    "type": "method",
+    "file": "/Users/bytedance/old6ma/projects/youlai-boot-master/src/main/java/com/youlai/boot/system/controller/UserController.java",
+    "range": {
+      "start_line": 147,
+      "end_line": 152
+    },
+    "name_pos": [
+      149,
+      33
+    ],
+    "signature": "getCurrentUser()",
+    "language": "java",
+    "doc": "",
+    "container": "UserController",
+    "matched_subtokens": "user"
+  },
+  {
+    "symbol_id": 873,
+    "name": "importUsers",
+    "type": "method",
+    "file": "/Users/bytedance/old6ma/projects/youlai-boot-master/src/main/java/com/youlai/boot/system/controller/UserController.java",
+    "range": {
+      "start_line": 172,
+      "end_line": 180
+    },
+    "name_pos": [
+      176,
+      31
+    ],
+    "signature": "importUsers(MultipartFile file)",
+    "language": "java",
+    "doc": "",
+    "container": "UserController",
+    "matched_subtokens": "users"
+  },
+  {
+    "symbol_id": 875,
+    "name": "listUserOptions",
+    "type": "method",
+    "file": "/Users/bytedance/old6ma/projects/youlai-boot-master/src/main/java/com/youlai/boot/system/controller/UserController.java",
+    "range": {
+      "start_line": 196,
+      "end_line": 201
+    },
+    "name_pos": [
+      198,
+      40
+    ],
+    "signature": "listUserOptions()",
+    "language": "java",
+    "doc": "",
+    "container": "UserController",
+    "matched_subtokens": "user"
+  },
+  {
+    "symbol_id": 876,
+    "name": "getUserProfile",
+    "type": "method",
+    "file": "/Users/bytedance/old6ma/projects/youlai-boot-master/src/main/java/com/youlai/boot/system/controller/UserController.java",
+    "range": {
+      "start_line": 203,
+      "end_line": 209
+    },
+    "name_pos": [
+      205,
+      33
+    ],
+    "signature": "getUserProfile()",
+    "language": "java",
+    "doc": "",
+    "container": "UserController",
+    "matched_subtokens": "user"
+  },
+  {
+    "symbol_id": 400,
+    "name": "loginBySms",
+    "type": "method",
+    "file": "/Users/bytedance/old6ma/projects/youlai-boot-master/src/main/java/com/youlai/boot/auth/controller/AuthController.java",
+    "range": {
+      "start_line": 49,
+      "end_line": 58
+    },
+    "name_pos": [
+      52,
+      39
+    ],
+    "signature": "loginBySms(\n            @Parameter(description = \"手机号\", example = \"18888888888\") @RequestParam String mobile,\n            @Parameter(description = \"验证码\", example = \"123456\") @RequestParam String code\n    )",
+    "language": "java",
+    "doc": "",
+    "container": "AuthController",
+    "matched_subtokens": "login"
+  },
+  {
+    "symbol_id": 402,
+    "name": "logout",
+    "type": "method",
+    "file": "/Users/bytedance/old6ma/projects/youlai-boot-master/src/main/java/com/youlai/boot/auth/controller/AuthController.java",
+    "range": {
+      "start_line": 69,
+      "end_line": 75
+    },
+    "name_pos": [
+      72,
+      24
+    ],
+    "signature": "logout()",
+    "language": "java",
+    "doc": "",
+    "container": "AuthController",
+    "matched_subtokens": "logout"
+  },
+  {
+    "symbol_id": 72,
+    "name": "invalidateToken",
+    "type": "method",
+    "file": "/Users/bytedance/old6ma/projects/youlai-boot-master/src/main/java/com/youlai/boot/framework/security/token/RedisTokenManager.java",
+    "range": {
+      "start_line": 178,
+      "end_line": 183
+    },
+    "name_pos": [
+      179,
+      16
+    ],
+    "signature": "invalidateToken(String token)",
+    "language": "java",
+    "doc": "",
+    "container": "RedisTokenManager",
+    "matched_subtokens": "invalidate"
+  },
+  {
+    "symbol_id": 865,
+    "name": "saveUser",
+    "type": "method",
+    "file": "/Users/bytedance/old6ma/projects/youlai-boot-master/src/main/java/com/youlai/boot/system/controller/UserController.java",
+    "range": {
+      "start_line": 71,
+      "end_line": 81
+    },
+    "name_pos": [
+      76,
+      21
+    ],
+    "signature": "saveUser(\n            @RequestBody @Valid UserForm userForm\n    )",
+    "language": "java",
+    "doc": "",
+    "container": "UserController",
+    "matched_subtokens": "user"
+  },
+  {
+    "symbol_id": 867,
+    "name": "updateUser",
+    "type": "method",
+    "file": "/Users/bytedance/old6ma/projects/youlai-boot-master/src/main/java/com/youlai/boot/system/controller/UserController.java",
+    "range": {
+      "start_line": 93,
+      "end_line": 103
+    },
+    "name_pos": [
+      97,
+      24
+    ],
+    "signature": "updateUser(\n            @Parameter(description = \"用户ID\") @PathVariable Long userId,\n            @RequestBody @Valid UserForm userForm\n    )",
+    "language": "java",
+    "doc": "",
+    "container": "UserController",
+    "matched_subtokens": "user"
+  },
+  {
+    "symbol_id": 868,
+    "name": "deleteUsers",
+    "type": "method",
+    "file": "/Users/bytedance/old6ma/projects/youlai-boot-master/src/main/java/com/youlai/boot/system/controller/UserController.java",
+    "range": {
+      "start_line": 105,
+      "end_line": 114
+    },
+    "name_pos": [
+      109,
+      24
+    ],
+    "signature": "deleteUsers(\n            @Parameter(description = \"用户ID，多个以英文逗号(,)分割\") @PathVariable String ids\n    )",
+    "language": "java",
+    "doc": "",
+    "container": "UserController",
+    "matched_subtokens": "users"
+  },
+  {
+    "symbol_id": 869,
+    "name": "updateUserStatus",
+    "type": "method",
+    "file": "/Users/bytedance/old6ma/projects/youlai-boot-master/src/main/java/com/youlai/boot/system/controller/UserController.java",
+    "range": {
+      "start_line": 116,
+      "end_line": 133
+    },
+    "name_pos": [
+      120,
+      24
+    ],
+    "signature": "updateUserStatus(\n            @Parameter(description = \"用户ID\") @PathVariable Long userId,\n            @Parameter(description = \"用户状态(1:启用;0:禁用)\") @RequestParam Integer status\n    )",
+    "language": "java",
+    "doc": "",
+    "container": "UserController",
+    "matched_subtokens": "user"
+  },
+  {
+    "symbol_id": 87,
+    "name": "invalidateToken",
+    "type": "method",
+    "file": "/Users/bytedance/old6ma/projects/youlai-boot-master/src/main/java/com/youlai/boot/framework/security/token/TokenManager.java",
+    "range": {
+      "start_line": 62,
+      "end_line": 65
+    },
+    "name_pos": [
+      62,
+      17
+    ],
+    "signature": "invalidateToken(String token)",
+    "language": "java",
+    "doc": "",
+    "container": "",
+    "matched_subtokens": "invalidate"
+  },
+  {
+    "symbol_id": 870,
+    "name": "resetUserPassword",
+    "type": "method",
+    "file": "/Users/bytedance/old6ma/projects/youlai-boot-master/src/main/java/com/youlai/boot/system/controller/UserController.java",
+    "range": {
+      "start_line": 135,
+      "end_line": 145
+    },
+    "name_pos": [
+      139,
+      21
+    ],
+    "signature": "resetUserPassword(\n            @Parameter(description = \"用户ID\") @PathVariable Long userId,\n            @RequestParam String password\n    )",
+    "language": "java",
+    "doc": "",
+    "container": "UserController",
+    "matched_subtokens": "user"
+  },
+  {
+    "symbol_id": 877,
+    "name": "updateUserProfile",
+    "type": "method",
+    "file": "/Users/bytedance/old6ma/projects/youlai-boot-master/src/main/java/com/youlai/boot/system/controller/UserController.java",
+    "range": {
+      "start_line": 211,
+      "end_line": 217
+    },
+    "name_pos": [
+      214,
+      21
+    ],
+    "signature": "updateUserProfile(@RequestBody UserProfileForm formData)",
+    "language": "java",
+    "doc": "",
+    "container": "UserController",
+    "matched_subtokens": "user"
+  },
+  {
+    "symbol_id": 878,
+    "name": "changeCurrentUserPassword",
+    "type": "method",
+    "file": "/Users/bytedance/old6ma/projects/youlai-boot-master/src/main/java/com/youlai/boot/system/controller/UserController.java",
+    "range": {
+      "start_line": 220,
+      "end_line": 229
+    },
+    "name_pos": [
+      223,
+      21
+    ],
+    "signature": "changeCurrentUserPassword(\n            @RequestBody PasswordUpdateForm data\n    )",
+    "language": "java",
+    "doc": "",
+    "container": "UserController",
+    "matched_subtokens": "user"
+  },
+  {
+    "symbol_id": 99,
+    "name": "invalidateToken",
+    "type": "method",
+    "file": "/Users/bytedance/old6ma/projects/youlai-boot-master/src/main/java/com/youlai/boot/framework/security/token/JwtTokenManager.java",
+    "range": {
+      "start_line": 212,
+      "end_line": 226
+    },
+    "name_pos": [
+      213,
+      16
+    ],
+    "signature": "invalidateToken(String token)",
+    "language": "java",
+    "doc": "",
+    "container": "JwtTokenManager",
+    "matched_subtokens": "invalidate"
+  },
+  {
+    "symbol_id": 406,
+    "name": "silentLogin",
+    "type": "method",
+    "file": "/Users/bytedance/old6ma/projects/youlai-boot-master/src/main/java/com/youlai/boot/auth/controller/WxMaAuthController.java",
+    "range": {
+      "start_line": 49,
+      "end_line": 58
+    },
+    "name_pos": [
+      52,
+      33
+    ],
+    "signature": "silentLogin(\n            @Parameter(description = \"微信登录凭证（wx.login 获取）\", required = true, example = \"0xxx\")\n            @RequestParam String code\n    )",
+    "language": "java",
+    "doc": "",
+    "container": "WxMaAuthController",
+    "matched_subtokens": "login"
+  },
+  {
+    "symbol_id": 407,
+    "name": "phoneLogin",
+    "type": "method",
+    "file": "/Users/bytedance/old6ma/projects/youlai-boot-master/src/main/java/com/youlai/boot/auth/controller/WxMaAuthController.java",
+    "range": {
+      "start_line": 67,
+      "end_line": 73
+    },
+    "name_pos": [
+      70,
+      39
+    ],
+    "signature": "phoneLogin(@Valid @RequestBody WxMaPhoneLoginReq req)",
+    "language": "java",
+    "doc": "",
+    "container": "WxMaAuthController",
+    "matched_subtokens": "login"
+  },
+  {
+    "symbol_id": 452,
+    "name": "createNewUser",
+    "type": "method",
+    "file": "/Users/bytedance/old6ma/projects/youlai-boot-master/src/main/java/com/youlai/boot/auth/service/impl/WxMaAuthServiceImpl.java",
+    "range": {
+      "start_line": 181,
+      "end_line": 196
+    },
+    "name_pos": [
+      181,
+      20
+    ],
+    "signature": "createNewUser(String mobile)",
+    "language": "java",
+    "doc": "",
+    "container": "WxMaAuthServiceImpl",
+    "matched_subtokens": "user"
+  },
+  {
+    "symbol_id": 429,
+    "name": "login",
+    "type": "method",
+    "file": "/Users/bytedance/old6ma/projects/youlai-boot-master/src/main/java/com/youlai/boot/auth/service/AuthService.java",
+    "range": {
+      "start_line": 21,
+      "end_line": 21
+    },
+    "name_pos": [
+      21,
+      24
+    ],
+    "signature": "login(String username, String password)",
+    "language": "java",
+    "doc": "",
+    "container": "",
+    "matched_subtokens": "login"
+  },
+  {
+    "symbol_id": 430,
+    "name": "loginBySms",
+    "type": "method",
+    "file": "/Users/bytedance/old6ma/projects/youlai-boot-master/src/main/java/com/youlai/boot/auth/service/AuthService.java",
+    "range": {
+      "start_line": 30,
+      "end_line": 30
+    },
+    "name_pos": [
+      30,
+      24
+    ],
+    "signature": "loginBySms(String mobile, String code)",
+    "language": "java",
+    "doc": "",
+    "container": "",
+    "matched_subtokens": "login"
+  },
+  {
+    "symbol_id": 432,
+    "name": "logout",
+    "type": "method",
+    "file": "/Users/bytedance/old6ma/projects/youlai-boot-master/src/main/java/com/youlai/boot/auth/service/AuthService.java",
+    "range": {
+      "start_line": 42,
+      "end_line": 42
+    },
+    "name_pos": [
+      42,
+      9
+    ],
+    "signature": "logout()",
+    "language": "java",
+    "doc": "",
+    "container": "",
+    "matched_subtokens": "logout"
+  },
+  {
+    "symbol_id": 102,
+    "name": "invalidateUserSessions",
+    "type": "method",
+    "file": "/Users/bytedance/old6ma/projects/youlai-boot-master/src/main/java/com/youlai/boot/framework/security/token/JwtTokenManager.java",
+    "range": {
+      "start_line": 282,
+      "end_line": 291
+    },
+    "name_pos": [
+      283,
+      16
+    ],
+    "signature": "invalidateUserSessions(Long userId)",
+    "language": "java",
+    "doc": "",
+    "container": "JwtTokenManager",
+    "matched_subtokens": "invalidate"
+  },
+  {
+    "symbol_id": 73,
+    "name": "invalidateUserSessions",
+    "type": "method",
+    "file": "/Users/bytedance/old6ma/projects/youlai-boot-master/src/main/java/com/youlai/boot/framework/security/token/RedisTokenManager.java",
+    "range": {
+      "start_line": 192,
+      "end_line": 215
+    },
+    "name_pos": [
+      193,
+      16
+    ],
+    "signature": "invalidateUserSessions(Long userId)",
+    "language": "java",
+    "doc": "",
+    "container": "RedisTokenManager",
+    "matched_subtokens": "invalidate"
+  },
+  {
+    "symbol_id": 88,
+    "name": "invalidateUserSessions",
+    "type": "method",
+    "file": "/Users/bytedance/old6ma/projects/youlai-boot-master/src/main/java/com/youlai/boot/framework/security/token/TokenManager.java",
+    "range": {
+      "start_line": 72,
+      "end_line": 74
+    },
+    "name_pos": [
+      72,
+      17
+    ],
+    "signature": "invalidateUserSessions(Long userId)",
+    "language": "java",
+    "doc": "",
+    "container": "",
+    "matched_subtokens": "invalidate"
+  },
+  {
+    "symbol_id": 435,
+    "name": "silentLogin",
+    "type": "method",
+    "file": "/Users/bytedance/old6ma/projects/youlai-boot-master/src/main/java/com/youlai/boot/auth/service/WxMaAuthService.java",
+    "range": {
+      "start_line": 24,
+      "end_line": 24
+    },
+    "name_pos": [
+      24,
+      18
+    ],
+    "signature": "silentLogin(String code)",
+    "language": "java",
+    "doc": "",
+    "container": "",
+    "matched_subtokens": "login"
+  },
+  {
+    "symbol_id": 436,
+    "name": "phoneLogin",
+    "type": "method",
+    "file": "/Users/bytedance/old6ma/projects/youlai-boot-master/src/main/java/com/youlai/boot/auth/service/WxMaAuthService.java",
+    "range": {
+      "start_line": 38,
+      "end_line": 38
+    },
+    "name_pos": [
+      38,
+      24
+    ],
+    "signature": "phoneLogin(String loginCode, String phoneCode)",
+    "language": "java",
+    "doc": "",
+    "container": "",
+    "matched_subtokens": "login"
+  },
+  {
+    "symbol_id": 1422,
+    "name": "saveUserRoles",
+    "type": "method",
+    "file": "/Users/bytedance/old6ma/projects/youlai-boot-master/src/main/java/com/youlai/boot/system/service/UserRoleService.java",
+    "range": {
+      "start_line": 24,
+      "end_line": 24
+    },
+    "name_pos": [
+      24,
+      9
+    ],
+    "signature": "saveUserRoles(Long userId, List<Long> roleIds)",
+    "language": "java",
+    "doc": "",
+    "container": "",
+    "matched_subtokens": "user"
+  },
+  {
+    "symbol_id": 1586,
+    "name": "saveUserRoles",
+    "type": "method",
+    "file": "/Users/bytedance/old6ma/projects/youlai-boot-master/src/main/java/com/youlai/boot/system/service/impl/UserRoleServiceImpl.java",
+    "range": {
+      "start_line": 37,
+      "end_line": 82
+    },
+    "name_pos": [
+      38,
+      14
+    ],
+    "signature": "saveUserRoles(Long userId, List<Long> roleIds)",
+    "language": "java",
+    "doc": "",
+    "container": "UserRoleServiceImpl",
+    "matched_subtokens": "user"
+  },
+  {
+    "symbol_id": 446,
+    "name": "silentLogin",
+    "type": "method",
+    "file": "/Users/bytedance/old6ma/projects/youlai-boot-master/src/main/java/com/youlai/boot/auth/service/impl/WxMaAuthServiceImpl.java",
+    "range": {
+      "start_line": 56,
+      "end_line": 79
+    },
+    "name_pos": [
+      57,
+      25
+    ],
+    "signature": "silentLogin(String code)",
+    "language": "java",
+    "doc": "",
+    "container": "WxMaAuthServiceImpl",
+    "matched_subtokens": "login"
+  },
+  {
+    "symbol_id": 447,
+    "name": "phoneLogin",
+    "type": "method",
+    "file": "/Users/bytedance/old6ma/projects/youlai-boot-master/src/main/java/com/youlai/boot/auth/service/impl/WxMaAuthServiceImpl.java",
+    "range": {
+      "start_line": 84,
+      "end_line": 104
+    },
+    "name_pos": [
+      86,
+      31
+    ],
+    "signature": "phoneLogin(String loginCode, String phoneCode)",
+    "language": "java",
+    "doc": "",
+    "container": "WxMaAuthServiceImpl",
+    "matched_subtokens": "login"
+  },
+  {
+    "symbol_id": 455,
+    "name": "generateAuthToken",
+    "type": "method",
+    "file": "/Users/bytedance/old6ma/projects/youlai-boot-master/src/main/java/com/youlai/boot/auth/service/impl/WxMaAuthServiceImpl.java",
+    "range": {
+      "start_line": 236,
+      "end_line": 244
+    },
+    "name_pos": [
+      236,
+      32
+    ],
+    "signature": "generateAuthToken(String mobile)",
+    "language": "java",
+    "doc": "",
+    "container": "WxMaAuthServiceImpl",
+    "matched_subtokens": "auth"
+  },
+  {
+    "symbol_id": 462,
+    "name": "login",
+    "type": "method",
+    "file": "/Users/bytedance/old6ma/projects/youlai-boot-master/src/main/java/com/youlai/boot/auth/service/impl/AuthServiceImpl.java",
+    "range": {
+      "start_line": 52,
+      "end_line": 71
+    },
+    "name_pos": [
+      53,
+      31
+    ],
+    "signature": "login(String username, String password)",
+    "language": "java",
+    "doc": "",
+    "container": "AuthServiceImpl",
+    "matched_subtokens": "login"
+  },
+  {
+    "symbol_id": 464,
+    "name": "loginBySms",
+    "type": "method",
+    "file": "/Users/bytedance/old6ma/projects/youlai-boot-master/src/main/java/com/youlai/boot/auth/service/impl/AuthServiceImpl.java",
+    "range": {
+      "start_line": 105,
+      "end_line": 117
+    },
+    "name_pos": [
+      106,
+      31
+    ],
+    "signature": "loginBySms(String mobile, String code)",
+    "language": "java",
+    "doc": "",
+    "container": "AuthServiceImpl",
+    "matched_subtokens": "login"
+  },
+  {
+    "symbol_id": 465,
+    "name": "logout",
+    "type": "method",
+    "file": "/Users/bytedance/old6ma/projects/youlai-boot-master/src/main/java/com/youlai/boot/auth/service/impl/AuthServiceImpl.java",
+    "range": {
+      "start_line": 122,
+      "end_line": 130
+    },
+    "name_pos": [
+      123,
+      16
+    ],
+    "signature": "logout()",
+    "language": "java",
+    "doc": "",
+    "container": "AuthServiceImpl",
+    "matched_subtokens": "logout"
+  },
+  {
+    "symbol_id": 75,
+    "name": "handleSingleDeviceLogin",
+    "type": "method",
+    "file": "/Users/bytedance/old6ma/projects/youlai-boot-master/src/main/java/com/youlai/boot/framework/security/token/RedisTokenManager.java",
+    "range": {
+      "start_line": 246,
+      "end_line": 258
+    },
+    "name_pos": [
+      246,
+      17
+    ],
+    "signature": "handleSingleDeviceLogin(Long userId, String accessToken)",
+    "language": "java",
+    "doc": "",
+    "container": "RedisTokenManager",
+    "matched_subtokens": "login"
+  },
+  {
+    "symbol_id": 1361,
+    "name": "changeUserPassword",
+    "type": "method",
+    "file": "/Users/bytedance/old6ma/projects/youlai-boot-master/src/main/java/com/youlai/boot/system/service/UserService.java",
+    "range": {
+      "start_line": 119,
+      "end_line": 119
+    },
+    "name_pos": [
+      119,
+      12
+    ],
+    "signature": "changeUserPassword(Long userId, PasswordUpdateForm data)",
+    "language": "java",
+    "doc": "",
+    "container": "",
+    "matched_subtokens": "user"
+  },
+  {
+    "symbol_id": 1362,
+    "name": "resetUserPassword",
+    "type": "method",
+    "file": "/Users/bytedance/old6ma/projects/youlai-boot-master/src/main/java/com/youlai/boot/system/service/UserService.java",
+    "range": {
+      "start_line": 128,
+      "end_line": 128
+    },
+    "name_pos": [
+      128,
+      12
+    ],
+    "signature": "resetUserPassword(Long userId, String password)",
+    "language": "java",
+    "doc": "",
+    "container": "",
+    "matched_subtokens": "user"
+  },
+  {
+    "symbol_id": 1534,
+    "name": "changeUserPassword",
+    "type": "method",
+    "file": "/Users/bytedance/old6ma/projects/youlai-boot-master/src/main/java/com/youlai/boot/system/service/impl/UserServiceImpl.java",
+    "range": {
+      "start_line": 383,
+      "end_line": 418
+    },
+    "name_pos": [
+      384,
+      19
+    ],
+    "signature": "changeUserPassword(Long userId, PasswordUpdateForm data)",
+    "language": "java",
+    "doc": "",
+    "container": "UserServiceImpl",
+    "matched_subtokens": "user"
+  },
+  {
+    "symbol_id": 1535,
+    "name": "resetUserPassword",
+    "type": "method",
+    "file": "/Users/bytedance/old6ma/projects/youlai-boot-master/src/main/java/com/youlai/boot/system/service/impl/UserServiceImpl.java",
+    "range": {
+      "start_line": 427,
+      "end_line": 438
+    },
+    "name_pos": [
+      428,
+      19
+    ],
+    "signature": "resetUserPassword(Long userId, String password)",
+    "language": "java",
+    "doc": "",
+    "container": "UserServiceImpl",
+    "matched_subtokens": "user"
+  },
+  {
+    "symbol_id": 772,
+    "name": "getAuthInfoByUsername",
+    "type": "method",
+    "file": "/Users/bytedance/old6ma/projects/youlai-boot-master/src/main/java/com/youlai/boot/system/mapper/UserMapper.java",
+    "range": {
+      "start_line": 51,
+      "end_line": 51
+    },
+    "name_pos": [
+      51,
+      17
+    ],
+    "signature": "getAuthInfoByUsername(String username)",
+    "language": "java",
+    "doc": "",
+    "container": "",
+    "matched_subtokens": "auth"
+  },
+  {
+    "symbol_id": 773,
+    "name": "getAuthCredentialsByUsername",
+    "type": "method",
+    "file": "/Users/bytedance/old6ma/projects/youlai-boot-master/src/main/java/com/youlai/boot/system/mapper/UserMapper.java",
+    "range": {
+      "start_line": 53,
+      "end_line": 55
+    },
+    "name_pos": [
+      53,
+      25
+    ],
+    "signature": "getAuthCredentialsByUsername(String username)",
+    "language": "java",
+    "doc": "",
+    "container": "",
+    "matched_subtokens": "auth"
+  },
+  {
+    "symbol_id": 774,
+    "name": "getAuthInfoByMobile",
+    "type": "method",
+    "file": "/Users/bytedance/old6ma/projects/youlai-boot-master/src/main/java/com/youlai/boot/system/mapper/UserMapper.java",
+    "range": {
+      "start_line": 63,
+      "end_line": 63
+    },
+    "name_pos": [
+      63,
+      17
+    ],
+    "signature": "getAuthInfoByMobile(String mobile)",
+    "language": "java",
+    "doc": "",
+    "container": "",
+    "matched_subtokens": "auth"
+  }
+]

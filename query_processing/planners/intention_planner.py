@@ -4,7 +4,12 @@ from __future__ import annotations
 
 from typing import Any, Dict, Iterable, List, Optional
 
+from definition import BASE_MODEL
 from query_processing.plan_models import (
+    IntentionClusterStagePlan,
+    IntentionEmbeddingStagePlan,
+    IntentionExecutionPlan,
+    IntentionJudgeStagePlan,
     IntentionPlan,
     IntentionQueryProfile,
     IntentionRequirement,
@@ -38,16 +43,38 @@ class IntentionPlanner:
             (exclude if property_name == "exclude" else include).append(requirement)
 
         normalized_raw_query = normalize_optional_string(raw_query)
-        query_terms = self._build_query_terms(include)
-        semantic_parts = ([normalized_raw_query] if normalized_raw_query else []) + query_terms
+        include_terms = self._build_query_terms(include)
+        exclude_terms = self._build_query_terms(exclude)
+        semantic_parts = (
+            ([normalized_raw_query] if normalized_raw_query else []) + include_terms
+        )
+        has_requirements = bool(include or exclude)
 
+        # The nested policy dataclasses serialize the complete physical contract:
+        # Cluster guards/rescue, ordered absolute decisions, directional conflicts,
+        # guarded Q40/Q80 adaptation, and gray-only LLM limits.  Keeping these
+        # values in intention_semql makes Executor behavior reproducible and lets
+        # a future optimizer replace policies without changing execution code.
         return IntentionPlan(
             raw_query=normalized_raw_query,
             query_profile=IntentionQueryProfile(
                 semantic_text=" ".join(semantic_parts),
-                terms=query_terms,
+                include_terms=include_terms,
+                exclude_terms=exclude_terms,
             ),
             requirements=IntentionRequirements(include=include, exclude=exclude),
+            execution_plan=IntentionExecutionPlan(
+                cluster=IntentionClusterStagePlan(
+                    enabled=bool(include and semantic_parts),
+                ),
+                embedding=IntentionEmbeddingStagePlan(
+                    enabled=bool(include_terms or exclude_terms),
+                ),
+                llm_judge=IntentionJudgeStagePlan(
+                    enabled=has_requirements,
+                    model=BASE_MODEL,
+                ),
+            ),
         )
 
     @staticmethod

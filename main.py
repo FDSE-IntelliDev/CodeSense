@@ -16,7 +16,7 @@ from query_processing.semQL_composer import (
 )
 from executor.surface_executor import run_surface_search
 from executor.relation_executor import run_relation_executor
-from executor.intention_executor import executor as run_intention_executor
+from executor.intention_executor import run_intention_executor
 
 from definition import PROJECT_OUTPUT_DIR, QUERY_ID, get_query_output_dir
 from utils.file_utils import save_res,load_res
@@ -78,8 +78,8 @@ def process_online(
     surface_semQL_path = str(output_path / "surface_semql.json")
     relation_semQL_path = str(output_path / "relation_semql.json")
     intention_semQL_path = str(output_path / "intention_semql.json")
-    surface_result_path = str(output_path / "filtered_by_type_hop_0.json")
-    surface_evidence_path = str(output_path / "surface_evidence_hop_0.json")
+    surface_result_path = str(output_path / "filtered_by_type.json")
+    surface_evidence_path = str(output_path / "surface_evidence_hop.json")
     surface_group_search_result_path = str(
         output_path / "surface_group_search_results.json"
     )
@@ -121,24 +121,24 @@ def process_online(
     # print(f"  -> Legacy combined SemQL saved to {semQL_path}")
 
     print("\n[3/5] Running Surface Executor ...")
-    surface_results = run_surface_search(
-        surface_plan_path=surface_semQL_path,
-        output_dir=str(output_path),
-        project_output_dir=str(project_output_path),
-    )
-    print(f"  -> Surface results: {len(surface_results)} candidates saved to {surface_result_path}")
+    # surface_results = run_surface_search(
+    #     surface_plan_path=surface_semQL_path,
+    #     output_dir=str(output_path),
+    #     project_output_dir=str(project_output_path),
+    # )
+    # print(f"  -> Surface results: {len(surface_results)} candidates saved to {surface_result_path}")
 
     print("\n[4/5] Running Relation Executor ...")
-    relation_results = run_relation_executor(
-        relation_plan_path=relation_semQL_path,
-        surface_search_result_path=surface_result_path,
-        output_path=relation_result_path,
-    )
-    print(f"  -> Relation results: {len(relation_results)} candidates saved to {relation_result_path}")
+    # relation_results = run_relation_executor(
+    #     relation_plan_path=relation_semQL_path,
+    #     surface_search_result_path=surface_result_path,
+    #     output_path=relation_result_path,
+    # )
+    # print(f"  -> Relation results: {len(relation_results)} candidates saved to {relation_result_path}")
 
     print("\n[5/5] Running Intention Executor ...")
     final_results = run_intention_executor(
-        semQL_path=semQL_path,
+        intention_plan_path=intention_semQL_path,
         relation_executor_result_path=relation_result_path,
         output_path=intention_result_path,
     )

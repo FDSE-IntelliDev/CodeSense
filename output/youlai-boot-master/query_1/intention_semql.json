@@ -1,0 +1,110 @@
+{
+  "version": "1.0",
+  "kind": "intention",
+  "raw_query": "Find the entry function that handles user login authentication.",
+  "query_profile": {
+    "semantic_text": "Find the entry function that handles user login authentication. handle authentication user login entry authentication login handler user verification",
+    "include_terms": [
+      "handle authentication",
+      "user login",
+      "entry",
+      "authentication",
+      "login handler",
+      "user verification"
+    ],
+    "exclude_terms": []
+  },
+  "requirements": {
+    "include": [
+      {
+        "clause_id": "intention_0",
+        "intent": {
+          "action": "handle authentication",
+          "object": "user login"
+        },
+        "intent_statement": "Does this function serve as the primary entry point for verifying user credentials and establishing an authenticated session?",
+        "aspect": "functional",
+        "non_functional_type": null,
+        "keywords": [
+          "entry",
+          "authentication",
+          "login handler",
+          "user verification"
+        ],
+        "description": "Function must implement the initial, externally triggered logic that receives login request and orchestrates credential validation"
+      }
+    ],
+    "exclude": []
+  },
+  "result_logic": {
+    "include_operator": "all",
+    "exclude_operator": "any"
+  },
+  "execution_plan": {
+    "cluster": {
+      "enabled": true,
+      "min_candidate_count": 8,
+      "distance_threshold": 0.3,
+      "keep_top_cluster_ratio": 0.6,
+      "min_cluster_count_to_filter": 3,
+      "min_score_spread": 0.05,
+      "priority_1_ratio": 0.1,
+      "priority_2_ratio": 0.2,
+      "defer_low_cluster_discard_to_embedding": true
+    },
+    "embedding": {
+      "enabled": true,
+      "include_hard_discard_threshold": 0.2,
+      "include_accept_threshold": 0.55,
+      "exclude_gray_threshold": 0.35,
+      "exclude_discard_threshold": 0.6,
+      "cluster_weight": 0.4,
+      "include_weight": 0.6,
+      "exclude_penalty_weight": 0.4,
+      "max_candidate_terms": 80,
+      "no_term_policy": "gray_for_llm",
+      "priority_1_ratio": 0.1,
+      "priority_2_ratio": 0.2,
+      "decision_order": [
+        "exclude_hard_veto",
+        "absolute_positive",
+        "absolute_weak_negative",
+        "collect_unresolved",
+        "distribution_guard",
+        "adaptive_distribution"
+      ],
+      "conflict_policy": {
+        "cluster_support_tiers": [
+          "priority_1",
+          "priority_2"
+        ],
+        "cluster_support_include_ceiling": 0.35,
+        "cluster_support_min_gap": 0.25,
+        "polarity_include_floor": 0.45
+      },
+      "adaptive_distribution": {
+        "enabled": true,
+        "min_candidate_count": 10,
+        "min_unresolved_candidate_count": 8,
+        "robust_spread_lower_quantile": 0.1,
+        "robust_spread_upper_quantile": 0.9,
+        "min_robust_score_spread": 0.1,
+        "lower_quantile": 0.4,
+        "upper_quantile": 0.8,
+        "tie_tolerance": 0.01,
+        "adaptive_accept_include_floor": 0.45,
+        "adaptive_accept_exclude_ceiling": 0.25,
+        "adaptive_discard_include_ceiling": 0.35
+      }
+    },
+    "llm_judge": {
+      "enabled": true,
+      "candidate_source": "embedding_gray_zone",
+      "model": "qwen-plus",
+      "batch_size": 5,
+      "max_code_chars": 3000,
+      "failure_policy": "keep_uncertain",
+      "disabled_gray_policy": "keep"
+    }
+  }
+}

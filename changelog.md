@@ -625,3 +625,33 @@ INTERSECT、exclude clause UNION 后 subtract 的显式集合计划。
 - Relation Executor 的 `graph_role` 过滤测试已通过：单元测试覆盖 `entry_point` 命中及非函数候选在 include/exclude 下的保留差异；真实项目 login 样例将 82 个 Surface 候选过滤为 24 个 entry-point 候选，执行过程无 warning。
 - 当前 RelationCon 未启用的 container/code element type 不再写入 relation plan。
 - `code_ql` 暂时只保留计划与未执行 warning；code_ql-only exclude 不会误删全部候选。
+
+## 2026-07-23 — Intention Executor 混合语义决策与灰区 LLM
+
+Intention 链路已改为直接消费 `intention_semql.json`。`IntentionPlanner` 从 include /
+exclude IntentionCon 的 action、object 和 keywords 分别构造 `include_terms`、
+`exclude_terms`，同时生成 Cluster、Term Embedding、动态分布和 LLM Judge 的物理
+执行策略；Executor 只按计划执行，不再解析旧统一 SemQL 或自行决定阈值。
+
+执行过程采用 `Cluster → Term Embedding → 三路决策 → Gray-only LLM`：
+
+- Cluster 只有在候选数达到计划门槛时运行；cluster 数量不超过 2 或分差过小时不
+  丢弃任何簇。正常情况下低分簇进入 rescue pool，而不是在候选级 Embedding 之前
+  不可逆删除，因此 `include` 高但所在簇低的单个候选仍有机会被救回。
+- Term Embedding 分别计算 include 平均覆盖分 `I` 和 exclude 任一命中的最高分
+  `E`，再结合归一化 Cluster 分数 `C` 得到排序分数 `S`。`E>=0.60` 直接丢弃，
+  `I>=0.55 && E<0.35` 直接保留，`I<0.20` 且无 Cluster 支持冲突时直接丢弃。
+- 冲突采用有方向的语义：强 Cluster 支持但候选级 include 很弱，或 include 较高
+  且 exclude 落入 `[0.35,0.60)`，都会进入 `gray_conflict`；低 Cluster 不反向
+  否定高 include，因为候选级 Embedding 是更细粒度信号。
+- 绝对规则未决的候选只有在原始候选数、未决候选数和 `Q90(S)-Q10(S)` 稳健跨度
+  均达到门槛时才使用动态分布。Q80 以上可在满足绝对软下限后自适应保留，Q40
+  以下只有同时满足绝对弱相关条件才丢弃，其余进入 high/middle/low 灰区；同分
+  容差避免百分位边界产生不稳定硬过滤。
+- LLM Judge 只接收各类灰区候选，优先处理 conflict 和 high gray，每批最多 5 个
+  代码元素；`uncertain` 或调用失败按计划默认 fail-open 保留。明确正向不重复调用
+  LLM，明确负向也不会进入高成本阶段。
+
+执行额外保存 Cluster rescue、Embedding gray zone、各阶段 discarded 结果和
+`intention_execution_report.json`，用于分析每个候选经过绝对规则、动态分布与
+LLM 后的完整去向。

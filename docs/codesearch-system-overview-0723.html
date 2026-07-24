@@ -1410,17 +1410,17 @@ html&gt;body{padding:0}&lt;/style&gt;
           &lt;div class=&quot;domain-planner-bank&quot; aria-label=&quot;三个领域 Planner&quot;&gt;
             &lt;div class=&quot;domain-planner&quot;&gt;&lt;strong&gt;SurfacePlanner&lt;/strong&gt;&lt;span class=&quot;text-small&quot;&gt;OR · AND(n) · subtract&lt;/span&gt;&lt;/div&gt;
             &lt;div class=&quot;domain-planner&quot;&gt;&lt;strong&gt;RelationPlanner&lt;/strong&gt;&lt;span class=&quot;text-small&quot;&gt;调用与结构约束&lt;/span&gt;&lt;/div&gt;
-            &lt;div class=&quot;domain-planner&quot;&gt;&lt;strong&gt;IntentionPlanner&lt;/strong&gt;&lt;span class=&quot;text-small&quot;&gt;语义目标与判别需求&lt;/span&gt;&lt;/div&gt;
+            &lt;div class=&quot;domain-planner&quot;&gt;&lt;strong&gt;IntentionPlanner&lt;/strong&gt;&lt;span class=&quot;text-small&quot;&gt;正负术语 · 阈值 · 灰区策略&lt;/span&gt;&lt;/div&gt;
           &lt;/div&gt;
         &lt;/div&gt;
       &lt;/div&gt;
 
-      &lt;div class=&quot;cross-track-link text-small&quot;&gt;&lt;span aria-hidden=&quot;true&quot;&gt;&lt;/span&gt;&lt;span&gt;领域 Planner 编译并汇合为统一 Logical Plan ↓&lt;/span&gt;&lt;/div&gt;
+      &lt;div class=&quot;cross-track-link text-small&quot;&gt;&lt;span aria-hidden=&quot;true&quot;&gt;&lt;/span&gt;&lt;span&gt;领域 Planner 编译为可解释的 Execution Plan Bundle ↓&lt;/span&gt;&lt;/div&gt;
 
       &lt;div class=&quot;research-track&quot;&gt;
         &lt;div class=&quot;track-label text-small&quot;&gt;Retrieval &amp;amp; evidence&lt;/div&gt;
         &lt;div class=&quot;academic-chain execution&quot;&gt;
-          &lt;div class=&quot;academic-node emphasis&quot;&gt;&lt;strong&gt;Logical Plan&lt;/strong&gt;&lt;span class=&quot;text-small&quot;&gt;布尔 · 图关系 · 语义约束&lt;/span&gt;&lt;/div&gt;
+          &lt;div class=&quot;academic-node emphasis&quot;&gt;&lt;strong&gt;领域 Execution Plans&lt;/strong&gt;&lt;span class=&quot;text-small&quot;&gt;集合逻辑 · 图规则 · 语义物理策略&lt;/span&gt;&lt;/div&gt;
           &lt;span class=&quot;academic-arrow&quot; aria-hidden=&quot;true&quot;&gt;&lt;/span&gt;
           &lt;div class=&quot;academic-node evolving&quot;&gt;&lt;strong&gt;代价感知优化&lt;/strong&gt;&lt;span class=&quot;text-small&quot;&gt;选择性估计 · 算子重排&lt;/span&gt;&lt;/div&gt;
           &lt;span class=&quot;academic-arrow&quot; aria-hidden=&quot;true&quot;&gt;&lt;/span&gt;
@@ -1444,7 +1444,7 @@ html&gt;body{padding:0}&lt;/style&gt;
     SEMCON --&amp;gt; SP[&quot;SurfacePlanner&quot;]
     SEMCON --&amp;gt; RP[&quot;RelationPlanner&quot;]
     SEMCON --&amp;gt; IP[&quot;IntentionPlanner&quot;]
-    SP --&amp;gt; LPLAN[&quot;统一 Logical Plan&quot;]
+    SP --&amp;gt; LPLAN[&quot;Execution Plan Bundle&amp;lt;br/&amp;gt;集合逻辑 · 图规则 · 语义物理策略&quot;]
     RP --&amp;gt; LPLAN
     IP --&amp;gt; LPLAN
     LPLAN -.-&amp;gt; OPT[&quot;代价感知优化&amp;lt;br/&amp;gt;选择性估计 · 算子重排&quot;]
@@ -1460,7 +1460,7 @@ html&gt;body{padding:0}&lt;/style&gt;
     JUDGE --&amp;gt; RESULT[&quot;代码结果与覆盖证据&quot;]&lt;/code&gt;&lt;/pre&gt;
     &lt;/details&gt;
     &lt;div class=&quot;formula text-small&quot;&gt;
-      Planner 将 SemCon 编译为领域 Logical Plan；下一阶段在 Logical Plan 与执行器之间加入 Cost-aware Optimizer，依据候选规模、选择性与算子成本生成 Physical Plan。项目知识表示不再被画成独立阶段，而是作为统一检索过程中词法召回、图约束和语义精排的共同基础。
+      Planner 将 SemCon 编译为三个可解释的领域执行计划；其中 IntentionPlan 已携带 Cluster、Embedding、动态分布和 LLM 的物理策略。下一阶段可在计划与执行器之间加入 Cost-aware Optimizer，依据候选规模、选择性与算子成本重排可交换算子。项目知识表示不再被画成独立阶段，而是作为统一检索过程中词法召回、图约束和语义精排的共同基础。
     &lt;/div&gt;
   &lt;/section&gt;
 
@@ -1492,9 +1492,8 @@ k2 include
 
 group_logic
   groups: [k1, k2]
-  graph_scope: [call]
-  default_hop_count: 0
-  pairwise(k1, k2): hop_count = 0&lt;/code&gt;&lt;/pre&gt;
+  graph_scope: call
+  hop_count: 0&lt;/code&gt;&lt;/pre&gt;
       &lt;/div&gt;
       &lt;div class=&quot;example-step planner&quot;&gt;
         &lt;strong&gt;2 · 实际 SurfaceConditionPlan&lt;/strong&gt;
@@ -1510,14 +1509,11 @@ include_clause:
   property: include
   groups: [k1, k2]
   group_expression.operator: and_hop
-  default_hop_count: 0
-  rule.graph_scope: [call]
-  rule.default_hop_count: 0
-  rule.pair(k1, k2): hop_count = 0
-  pair.reason: Login action and user entity are typically
+  rule.groups: [k1, k2]
+  rule.graph_scope: call
+  rule.hop_count: 0
+  rule.reason: Login action and user entity are typically
     co-located in the same function signature or body
-  rule.reason: Function must jointly express login behavior
-    and user as subject/object to be the entry point
 
 exclude_clause: null
 result_expression:
@@ -1608,7 +1604,7 @@ final_surface = UNION(
           &lt;div class=&quot;executor-operation&quot;&gt;&lt;strong&gt;identity&lt;/strong&gt;&lt;span class=&quot;text-small&quot;&gt;唯一 group 结果原样返回。&lt;/span&gt;&lt;code&gt;R = R(k1)&lt;/code&gt;&lt;/div&gt;
           &lt;div class=&quot;executor-operation&quot;&gt;&lt;strong&gt;or&lt;/strong&gt;&lt;span class=&quot;text-small&quot;&gt;&lt;code&gt;_union()&lt;/code&gt; 合并多个 group；exclude clause 由此形成全量负向集合。&lt;/span&gt;&lt;code&gt;R = ⋃ R(ki)&lt;/code&gt;&lt;/div&gt;
           &lt;div class=&quot;executor-operation&quot;&gt;&lt;strong&gt;and_hop · n=0&lt;/strong&gt;&lt;span class=&quot;text-small&quot;&gt;&lt;code&gt;_and_hop() → _intersect()&lt;/code&gt;，无需访问代码图；完整覆盖当前 login / user plan。&lt;/span&gt;&lt;code&gt;R = ⋂ R(ki)&lt;/code&gt;&lt;/div&gt;
-          &lt;div class=&quot;executor-operation&quot;&gt;&lt;strong&gt;and_hop · n&amp;gt;0&lt;/strong&gt;&lt;span class=&quot;text-small&quot;&gt;&lt;code&gt;_and_hop()&lt;/code&gt; 检查概念组命中是否位于同一调用链且无向距离满足 hop_count；不判断 caller / callee。&lt;/span&gt;&lt;/div&gt;
+          &lt;div class=&quot;executor-operation&quot;&gt;&lt;strong&gt;and_hop · n&amp;gt;0&lt;/strong&gt;&lt;span class=&quot;text-small&quot;&gt;&lt;code&gt;_execute_pair_rule()&lt;/code&gt; 优先从较小端点集做无向 hop 扩展，与另一组 direct 集合相交得到实际关系端点；多个 pair-rule 结果与未参与规则的普通 group 再做普通交集。&lt;/span&gt;&lt;/div&gt;
         &lt;/div&gt;
       &lt;/div&gt;
       &lt;div class=&quot;executor-layer condition-layer&quot;&gt;
@@ -1640,7 +1636,7 @@ final_surface = UNION(
     &lt;/div&gt;
     &lt;div class=&quot;executor-output&quot;&gt;
       &lt;span class=&quot;text-small text-muted&quot;&gt;执行输出&lt;/span&gt;
-      &lt;span&gt;&lt;strong&gt;Stable symbol list&lt;/strong&gt; + &lt;code&gt;surface_evidence_hop_0.json&lt;/code&gt;：保留最终候选的 condition / group coverage、查询 term、matched_term、direct / graph_neighbor 与 distance。&lt;/span&gt;
+      &lt;span&gt;&lt;strong&gt;Stable symbol list&lt;/strong&gt; + &lt;code&gt;surface_evidence.json&lt;/code&gt;：保留最终候选的 condition / group coverage、查询 term、matched_term、direct / graph_neighbor、pair rule 与 distance。&lt;/span&gt;
     &lt;/div&gt;
     &lt;div class=&quot;executor-sequence text-small&quot; aria-label=&quot;第一阶段完整执行顺序&quot;&gt;
       &lt;span class=&quot;step&quot;&gt;group term OR&lt;/span&gt;&lt;span class=&quot;join&quot;&gt;→&lt;/span&gt;
@@ -1676,7 +1672,7 @@ final_surface = UNION(
       ID[&quot;identity&quot;]
       U[&quot;or = UNION(groups)&quot;]
       AH0[&quot;and_hop(0) = INTERSECT(groups)&quot;]
-      AHN[&quot;and_hop(n) = undirected call-chain coverage&quot;]
+      AHN[&quot;and_hop(n) = atomic pair rule&lt;br/&gt;endpoint expansion + direct-set intersection&quot;]
     end
     CALLGRAPH[&quot;Call graph&quot;] --&amp;gt; AHN
     L2 --&amp;gt; L3
@@ -1691,6 +1687,253 @@ final_surface = UNION(
       MI[&quot;compatible group: identity / INTERSECT&quot;] --&amp;gt; CU[&quot;incompatible groups: UNION&quot;] --&amp;gt; ES[&quot;subtract exclude-only sets&quot;]
     end
     L4 --&amp;gt; RESULT[&quot;Stable symbol list + coverage evidence&quot;]&lt;/code&gt;&lt;/pre&gt;
+    &lt;/details&gt;
+  &lt;/section&gt;
+
+  &lt;section class=&quot;section&quot; aria-labelledby=&quot;relation-executor-heading&quot;&gt;
+    &lt;div class=&quot;section-head&quot;&gt;
+      &lt;h2 id=&quot;relation-executor-heading&quot;&gt;Relation Executor：结构约束的逐层交集&lt;/h2&gt;
+      &lt;span class=&quot;viz-badge text-small&quot;&gt;直接消费 relation_semql · 复用 code graph 查询&lt;/span&gt;
+    &lt;/div&gt;
+    &lt;div class=&quot;executor-plan-input&quot;&gt;
+      &lt;span class=&quot;text-small text-muted&quot;&gt;计划输入&lt;/span&gt;
+      &lt;span&gt;&lt;strong&gt;RelationPlan&lt;/strong&gt;：Planner 已把每个 RelationCon 编译成 include / exclude clauses，并将 file_path、graph_role、caller、callee 与 code_ql 规范为独立字段。Executor 不再读取 caller / callee 的旧 hop_count，也不重新推断 clause 间关系。&lt;/span&gt;
+    &lt;/div&gt;
+    &lt;div class=&quot;executor-layer-flow&quot; aria-label=&quot;Relation Executor 分层执行流程图&quot;&gt;
+      &lt;div class=&quot;executor-layer term-layer&quot;&gt;
+        &lt;div class=&quot;executor-layer-label&quot;&gt;&lt;span class=&quot;text-small text-muted&quot;&gt;Layer 1&lt;/span&gt;&lt;strong&gt;低成本路径约束&lt;/strong&gt;&lt;/div&gt;
+        &lt;div class=&quot;executor-method&quot;&gt;
+          &lt;code&gt;_filter_candidates_by_path(candidates, file_path)&lt;/code&gt;
+          &lt;span class=&quot;text-small&quot;&gt;在任何图查询之前先缩小候选集。&lt;/span&gt;
+        &lt;/div&gt;
+        &lt;div class=&quot;executor-operations&quot;&gt;
+          &lt;div class=&quot;executor-operation&quot;&gt;&lt;strong&gt;文件路径&lt;/strong&gt;&lt;span class=&quot;text-small&quot;&gt;输入包含文件名或扩展名时按文件路径 / 后缀匹配，允许仓库相对路径。&lt;/span&gt;&lt;/div&gt;
+          &lt;div class=&quot;executor-operation&quot;&gt;&lt;strong&gt;目录路径&lt;/strong&gt;&lt;span class=&quot;text-small&quot;&gt;输入是目录或包路径时按规范化路径前缀匹配，该目录下代码元素均可保留。&lt;/span&gt;&lt;/div&gt;
+        &lt;/div&gt;
+      &lt;/div&gt;
+      &lt;div class=&quot;executor-layer group-layer&quot;&gt;
+        &lt;div class=&quot;executor-layer-label&quot;&gt;&lt;span class=&quot;text-small text-muted&quot;&gt;Layer 2&lt;/span&gt;&lt;strong&gt;图结构约束&lt;/strong&gt;&lt;/div&gt;
+        &lt;div class=&quot;executor-method&quot;&gt;
+          &lt;code&gt;_execute_clause(clause, candidates, graph_store)&lt;/code&gt;
+          &lt;span class=&quot;text-small&quot;&gt;在同一 clause 内依次执行 graph_role、caller 与 callee，所有有效字段都是 AND。&lt;/span&gt;
+        &lt;/div&gt;
+        &lt;div class=&quot;executor-operations&quot;&gt;
+          &lt;div class=&quot;executor-operation&quot;&gt;&lt;strong&gt;graph_role&lt;/strong&gt;&lt;span class=&quot;text-small&quot;&gt;通过 implementation-aware in/out degree 判断 entry_point、leaf 或 isolate；include 过滤会保留不适用调用图角色的非函数候选，exclude 过滤则不会把它们误当成角色命中。&lt;/span&gt;&lt;/div&gt;
+          &lt;div class=&quot;executor-operation&quot;&gt;&lt;strong&gt;caller / callee&lt;/strong&gt;&lt;span class=&quot;text-small&quot;&gt;函数所在位置使用文件名而非完整路径；方向性调用关系直接查询代码关系数据库，不再携带 Surface 的无向 hop 语义。&lt;/span&gt;&lt;/div&gt;
+          &lt;div class=&quot;executor-operation&quot;&gt;&lt;strong&gt;GraphStore lifecycle&lt;/strong&gt;&lt;span class=&quot;text-small&quot;&gt;调用方未传 store 时只初始化一次连接，随后统一走同一 store 过滤逻辑，避免维护两套数据库实现。&lt;/span&gt;&lt;/div&gt;
+        &lt;/div&gt;
+      &lt;/div&gt;
+      &lt;div class=&quot;executor-layer condition-layer&quot;&gt;
+        &lt;div class=&quot;executor-layer-label&quot;&gt;&lt;span class=&quot;text-small text-muted&quot;&gt;Layer 3&lt;/span&gt;&lt;strong&gt;Clause / Plan 集合语义&lt;/strong&gt;&lt;/div&gt;
+        &lt;div class=&quot;executor-method&quot;&gt;
+          &lt;code&gt;execute(plan, surface_candidates)&lt;/code&gt;
+          &lt;span class=&quot;text-small&quot;&gt;严格执行 Planner 输出的集合运算。&lt;/span&gt;
+        &lt;/div&gt;
+        &lt;div class=&quot;executor-operations&quot;&gt;
+          &lt;div class=&quot;executor-operation&quot;&gt;&lt;strong&gt;Clause 内&lt;/strong&gt;&lt;span class=&quot;text-small&quot;&gt;file_path ∩ graph_role ∩ caller ∩ callee；每增加一个约束都在当前较小候选集上继续过滤。&lt;/span&gt;&lt;/div&gt;
+          &lt;div class=&quot;executor-operation&quot;&gt;&lt;strong&gt;Include clauses&lt;/strong&gt;&lt;span class=&quot;text-small&quot;&gt;多个 include condition 表示同时满足，逐 clause 与 Surface 候选取交集。&lt;/span&gt;&lt;code&gt;S ∩ I1 ∩ I2 …&lt;/code&gt;&lt;/div&gt;
+          &lt;div class=&quot;executor-operation&quot;&gt;&lt;strong&gt;Exclude clauses&lt;/strong&gt;&lt;span class=&quot;text-small&quot;&gt;各负向 clause 独立求值后取并集，最后统一从 include 结果中减去。&lt;/span&gt;&lt;code&gt;R − (E1 ∪ E2 …)&lt;/code&gt;&lt;/div&gt;
+          &lt;div class=&quot;executor-operation&quot;&gt;&lt;strong&gt;code_ql&lt;/strong&gt;&lt;span class=&quot;text-small&quot;&gt;当前仅在计划与报告中保留未执行 warning，不会因尚未接入而误删候选。&lt;/span&gt;&lt;/div&gt;
+        &lt;/div&gt;
+      &lt;/div&gt;
+    &lt;/div&gt;
+    &lt;div class=&quot;executor-sequence text-small&quot; aria-label=&quot;Relation Executor 完整执行顺序&quot;&gt;
+      &lt;span class=&quot;step&quot;&gt;Surface candidates&lt;/span&gt;&lt;span class=&quot;join&quot;&gt;→&lt;/span&gt;
+      &lt;span class=&quot;step&quot;&gt;path pre-filter&lt;/span&gt;&lt;span class=&quot;join&quot;&gt;→&lt;/span&gt;
+      &lt;span class=&quot;step&quot;&gt;graph role&lt;/span&gt;&lt;span class=&quot;join&quot;&gt;→&lt;/span&gt;
+      &lt;span class=&quot;step&quot;&gt;caller / callee&lt;/span&gt;&lt;span class=&quot;join&quot;&gt;→&lt;/span&gt;
+      &lt;span class=&quot;step&quot;&gt;include intersections&lt;/span&gt;&lt;span class=&quot;join&quot;&gt;→&lt;/span&gt;
+      &lt;span class=&quot;step&quot;&gt;exclude union subtraction&lt;/span&gt;&lt;span class=&quot;join&quot;&gt;→&lt;/span&gt;
+      &lt;span class=&quot;step&quot;&gt;filtered_by_relation&lt;/span&gt;
+    &lt;/div&gt;
+    &lt;details&gt;
+      &lt;summary&gt;查看 Relation Executor Mermaid 定义&lt;/summary&gt;
+      &lt;pre class=&quot;mermaid-source&quot;&gt;&lt;code&gt;flowchart LR
+    S[&quot;Surface candidates&quot;] --&amp;gt; P[&quot;file / directory pre-filter&quot;]
+    P --&amp;gt; G[&quot;graph_role filter&quot;] --&amp;gt; C[&quot;caller filter&quot;] --&amp;gt; E[&quot;callee filter&quot;]
+    DB[&quot;Implementation-aware code graph&quot;] --&amp;gt; G
+    DB --&amp;gt; C
+    DB --&amp;gt; E
+    E --&amp;gt; IC[&quot;INTERSECT all include clauses&quot;]
+    S --&amp;gt; EX[&quot;evaluate exclude clauses&quot;] --&amp;gt; EU[&quot;UNION exclude results&quot;]
+    IC --&amp;gt; SUB[&quot;include result − exclude union&quot;]
+    EU --&amp;gt; SUB
+    SUB --&amp;gt; R[&quot;Relation-filtered candidates&quot;]&lt;/code&gt;&lt;/pre&gt;
+    &lt;/details&gt;
+  &lt;/section&gt;
+
+  &lt;section class=&quot;section&quot; aria-labelledby=&quot;intention-executor-heading&quot;&gt;
+    &lt;div class=&quot;section-head&quot;&gt;
+      &lt;h2 id=&quot;intention-executor-heading&quot;&gt;Intention Executor：绝对边界、动态分布与灰区判别&lt;/h2&gt;
+      &lt;span class=&quot;viz-badge text-small&quot;&gt;Planner-owned policy · Executor-only execution&lt;/span&gt;
+    &lt;/div&gt;
+    &lt;div class=&quot;raw-query-example&quot; aria-label=&quot;Intention Planner 示例的原始自然语言查询&quot;&gt;
+      &lt;strong&gt;Raw Query&lt;/strong&gt;
+      &lt;code&gt;raw_query: &quot;Find the production function that authenticates a user, excluding test or mock login handlers&quot;&lt;/code&gt;
+    &lt;/div&gt;
+    &lt;div class=&quot;planner-example-grid&quot;&gt;
+      &lt;div class=&quot;example-step&quot;&gt;
+        &lt;strong&gt;1 · IntentionCon requirements&lt;/strong&gt;
+        &lt;span class=&quot;text-small&quot;&gt;Planner 分开规范化正向职责与负向职责；action、object、keywords 的原始分组仍保存在 requirements 中。&lt;/span&gt;
+        &lt;pre class=&quot;example-code text-small&quot;&gt;&lt;code&gt;include:
+  action: authenticate
+  object: user
+  keywords: [login, credential validation]
+
+exclude:
+  action: mock
+  object: handler
+  keywords: [test, fake]&lt;/code&gt;&lt;/pre&gt;
+      &lt;/div&gt;
+      &lt;div class=&quot;example-step planner&quot;&gt;
+        &lt;strong&gt;2 · Query profile 组装&lt;/strong&gt;
+        &lt;span class=&quot;text-small&quot;&gt;每一侧按稳定顺序去重；Cluster 只使用正向 semantic_text，Embedding 同时消费正向与负向 terms。&lt;/span&gt;
+        &lt;pre class=&quot;example-code text-small&quot;&gt;&lt;code&gt;include_terms:
+  [authenticate, user, login, credential validation]
+exclude_terms:
+  [mock, handler, test, fake]
+
+semantic_text:
+  raw_query + include_terms
+
+result_logic:
+  include_operator: all
+  exclude_operator: any&lt;/code&gt;&lt;/pre&gt;
+      &lt;/div&gt;
+      &lt;div class=&quot;example-step planner&quot;&gt;
+        &lt;strong&gt;3 · Planner 为组件准备输入&lt;/strong&gt;
+        &lt;span class=&quot;text-small&quot;&gt;Planner 把语义数据和决策策略一次性写入 intention_semql，后续组件只消费属于自己的部分。&lt;/span&gt;
+        &lt;pre class=&quot;example-code text-small&quot;&gt;&lt;code&gt;Cluster
+  ← semantic_text
+
+Project Term Embedding
+  ← include_terms / exclude_terms
+  → I / E / C / S
+
+Absolute + Distribution rules
+  ← thresholds / conflict policy / quantiles
+
+LLM Judge
+  ← gray candidates only
+  → kept / discarded / uncertain&lt;/code&gt;&lt;/pre&gt;
+      &lt;/div&gt;
+    &lt;/div&gt;
+
+    &lt;div class=&quot;executor-layer-flow&quot; aria-label=&quot;Intention Executor 混合决策流程图&quot;&gt;
+      &lt;div class=&quot;executor-layer term-layer&quot;&gt;
+        &lt;div class=&quot;executor-layer-label&quot;&gt;&lt;span class=&quot;text-small text-muted&quot;&gt;输入信号&lt;/span&gt;&lt;strong&gt;Cluster + Term Embedding&lt;/strong&gt;&lt;/div&gt;
+        &lt;div class=&quot;executor-method&quot;&gt;
+          &lt;strong&gt;处理组件&lt;/strong&gt;
+          &lt;span class=&quot;text-small&quot;&gt;Cluster 提供候选所在上下文的相关度，项目 Term Embedding 判断候选自身与正负意图的匹配程度。&lt;/span&gt;
+        &lt;/div&gt;
+        &lt;div class=&quot;executor-operations&quot;&gt;
+          &lt;div class=&quot;executor-operation&quot;&gt;&lt;strong&gt;I · 正向相关度&lt;/strong&gt;&lt;span class=&quot;text-small&quot;&gt;候选对 include_terms 的语义覆盖分。&lt;/span&gt;&lt;/div&gt;
+          &lt;div class=&quot;executor-operation&quot;&gt;&lt;strong&gt;E · 负向相关度&lt;/strong&gt;&lt;span class=&quot;text-small&quot;&gt;候选命中任一 exclude term 的最高分。&lt;/span&gt;&lt;/div&gt;
+          &lt;div class=&quot;executor-operation&quot;&gt;&lt;strong&gt;C / S · 上下文与排序&lt;/strong&gt;&lt;span class=&quot;text-small&quot;&gt;C 是 Cluster 上下文分；S 综合 I、C、E，用于未决候选的查询内相对排序。&lt;/span&gt;&lt;/div&gt;
+        &lt;/div&gt;
+      &lt;/div&gt;
+      &lt;div class=&quot;executor-layer condition-layer&quot;&gt;
+        &lt;div class=&quot;executor-layer-label&quot;&gt;&lt;span class=&quot;text-small text-muted&quot;&gt;步骤 1&lt;/span&gt;&lt;strong&gt;绝对边界分流&lt;/strong&gt;&lt;/div&gt;
+        &lt;div class=&quot;executor-method&quot;&gt;
+          &lt;strong&gt;处理组件：确定性规则&lt;/strong&gt;
+          &lt;span class=&quot;text-small&quot;&gt;先处理跨查询含义稳定的明显正向与明显负向；只有无法确定的候选继续进入分布判断。&lt;/span&gt;
+        &lt;/div&gt;
+        &lt;div class=&quot;executor-operations&quot;&gt;
+          &lt;div class=&quot;executor-operation&quot;&gt;&lt;strong&gt;Exclude hard veto&lt;/strong&gt;&lt;span class=&quot;text-small&quot;&gt;&lt;code&gt;E ≥ 0.60&lt;/code&gt;&lt;br&gt;→ &lt;code&gt;definite_discard&lt;/code&gt;&lt;br&gt;进入明确丢弃集合，不再调用 LLM。&lt;/span&gt;&lt;/div&gt;
+          &lt;div class=&quot;executor-operation persist&quot;&gt;&lt;strong&gt;Absolute positive&lt;/strong&gt;&lt;span class=&quot;text-small&quot;&gt;&lt;code&gt;I ≥ 0.55 ∧ E &amp;lt; 0.35 ∧ no conflict&lt;/code&gt;&lt;br&gt;→ &lt;code&gt;absolute_auto_keep&lt;/code&gt;&lt;br&gt;直接进入最终结果通道。&lt;/span&gt;&lt;/div&gt;
+          &lt;div class=&quot;executor-operation&quot;&gt;&lt;strong&gt;Absolute weak negative&lt;/strong&gt;&lt;span class=&quot;text-small&quot;&gt;&lt;code&gt;I &amp;lt; 0.20&lt;/code&gt; 且无 Cluster 支持冲突&lt;br&gt;→ &lt;code&gt;absolute_discard&lt;/code&gt;&lt;br&gt;进入明确丢弃集合。&lt;/span&gt;&lt;/div&gt;
+          &lt;div class=&quot;executor-operation&quot;&gt;&lt;strong&gt;其余情况&lt;/strong&gt;&lt;span class=&quot;text-small&quot;&gt;收集为 &lt;code&gt;unresolved&lt;/code&gt;，交给分布保护与自适应分流。&lt;/span&gt;&lt;/div&gt;
+        &lt;/div&gt;
+      &lt;/div&gt;
+      &lt;div class=&quot;executor-layer cross-layer&quot;&gt;
+        &lt;div class=&quot;executor-layer-label&quot;&gt;&lt;span class=&quot;text-small text-muted&quot;&gt;步骤 2&lt;/span&gt;&lt;strong&gt;Distribution guard&lt;/strong&gt;&lt;/div&gt;
+        &lt;div class=&quot;executor-method&quot;&gt;
+          &lt;strong&gt;处理组件：分布保护器&lt;/strong&gt;
+          &lt;span class=&quot;text-small&quot;&gt;先判断当前结果规模和分数跨度是否足以支持百分位切分，避免小样本或分数高度集中时产生武断结论。&lt;/span&gt;
+        &lt;/div&gt;
+        &lt;div class=&quot;executor-operations&quot;&gt;
+          &lt;div class=&quot;executor-operation&quot;&gt;&lt;strong&gt;任一条件命中&lt;/strong&gt;&lt;span class=&quot;text-small&quot;&gt;&lt;code&gt;candidate_count &amp;lt; 10&lt;/code&gt;&lt;br&gt;或 &lt;code&gt;unresolved_count &amp;lt; 8&lt;/code&gt;&lt;br&gt;或 &lt;code&gt;Q90(S)−Q10(S) &amp;lt; 0.10&lt;/code&gt;&lt;/span&gt;&lt;/div&gt;
+          &lt;div class=&quot;executor-operation persist&quot;&gt;&lt;strong&gt;保护结果&lt;/strong&gt;&lt;span class=&quot;text-small&quot;&gt;全部 unresolved → &lt;code&gt;gray_distribution_guard&lt;/code&gt; → 交给 LLM Judge。&lt;/span&gt;&lt;/div&gt;
+          &lt;div class=&quot;executor-operation&quot;&gt;&lt;strong&gt;没有命中&lt;/strong&gt;&lt;span class=&quot;text-small&quot;&gt;说明样本量和分差足够，继续执行 Q40 / Q80 自适应分布。&lt;/span&gt;&lt;/div&gt;
+        &lt;/div&gt;
+      &lt;/div&gt;
+      &lt;div class=&quot;executor-layer group-layer&quot;&gt;
+        &lt;div class=&quot;executor-layer-label&quot;&gt;&lt;span class=&quot;text-small text-muted&quot;&gt;步骤 3&lt;/span&gt;&lt;strong&gt;Adaptive distribution&lt;/strong&gt;&lt;/div&gt;
+        &lt;div class=&quot;executor-method&quot;&gt;
+          &lt;strong&gt;处理组件：查询内自适应分流&lt;/strong&gt;
+          &lt;span class=&quot;text-small&quot;&gt;只处理通过 guard 的 unresolved 候选；相对排名必须同时满足绝对软边界，不能只凭百分位直接保留或丢弃。&lt;/span&gt;
+        &lt;/div&gt;
+        &lt;div class=&quot;executor-operations&quot;&gt;
+          &lt;div class=&quot;executor-operation persist&quot;&gt;&lt;strong&gt;Top 20%&lt;/strong&gt;&lt;span class=&quot;text-small&quot;&gt;&lt;code&gt;I ≥ 0.45 ∧ E &amp;lt; 0.25 ∧ no conflict&lt;/code&gt;&lt;br&gt;→ &lt;code&gt;adaptive_auto_keep&lt;/code&gt;，进入最终结果；否则 → &lt;code&gt;gray_high&lt;/code&gt;。&lt;/span&gt;&lt;/div&gt;
+          &lt;div class=&quot;executor-operation&quot;&gt;&lt;strong&gt;Middle 40%&lt;/strong&gt;&lt;span class=&quot;text-small&quot;&gt;→ &lt;code&gt;gray_middle&lt;/code&gt;；存在正负或上下文冲突时 → &lt;code&gt;gray_conflict&lt;/code&gt;。&lt;/span&gt;&lt;/div&gt;
+          &lt;div class=&quot;executor-operation&quot;&gt;&lt;strong&gt;Bottom 40%&lt;/strong&gt;&lt;span class=&quot;text-small&quot;&gt;&lt;code&gt;I &amp;lt; 0.35 ∧ no conflict&lt;/code&gt;&lt;br&gt;→ &lt;code&gt;adaptive_discard&lt;/code&gt;；否则 → &lt;code&gt;gray_low / gray_conflict&lt;/code&gt;。&lt;/span&gt;&lt;/div&gt;
+        &lt;/div&gt;
+      &lt;/div&gt;
+      &lt;div class=&quot;executor-layer term-layer&quot;&gt;
+        &lt;div class=&quot;executor-layer-label&quot;&gt;&lt;span class=&quot;text-small text-muted&quot;&gt;步骤 4&lt;/span&gt;&lt;strong&gt;Gray-only LLM Judge&lt;/strong&gt;&lt;/div&gt;
+        &lt;div class=&quot;executor-method&quot;&gt;
+          &lt;strong&gt;处理组件：LLM-as-a-Judge&lt;/strong&gt;
+          &lt;span class=&quot;text-small&quot;&gt;只处理 gray_conflict、gray_high、gray_middle、gray_low 和 gray_distribution_guard；自动保留与自动丢弃结果不会重复判断。&lt;/span&gt;
+        &lt;/div&gt;
+        &lt;div class=&quot;executor-operations&quot;&gt;
+          &lt;div class=&quot;executor-operation persist&quot;&gt;&lt;strong&gt;LLM kept&lt;/strong&gt;&lt;span class=&quot;text-small&quot;&gt;模型确认符合意图 → 进入最终结果。&lt;/span&gt;&lt;/div&gt;
+          &lt;div class=&quot;executor-operation&quot;&gt;&lt;strong&gt;LLM discarded&lt;/strong&gt;&lt;span class=&quot;text-small&quot;&gt;模型确认不符合意图 → 丢弃。&lt;/span&gt;&lt;/div&gt;
+          &lt;div class=&quot;executor-operation&quot;&gt;&lt;strong&gt;Uncertain / failure&lt;/strong&gt;&lt;span class=&quot;text-small&quot;&gt;按 &lt;code&gt;failure_policy&lt;/code&gt; 处理；当前 &lt;code&gt;keep_uncertain&lt;/code&gt; 会将其保留。&lt;/span&gt;&lt;/div&gt;
+        &lt;/div&gt;
+      &lt;/div&gt;
+      &lt;div class=&quot;executor-layer condition-layer&quot;&gt;
+        &lt;div class=&quot;executor-layer-label&quot;&gt;&lt;span class=&quot;text-small text-muted&quot;&gt;输出&lt;/span&gt;&lt;strong&gt;Final result&lt;/strong&gt;&lt;/div&gt;
+        &lt;div class=&quot;executor-method&quot;&gt;
+          &lt;strong&gt;处理组件：结果合并器&lt;/strong&gt;
+          &lt;span class=&quot;text-small&quot;&gt;合并所有被确定保留或策略保留的候选，并维持前序语义排序。&lt;/span&gt;
+        &lt;/div&gt;
+        &lt;div class=&quot;executor-operations&quot;&gt;
+          &lt;div class=&quot;executor-operation persist&quot;&gt;&lt;strong&gt;最终返回集合&lt;/strong&gt;&lt;span class=&quot;text-small&quot;&gt;&lt;code&gt;absolute_auto_keep&lt;/code&gt;&lt;br&gt;∪ &lt;code&gt;adaptive_auto_keep&lt;/code&gt;&lt;br&gt;∪ &lt;code&gt;LLM kept&lt;/code&gt;&lt;br&gt;∪ 按 failure_policy 保留的 uncertain。&lt;/span&gt;&lt;/div&gt;
+          &lt;div class=&quot;executor-operation&quot;&gt;&lt;strong&gt;不会返回&lt;/strong&gt;&lt;span class=&quot;text-small&quot;&gt;definite_discard、absolute_discard、adaptive_discard 和 LLM discarded。&lt;/span&gt;&lt;/div&gt;
+        &lt;/div&gt;
+      &lt;/div&gt;
+    &lt;/div&gt;
+    &lt;div class=&quot;executor-sequence text-small&quot; aria-label=&quot;Intention Executor 决策顺序&quot;&gt;
+      &lt;span class=&quot;step&quot;&gt;I / E / C / S&lt;/span&gt;&lt;span class=&quot;join&quot;&gt;→&lt;/span&gt;
+      &lt;span class=&quot;step&quot;&gt;absolute decisions&lt;/span&gt;&lt;span class=&quot;join&quot;&gt;→&lt;/span&gt;
+      &lt;span class=&quot;step&quot;&gt;collect unresolved&lt;/span&gt;&lt;span class=&quot;join&quot;&gt;→&lt;/span&gt;
+      &lt;span class=&quot;step&quot;&gt;distribution guard&lt;/span&gt;&lt;span class=&quot;join&quot;&gt;→&lt;/span&gt;
+      &lt;span class=&quot;step&quot;&gt;adaptive distribution&lt;/span&gt;&lt;span class=&quot;join&quot;&gt;→&lt;/span&gt;
+      &lt;span class=&quot;step&quot;&gt;gray-only LLM&lt;/span&gt;&lt;span class=&quot;join&quot;&gt;→&lt;/span&gt;
+      &lt;span class=&quot;step&quot;&gt;final result&lt;/span&gt;
+    &lt;/div&gt;
+    &lt;div class=&quot;executor-output&quot;&gt;
+      &lt;span class=&quot;text-small text-muted&quot;&gt;分析产物&lt;/span&gt;
+      &lt;span&gt;&lt;code&gt;cluster_rescue_candidates.json&lt;/code&gt;、&lt;code&gt;embedding_gray_zone.json&lt;/code&gt;、各阶段 discarded 集合与 &lt;code&gt;intention_execution_report.json&lt;/code&gt; 共同记录每个候选经过 Cluster、绝对规则、动态分布和 LLM 后的完整去向。&lt;/span&gt;
+    &lt;/div&gt;
+    &lt;details&gt;
+      &lt;summary&gt;查看 Intention Executor Mermaid 定义&lt;/summary&gt;
+      &lt;pre class=&quot;mermaid-source&quot;&gt;&lt;code&gt;flowchart TB
+    TERMS[&quot;include_terms / exclude_terms&quot;] --&amp;gt; SCORE[&quot;Cluster + Term Embedding&amp;lt;br/&amp;gt;produce I, E, C and S&quot;]
+    SCORE --&amp;gt; VETO{&quot;E ≥ 0.60?&quot;}
+    VETO --&amp;gt;|&quot;yes&quot;| DROP[&quot;definite_discard&quot;]
+    VETO --&amp;gt;|&quot;no&quot;| POS{&quot;I ≥ 0.55 and E &amp;lt; 0.35&amp;lt;br/&amp;gt;and no conflict?&quot;}
+    POS --&amp;gt;|&quot;yes&quot;| AKEEP[&quot;absolute_auto_keep&quot;]
+    POS --&amp;gt;|&quot;no&quot;| NEG{&quot;I &amp;lt; 0.20 and no&amp;lt;br/&amp;gt;cluster-support conflict?&quot;}
+    NEG --&amp;gt;|&quot;yes&quot;| ADROP[&quot;absolute_discard&quot;]
+    NEG --&amp;gt;|&quot;no&quot;| UNRESOLVED[&quot;collect unresolved&quot;]
+
+    UNRESOLVED --&amp;gt; GUARD{&quot;count / unresolved / spread&amp;lt;br/&amp;gt;guard triggered?&quot;}
+    GUARD --&amp;gt;|&quot;yes&quot;| GRAY[&quot;all unresolved → gray&quot;]
+    GUARD --&amp;gt;|&quot;no&quot;| DIST[&quot;adaptive Q40 / Q80 distribution&quot;]
+    DIST --&amp;gt; DKEEP[&quot;adaptive_auto_keep&quot;]
+    DIST --&amp;gt; DDROP[&quot;adaptive_discard&quot;]
+    DIST --&amp;gt; GRAY
+
+    GRAY --&amp;gt; LLM[&quot;Gray-only LLM Judge&quot;]
+    LLM --&amp;gt; LKEEP[&quot;LLM kept&quot;]
+    LLM --&amp;gt; LDROP[&quot;LLM discarded&quot;]
+    LLM --&amp;gt; UNCERTAIN[&quot;uncertain → failure_policy&quot;]
+
+    AKEEP --&amp;gt; FINAL[&quot;Final ranked result&quot;]
+    DKEEP --&amp;gt; FINAL
+    LKEEP --&amp;gt; FINAL
+    UNCERTAIN --&amp;gt;|&quot;keep_uncertain&quot;| FINAL&lt;/code&gt;&lt;/pre&gt;
     &lt;/details&gt;
   &lt;/section&gt;
 
@@ -1774,8 +2017,8 @@ final_surface = UNION(
       &lt;div class=&quot;stage-panel&quot;&gt;
       &lt;div class=&quot;module-grid&quot;&gt;
         &lt;div class=&quot;module&quot;&gt;
-          &lt;div class=&quot;module-name&quot;&gt;SemCon 抽取 / 兼容 SemQL&lt;/div&gt;
-          &lt;div class=&quot;module-copy&quot;&gt;&lt;span&gt;将自然语言拆成 surface、relation、intention；旧的统一 &lt;code&gt;semQL.json&lt;/code&gt; 仅在 Executor 迁移期保留。&lt;/span&gt;&lt;span class=&quot;status-line text-small&quot;&gt;&lt;span class=&quot;status-dot partial&quot;&gt;&lt;/span&gt;SemCon 已实现；统一 SemQL 处于兼容阶段&lt;/span&gt;&lt;/div&gt;
+          &lt;div class=&quot;module-name&quot;&gt;SemCon 抽取 / 领域规划&lt;/div&gt;
+          &lt;div class=&quot;module-copy&quot;&gt;&lt;span&gt;将自然语言拆成 surface、relation、intention，再由三个 Planner 分别生成专用执行计划；旧统一 &lt;code&gt;semQL.json&lt;/code&gt; 不再作为 Executor 输入。&lt;/span&gt;&lt;span class=&quot;status-line text-small&quot;&gt;&lt;span class=&quot;status-dot&quot;&gt;&lt;/span&gt;三类领域计划已接入执行链&lt;/span&gt;&lt;/div&gt;
         &lt;/div&gt;
         &lt;div class=&quot;module&quot;&gt;
           &lt;div class=&quot;module-name&quot;&gt;Surface Executor&lt;/div&gt;
@@ -1783,35 +2026,35 @@ final_surface = UNION(
         &lt;/div&gt;
         &lt;div class=&quot;module&quot;&gt;
           &lt;div class=&quot;module-name&quot;&gt;Relation Executor&lt;/div&gt;
-          &lt;div class=&quot;module-copy&quot;&gt;&lt;span&gt;在候选上验证 caller、callee 和图角色，优先查询 codegraph.sqlite，必要时回退 LSP。&lt;/span&gt;&lt;span class=&quot;status-line text-small&quot;&gt;&lt;span class=&quot;status-dot&quot;&gt;&lt;/span&gt;已实现&lt;/span&gt;&lt;/div&gt;
+          &lt;div class=&quot;module-copy&quot;&gt;&lt;span&gt;在候选上依次验证 file / directory、graph role、caller 与 callee；统一复用 implementation-aware 代码关系数据库。&lt;/span&gt;&lt;span class=&quot;status-line text-small&quot;&gt;&lt;span class=&quot;status-dot&quot;&gt;&lt;/span&gt;Planner + Executor 已实现&lt;/span&gt;&lt;/div&gt;
         &lt;/div&gt;
         &lt;div class=&quot;module&quot;&gt;
           &lt;div class=&quot;module-name&quot;&gt;Cluster Filter&lt;/div&gt;
-          &lt;div class=&quot;module-copy&quot;&gt;&lt;span&gt;对代码元素正文与元数据编码、聚类并按查询相关性丢弃最低相关簇。&lt;/span&gt;&lt;span class=&quot;status-line text-small&quot;&gt;&lt;span class=&quot;status-dot&quot;&gt;&lt;/span&gt;已实现&lt;/span&gt;&lt;/div&gt;
+          &lt;div class=&quot;module-copy&quot;&gt;&lt;span&gt;对代码元素正文与元数据编码、聚类并按查询相关性分层；候选少、簇少或分差小时全部保留，低分簇进入 Embedding rescue pool。&lt;/span&gt;&lt;span class=&quot;status-line text-small&quot;&gt;&lt;span class=&quot;status-dot&quot;&gt;&lt;/span&gt;保护条件与 rescue 已实现&lt;/span&gt;&lt;/div&gt;
         &lt;/div&gt;
         &lt;div class=&quot;module&quot;&gt;
           &lt;div class=&quot;module-name&quot;&gt;Embedding Filter&lt;/div&gt;
-          &lt;div class=&quot;module-copy&quot;&gt;&lt;span&gt;比较查询术语与候选名称、签名、容器术语，融合项目共现分与通用语义分。&lt;/span&gt;&lt;span class=&quot;status-line text-small&quot;&gt;&lt;span class=&quot;status-dot&quot;&gt;&lt;/span&gt;使用 Hybrid；不使用 Pairwise&lt;/span&gt;&lt;/div&gt;
+          &lt;div class=&quot;module-copy&quot;&gt;&lt;span&gt;分别计算 include / exclude 术语得分，结合 Cluster 上下文执行绝对边界、冲突识别和带保护的 Q40/Q80 动态分布决策。&lt;/span&gt;&lt;span class=&quot;status-line text-small&quot;&gt;&lt;span class=&quot;status-dot&quot;&gt;&lt;/span&gt;混合决策已实现；不使用 Pairwise&lt;/span&gt;&lt;/div&gt;
         &lt;/div&gt;
         &lt;div class=&quot;module&quot;&gt;
           &lt;div class=&quot;module-name&quot;&gt;LLM Judge&lt;/div&gt;
-          &lt;div class=&quot;module-copy&quot;&gt;&lt;span&gt;根据 intention include/exclude 和候选代码进行最终高精度功能判断。&lt;/span&gt;&lt;span class=&quot;status-line text-small&quot;&gt;&lt;span class=&quot;status-dot&quot;&gt;&lt;/span&gt;已实现，放在末端控制成本&lt;/span&gt;&lt;/div&gt;
+          &lt;div class=&quot;module-copy&quot;&gt;&lt;span&gt;只对前序规则无法可靠裁决的灰区候选做最终职责判断，按批次限制上下文，失败或 uncertain 时按计划保留。&lt;/span&gt;&lt;span class=&quot;status-line text-small&quot;&gt;&lt;span class=&quot;status-dot&quot;&gt;&lt;/span&gt;Gray-only Judge 已实现&lt;/span&gt;&lt;/div&gt;
         &lt;/div&gt;
       &lt;/div&gt;
       &lt;/div&gt;
     &lt;/details&gt;
 
     &lt;details open&gt;
-      &lt;summary&gt;Planner、Logical Plan 与后续优化器&lt;/summary&gt;
+      &lt;summary&gt;Planner、Execution Plan 与后续优化器&lt;/summary&gt;
       &lt;div class=&quot;stage-panel&quot;&gt;
       &lt;div class=&quot;module-grid&quot;&gt;
         &lt;div class=&quot;module&quot;&gt;
           &lt;div class=&quot;module-name&quot;&gt;QueryPlanner&lt;/div&gt;
-          &lt;div class=&quot;module-copy&quot;&gt;&lt;span&gt;在线查询的规划核心：编排三个领域 Planner，把 SemCon 编译为 Logical Plan Bundle，并隔离抽取 schema 与 Executor 契约。&lt;/span&gt;&lt;span class=&quot;status-line text-small&quot;&gt;&lt;span class=&quot;status-dot&quot;&gt;&lt;/span&gt;领域规划与计划文件已实现&lt;/span&gt;&lt;/div&gt;
+          &lt;div class=&quot;module-copy&quot;&gt;&lt;span&gt;在线查询的规划核心：编排三个领域 Planner，把 SemCon 编译为 Execution Plan Bundle，并隔离抽取 schema 与 Executor 契约。&lt;/span&gt;&lt;span class=&quot;status-line text-small&quot;&gt;&lt;span class=&quot;status-dot&quot;&gt;&lt;/span&gt;领域规划与计划文件已实现&lt;/span&gt;&lt;/div&gt;
         &lt;/div&gt;
         &lt;div class=&quot;module&quot;&gt;
           &lt;div class=&quot;module-name&quot;&gt;SurfacePlanner&lt;/div&gt;
-          &lt;div class=&quot;module-copy&quot;&gt;&lt;span&gt;只解析 surfaceCon：group 内 terms 做 OR，include groups 做 AND(n)，exclude 做 subtract；相同 match_kind 且 code-element 类型相同的 condition 取交集，不同兼容组取并集。&lt;/span&gt;&lt;span class=&quot;status-line text-small&quot;&gt;&lt;span class=&quot;status-dot&quot;&gt;&lt;/span&gt;分层规划已实现；AND(n) 图执行待接入&lt;/span&gt;&lt;/div&gt;
+          &lt;div class=&quot;module-copy&quot;&gt;&lt;span&gt;只解析 surfaceCon：group 内 terms 做 OR，原子 pair rule 按无向 hop 做 AND，exclude 做 subtract；兼容 condition 交集，不同兼容组并集。&lt;/span&gt;&lt;span class=&quot;status-line text-small&quot;&gt;&lt;span class=&quot;status-dot&quot;&gt;&lt;/span&gt;分层规划与 pair-rule 图执行已实现&lt;/span&gt;&lt;/div&gt;
         &lt;/div&gt;
         &lt;div class=&quot;module&quot;&gt;
           &lt;div class=&quot;module-name&quot;&gt;RelationPlanner&lt;/div&gt;
@@ -1819,7 +2062,7 @@ final_surface = UNION(
         &lt;/div&gt;
         &lt;div class=&quot;module&quot;&gt;
           &lt;div class=&quot;module-name&quot;&gt;IntentionPlanner&lt;/div&gt;
-          &lt;div class=&quot;module-copy&quot;&gt;&lt;span&gt;只根据原始 query 与 intentionCon 构造 requirements、semantic_text 和 terms，供聚类、Embedding 与 LLM Judge 共享。&lt;/span&gt;&lt;span class=&quot;status-line text-small&quot;&gt;&lt;span class=&quot;status-dot&quot;&gt;&lt;/span&gt;已实现&lt;/span&gt;&lt;/div&gt;
+          &lt;div class=&quot;module-copy&quot;&gt;&lt;span&gt;根据原始 query 与 intentionCon 构造 requirements、semantic_text、include / exclude terms，并声明 Cluster、绝对边界、动态分布、冲突和 LLM 的物理策略。&lt;/span&gt;&lt;span class=&quot;status-line text-small&quot;&gt;&lt;span class=&quot;status-dot&quot;&gt;&lt;/span&gt;语义与物理规划均已实现&lt;/span&gt;&lt;/div&gt;
         &lt;/div&gt;
         &lt;div class=&quot;module&quot;&gt;
           &lt;div class=&quot;module-name&quot;&gt;领域计划文件&lt;/div&gt;
@@ -1827,7 +2070,7 @@ final_surface = UNION(
         &lt;/div&gt;
         &lt;div class=&quot;module&quot;&gt;
           &lt;div class=&quot;module-name&quot;&gt;Executor 输入迁移&lt;/div&gt;
-          &lt;div class=&quot;module-copy&quot;&gt;&lt;span&gt;当前仍兼容双写旧 &lt;code&gt;semQL.json&lt;/code&gt;；后续让三个 Executor 分别直接消费对应领域计划，再移除旧 Composer 兼容层。&lt;/span&gt;&lt;span class=&quot;status-line text-small&quot;&gt;&lt;span class=&quot;status-dot partial&quot;&gt;&lt;/span&gt;待分阶段迁移&lt;/span&gt;&lt;/div&gt;
+          &lt;div class=&quot;module-copy&quot;&gt;&lt;span&gt;Surface、Relation 与 Intention Executor 已分别消费对应领域计划；字段解析、集合语义和物理策略由各自 Planner 提供。&lt;/span&gt;&lt;span class=&quot;status-line text-small&quot;&gt;&lt;span class=&quot;status-dot&quot;&gt;&lt;/span&gt;三类 Executor 已完成迁移&lt;/span&gt;&lt;/div&gt;
         &lt;/div&gt;
         &lt;div class=&quot;module&quot;&gt;
           &lt;div class=&quot;module-name&quot;&gt;Cost-aware Optimizer&lt;/div&gt;
@@ -1847,11 +2090,11 @@ final_surface = UNION(
         &lt;/div&gt;
         &lt;div class=&quot;module&quot;&gt;
           &lt;div class=&quot;module-name&quot;&gt;Graph-aware AND(n)&lt;/div&gt;
-          &lt;div class=&quot;module-copy&quot;&gt;&lt;span&gt;候选自身未命中某概念时，可由 n 跳内的调用图邻居补齐该概念。&lt;/span&gt;&lt;span class=&quot;status-line text-small&quot;&gt;&lt;span class=&quot;status-dot partial&quot;&gt;&lt;/span&gt;CHANGELOG vNext；独立执行器尚未完整落地&lt;/span&gt;&lt;/div&gt;
+          &lt;div class=&quot;module-copy&quot;&gt;&lt;span&gt;每条原子 pair rule 从较小端点集做无向调用距离扩展，与另一组 direct 结果匹配；规则间结果按计划继续做普通集合交集。&lt;/span&gt;&lt;span class=&quot;status-line text-small&quot;&gt;&lt;span class=&quot;status-dot&quot;&gt;&lt;/span&gt;已在 Surface Executor 落地&lt;/span&gt;&lt;/div&gt;
         &lt;/div&gt;
         &lt;div class=&quot;module&quot;&gt;
-          &lt;div class=&quot;module-name&quot;&gt;pairwise hop&lt;/div&gt;
-          &lt;div class=&quot;module-copy&quot;&gt;&lt;span&gt;不同概念组使用不同 hop 上限，控制强耦合概念与间接概念的传播距离。&lt;/span&gt;&lt;span class=&quot;status-line text-small&quot;&gt;&lt;span class=&quot;status-dot partial&quot;&gt;&lt;/span&gt;Schema 已表达，执行待补齐&lt;/span&gt;&lt;/div&gt;
+          &lt;div class=&quot;module-name&quot;&gt;Atomic pair rule&lt;/div&gt;
+          &lt;div class=&quot;module-copy&quot;&gt;&lt;span&gt;每条规则只包含两个 include group、一个 graph_scope 和一个 hop_count；旧 groups/default_hop/pairwise 嵌套已移除。&lt;/span&gt;&lt;span class=&quot;status-line text-small&quot;&gt;&lt;span class=&quot;status-dot&quot;&gt;&lt;/span&gt;新版 Schema、Prompt、Planner 与 Executor 一致&lt;/span&gt;&lt;/div&gt;
         &lt;/div&gt;
         &lt;div class=&quot;module&quot;&gt;
           &lt;div class=&quot;module-name&quot;&gt;NOT_HOP&lt;/div&gt;
@@ -1859,7 +2102,7 @@ final_surface = UNION(
         &lt;/div&gt;
         &lt;div class=&quot;module&quot;&gt;
           &lt;div class=&quot;module-name&quot;&gt;Coverage Evidence&lt;/div&gt;
-          &lt;div class=&quot;module-copy&quot;&gt;&lt;span&gt;记录每个 group 是 direct 命中还是由 graph_neighbor 补齐，以及邻居、术语与距离。&lt;/span&gt;&lt;span class=&quot;status-line text-small&quot;&gt;&lt;span class=&quot;status-dot partial&quot;&gt;&lt;/span&gt;设计阶段&lt;/span&gt;&lt;/div&gt;
+          &lt;div class=&quot;module-copy&quot;&gt;&lt;span&gt;同时保存 AND_HOP 前的逐组直接搜索快照，以及最终候选对应的 query term、matched term、pair rule、端点和距离。&lt;/span&gt;&lt;span class=&quot;status-line text-small&quot;&gt;&lt;span class=&quot;status-dot&quot;&gt;&lt;/span&gt;直接结果与最终 evidence 均已落盘&lt;/span&gt;&lt;/div&gt;
         &lt;/div&gt;
         &lt;div class=&quot;module&quot;&gt;
           &lt;div class=&quot;module-name&quot;&gt;距离衰减排序&lt;/div&gt;

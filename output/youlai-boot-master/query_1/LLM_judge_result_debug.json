@@ -1,0 +1,225 @@
+{
+  "discarded": [
+    {
+      "symbol_id": 1356,
+      "reason": "Does not serve as primary entry point for user login; it retrieves auth credentials but does not handle request orchestration, credential validation, or session establishment. It's a supporting utility method, not an externally triggered handler."
+    },
+    {
+      "symbol_id": 773,
+      "reason": "Same as 1356: implementation is identical — a credential retrieval helper, not an authentication entry point. Lacks request handling, validation logic, or session creation; resides in mapper layer, not controller/auth provider."
+    },
+    {
+      "symbol_id": 1371,
+      "reason": "Retrieves credentials by mobile but does not process login flow (e.g., no validation, no token generation, no exception handling for auth failure). Not an entry point — purely data access."
+    },
+    {
+      "symbol_id": 878,
+      "reason": "Implements password change for already authenticated user, not initial login authentication or session establishment."
+    },
+    {
+      "symbol_id": 870,
+      "reason": "Implements admin-initiated password reset, not user login credential verification or session creation."
+    },
+    {
+      "symbol_id": 867,
+      "reason": "Implements user profile update; no credential validation or session establishment logic."
+    },
+    {
+      "symbol_id": 865,
+      "reason": "Implements user registration/creation, not login authentication or session initiation."
+    },
+    {
+      "symbol_id": 866,
+      "reason": "Implements form data retrieval for UI editing; unrelated to credential verification or login handling."
+    },
+    {
+      "symbol_id": 877,
+      "reason": "Function updates user profile; does not handle login authentication or credential verification."
+    },
+    {
+      "symbol_id": 871,
+      "reason": "Function retrieves current user info; assumes session is already authenticated — not the entry point for login."
+    },
+    {
+      "symbol_id": 876,
+      "reason": "Function fetches user profile; depends on existing authentication context (uses SecurityUtils.getUserId), not a login handler."
+    },
+    {
+      "symbol_id": 250,
+      "reason": "Function loads user details by username for Spring Security's internal authentication flow, but is not an externally triggered HTTP endpoint — it's a service-layer callback invoked *after* request routing and not the primary entry point for login."
+    },
+    {
+      "symbol_id": 402,
+      "reason": "Function handles logout, not login or authentication initiation."
+    },
+    {
+      "symbol_id": 868,
+      "reason": "Function deletes users; no evidence of handling authentication or user login."
+    },
+    {
+      "symbol_id": 873,
+      "reason": "Function imports users from Excel; unrelated to credential verification or login session establishment."
+    },
+    {
+      "symbol_id": 817,
+      "reason": "Function retrieves menu routes for current user; assumes prior authentication, not an entry point for login."
+    },
+    {
+      "symbol_id": 869,
+      "reason": "Function updates user status and invalidates sessions conditionally; it reacts to admin action, not user login initiation."
+    },
+    {
+      "symbol_id": 875,
+      "reason": "Function lists user options (e.g., for dropdowns); no credential validation or session establishment logic."
+    }
+  ],
+  "uncertain": [],
+  "judgments": [
+    {
+      "candidate_ids": [
+        154,
+        159,
+        773,
+        1356,
+        1371
+      ],
+      "raw_response": "{\n  \"kept_symbol_ids\": [159, 154],\n  \"discarded\": [\n    {\n      \"symbol_id\": 1356,\n      \"reason\": \"Does not serve as primary entry point for user login; it retrieves auth credentials but does not handle request orchestration, credential validation, or session establishment. It's a supporting utility method, not an externally triggered handler.\"\n    },\n    {\n      \"symbol_id\": 773,\n      \"reason\": \"Same as 1356: implementation is identical — a credential retrieval helper, not an authentication entry point. Lacks request handling, validation logic, or session creation; resides in mapper layer, not controller/auth provider.\"\n    },\n    {\n      \"symbol_id\": 1371,\n      \"reason\": \"Retrieves credentials by mobile but does not process login flow (e.g., no validation, no token generation, no exception handling for auth failure). Not an entry point — purely data access.\"\n    }\n  ],\n  \"uncertain\": []\n}",
+      "parsed_response": {
+        "kept_symbol_ids": [
+          159,
+          154
+        ],
+        "discarded": [
+          {
+            "symbol_id": 1356,
+            "reason": "Does not serve as primary entry point for user login; it retrieves auth credentials but does not handle request orchestration, credential validation, or session establishment. It's a supporting utility method, not an externally triggered handler."
+          },
+          {
+            "symbol_id": 773,
+            "reason": "Same as 1356: implementation is identical — a credential retrieval helper, not an authentication entry point. Lacks request handling, validation logic, or session creation; resides in mapper layer, not controller/auth provider."
+          },
+          {
+            "symbol_id": 1371,
+            "reason": "Retrieves credentials by mobile but does not process login flow (e.g., no validation, no token generation, no exception handling for auth failure). Not an entry point — purely data access."
+          }
+        ],
+        "uncertain": []
+      }
+    },
+    {
+      "candidate_ids": [
+        865,
+        866,
+        867,
+        870,
+        878
+      ],
+      "raw_response": "{\n  \"kept_symbol_ids\": [],\n  \"discarded\": [\n    {\n      \"symbol_id\": 878,\n      \"reason\": \"Implements password change for already authenticated user, not initial login authentication or session establishment.\"\n    },\n    {\n      \"symbol_id\": 870,\n      \"reason\": \"Implements admin-initiated password reset, not user login credential verification or session creation.\"\n    },\n    {\n      \"symbol_id\": 867,\n      \"reason\": \"Implements user profile update; no credential validation or session establishment logic.\"\n    },\n    {\n      \"symbol_id\": 865,\n      \"reason\": \"Implements user registration/creation, not login authentication or session initiation.\"\n    },\n    {\n      \"symbol_id\": 866,\n      \"reason\": \"Implements form data retrieval for UI editing; unrelated to credential verification or login handling.\"\n    }\n  ],\n  \"uncertain\": []\n}",
+      "parsed_response": {
+        "kept_symbol_ids": [],
+        "discarded": [
+          {
+            "symbol_id": 878,
+            "reason": "Implements password change for already authenticated user, not initial login authentication or session establishment."
+          },
+          {
+            "symbol_id": 870,
+            "reason": "Implements admin-initiated password reset, not user login credential verification or session creation."
+          },
+          {
+            "symbol_id": 867,
+            "reason": "Implements user profile update; no credential validation or session establishment logic."
+          },
+          {
+            "symbol_id": 865,
+            "reason": "Implements user registration/creation, not login authentication or session initiation."
+          },
+          {
+            "symbol_id": 866,
+            "reason": "Implements form data retrieval for UI editing; unrelated to credential verification or login handling."
+          }
+        ],
+        "uncertain": []
+      }
+    },
+    {
+      "candidate_ids": [
+        250,
+        402,
+        871,
+        876,
+        877
+      ],
+      "raw_response": "{\n  \"kept_symbol_ids\": [],\n  \"discarded\": [\n    {\n      \"symbol_id\": 877,\n      \"reason\": \"Function updates user profile; does not handle login authentication or credential verification.\"\n    },\n    {\n      \"symbol_id\": 871,\n      \"reason\": \"Function retrieves current user info; assumes session is already authenticated — not the entry point for login.\"\n    },\n    {\n      \"symbol_id\": 876,\n      \"reason\": \"Function fetches user profile; depends on existing authentication context (uses SecurityUtils.getUserId), not a login handler.\"\n    },\n    {\n      \"symbol_id\": 250,\n      \"reason\": \"Function loads user details by username for Spring Security's internal authentication flow, but is not an externally triggered HTTP endpoint — it's a service-layer callback invoked *after* request routing and not the primary entry point for login.\"\n    },\n    {\n      \"symbol_id\": 402,\n      \"reason\": \"Function handles logout, not login or authentication initiation.\"\n    }\n  ],\n  \"uncertain\": []\n}",
+      "parsed_response": {
+        "kept_symbol_ids": [],
+        "discarded": [
+          {
+            "symbol_id": 877,
+            "reason": "Function updates user profile; does not handle login authentication or credential verification."
+          },
+          {
+            "symbol_id": 871,
+            "reason": "Function retrieves current user info; assumes session is already authenticated — not the entry point for login."
+          },
+          {
+            "symbol_id": 876,
+            "reason": "Function fetches user profile; depends on existing authentication context (uses SecurityUtils.getUserId), not a login handler."
+          },
+          {
+            "symbol_id": 250,
+            "reason": "Function loads user details by username for Spring Security's internal authentication flow, but is not an externally triggered HTTP endpoint — it's a service-layer callback invoked *after* request routing and not the primary entry point for login."
+          },
+          {
+            "symbol_id": 402,
+            "reason": "Function handles logout, not login or authentication initiation."
+          }
+        ],
+        "uncertain": []
+      }
+    },
+    {
+      "candidate_ids": [
+        817,
+        868,
+        869,
+        873,
+        875
+      ],
+      "raw_response": "{\n  \"kept_symbol_ids\": [],\n  \"discarded\": [\n    {\n      \"symbol_id\": 868,\n      \"reason\": \"Function deletes users; no evidence of handling authentication or user login.\"\n    },\n    {\n      \"symbol_id\": 873,\n      \"reason\": \"Function imports users from Excel; unrelated to credential verification or login session establishment.\"\n    },\n    {\n      \"symbol_id\": 817,\n      \"reason\": \"Function retrieves menu routes for current user; assumes prior authentication, not an entry point for login.\"\n    },\n    {\n      \"symbol_id\": 869,\n      \"reason\": \"Function updates user status and invalidates sessions conditionally; it reacts to admin action, not user login initiation.\"\n    },\n    {\n      \"symbol_id\": 875,\n      \"reason\": \"Function lists user options (e.g., for dropdowns); no credential validation or session establishment logic.\"\n    }\n  ],\n  \"uncertain\": []\n}",
+      "parsed_response": {
+        "kept_symbol_ids": [],
+        "discarded": [
+          {
+            "symbol_id": 868,
+            "reason": "Function deletes users; no evidence of handling authentication or user login."
+          },
+          {
+            "symbol_id": 873,
+            "reason": "Function imports users from Excel; unrelated to credential verification or login session establishment."
+          },
+          {
+            "symbol_id": 817,
+            "reason": "Function retrieves menu routes for current user; assumes prior authentication, not an entry point for login."
+          },
+          {
+            "symbol_id": 869,
+            "reason": "Function updates user status and invalidates sessions conditionally; it reacts to admin action, not user login initiation."
+          },
+          {
+            "symbol_id": 875,
+            "reason": "Function lists user options (e.g., for dropdowns); no credential validation or session establishment logic."
+          }
+        ],
+        "uncertain": []
+      }
+    }
+  ],
+  "stats": {
+    "total_initial": 20,
+    "total_kept": 2,
+    "total_discarded": 18,
+    "total_uncertain": 0,
+    "batch_count": 4
+  }
+}

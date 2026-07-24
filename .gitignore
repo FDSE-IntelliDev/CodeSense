@@ -9,10 +9,13 @@ __pycache__/
 .history
 models/
 
-output/
-
 # JetBrains IDE
 .idea/
 *.iml
 
 .DS_Store
+
+# Generated embedding/model artifacts
+*.npz
+*.npy
+*.model

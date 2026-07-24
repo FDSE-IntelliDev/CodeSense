@@ -1,0 +1,85 @@
+{
+  "surface": [
+    {
+      "type": "surface",
+      "keyword_groups": [
+        {
+          "group_id": "k1",
+          "property": "include",
+          "keywords": [
+            "login"
+          ],
+          "synonyms": [
+            "auth",
+            "authenticate",
+            "sign_in",
+            "log_in"
+          ],
+          "reason": "Core domain action for user authentication flow"
+        },
+        {
+          "group_id": "k2",
+          "property": "include",
+          "keywords": [
+            "user"
+          ],
+          "synonyms": [
+            "account",
+            "credential",
+            "identity",
+            "principal"
+          ],
+          "reason": "Primary entity being authenticated in the login context"
+        }
+      ],
+      "group_logic": [
+        {
+          "groups": [
+            "k1",
+            "k2"
+          ],
+          "graph_scope": "call",
+          "hop_count": 3,
+          "reason": "Login handling function must lexically contain both 'login' and 'user' (or synonyms) in its identifier or signature"
+        }
+      ],
+      "match_kind": "code_element",
+      "code_element_type": "function",
+      "code_text": null
+    }
+  ],
+  "intention": [
+    {
+      "type": "intention",
+      "property": "include",
+      "intent": {
+        "action": "handle authentication",
+        "object": "user login"
+      },
+      "intent_statement": "Does this function serve as the primary entry point for verifying user credentials and establishing an authenticated session?",
+      "aspect": "functional",
+      "non_functional_type": null,
+      "keywords": [
+        "entry",
+        "authentication",
+        "login handler",
+        "user verification"
+      ],
+      "description": "Function must implement the initial, externally triggered logic that receives login request and orchestrates credential validation"
+    }
+  ],
+  "relation": [
+    {
+      "type": "relation",
+      "property": "include",
+      "file_path": null,
+      "graph_constraint": {
+        "role": "entrypoint"
+      },
+      "caller": null,
+      "callee": null,
+      "code_ql": null,
+      "description": "Function must be an entrypoint: no incoming calls (in_degree = 0) and at least one outgoing call (out_degree > 0), indicating it is invoked from outside the application logic (e.g., HTTP route, CLI command)"
+    }
+  ]
+}

@@ -4,11 +4,12 @@ RelationPlanner owns RelationCon parsing and emits normalized clauses. This
 executor only performs the planned structural filters:
 
 1. constraints inside one clause are intersected;
-2. include clauses are unioned and intersected with Surface candidates;
+2. include clauses are intersected with each other and Surface candidates;
 3. exclude clauses are unioned and subtracted from the include result.
 
-Caller/callee and graph-role constraints reuse the existing code-graph-first,
-LSP-fallback filtering kernels. ``code_ql`` remains in the plan as an explicit
+Caller/callee and graph-role constraints reuse the implementation-aware
+code-graph-first filtering kernels, with the existing LSP path only as a
+database-unavailable fallback. ``code_ql`` remains in the plan as an explicit
 future execution target; the online CodeQL query runner is not implemented yet.
 """
 
