@@ -1,4 +1,4 @@
-# CodeSearch
+# CodeSense: Intent-Aware Code Search Beyond Keywords
 
 基于语义查询语言（SemQL）的代码搜索系统。给定自然语言查询，通过 LLM 提取结构化语义条件，经由倒排索引 + 缩写扩展 + embedding 匹配生成候选集，再通过类型过滤、聚类过滤、embedding 过滤、调用关系过滤等多阶段精排，返回最相关的代码元素。
 
