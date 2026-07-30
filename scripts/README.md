@@ -21,11 +21,12 @@
 | `run_cluster.py` | 语义聚类过滤 |
 | `run_embedding_filter.py` | term-level embedding 过滤 |
 
-**排查工具**
+**排查与维护**
 
 | 脚本 | 用途 |
 |---|---|
 | `lsp_smoke_check.py` | 手动验 JDT.LS 通不通，起服务抽一条调用链 |
+| `record_golden.py` | 重录 golden 期望值，见 tests/fixtures/golden/README.md |
 
 ```bash
 python -m scripts.run_regex_search readahead ra --mode and --limit 20
