@@ -1,9 +1,0 @@
-{
-  "version": "1.0",
-  "raw_query": "Find the entry function that handles user login authentication.",
-  "plans": {
-    "surface": "surface_semql.json",
-    "relation": "relation_semql.json",
-    "intention": "intention_semql.json"
-  }
-}
