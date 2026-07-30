@@ -290,87 +290,84 @@ drift = mean( 1 − cos(v_finetuned(w), v_pretrained(w)) )   w ∈ 261 个锚点
 
 Embedding 的词表由分词决定，所以分词要先定。
 
-### 先量范围：显式边界已经干完 93.5% 的活
+### 用 `srctoolkit` 的 `Delimiter.split_camel`，不要自己写
+
+项目已经依赖 `srctoolkit`，且 `codesense/tokenizer/tokenizer_core.py:37`
+就是 `return Delimiter.split_camel(word)`。**不要再写第二个切分器**——
+两个行为不一致的切分器意味着索引侧和查询侧对不上。
+
+更要紧的是：**它底层是 `ronin.split`（Spiral 包），
+不是驼峰正则，而是一个基于约 4.6 万个 GitHub Java 项目频率表的标识符切分器，
+本身就处理同大小写的 run-on 复合词。**
+
+也就是说**本节原本要设计的 Viterbi，已经在依赖里了，而且训练语料
+比本项目能提供的多几个数量级。不用建，也不用训。**
+
+### 实测：它确实在做那件事
 
 ```
-1718 个符号 ──只用 camelCase + 下划线──► 462 个单元
-  疑似还需再切:                30 个 (6.5%)
-  全小写无下划线且 >8 字符:      23 个 (1.3%)，而且全是单词
-      authenticate, principal, credentials, authorities, templates
+run-on 复合词（原本要 Viterbi 解决的）
+  bufmgr    → buf | mgr        starttls  → start | tls
+  spinlock  → spin | lock      openid    → open | id
+  getattr   → get | attr       appname   → app | name
+
+不过切（原本最担心的失败模式）
+  config    → config  ✓        captcha   → captcha  ✓
+  configs   → configs ✓        mybatis   → mybatis  ✓
+  emitter   → emitter ✓        params    → params   ✓
 ```
 
-那 30 个再拆开看：
+`config` 不会变成 `con|fig`——**朴素的词典 Viterbi 一定会犯这个错，
+Ronin 不会**，因为它的频率表知道 `config` 是个成立的整体。
 
-| 类别 | 数量 | 例 |
+在本项目上，它与朴素驼峰正则的结果几乎一致
+（459 vs 462 个单元），差异集中在 11 个词上，而那正是它的价值所在。
+
+### 两个残留缺口，都很便宜
+
+**a. 品牌/库名会被切开。**
+
+```
+redisson → redis | son      ✗
+minio    → min   | io       ✗
+```
+
+Ronin 的频率表来自通用 Java 语料，不认识这个项目引入的库。
+**修法**：从 `pom.xml` 的依赖列表生成一份**保护词表**，
+命中的整体不切。依赖列表是现成的，零额外成本。
+
+**b. 有些可再分的复合词被整体保留。**
+
+| 保留整体 | 项目频次 | 可再切成 |
 |---|---|---|
-| 真该切 | ~12 | `codegen`→code\|gen、`openid`→open\|id、`charset`→char\|set、`timeout`→time\|out |
-| **切了会错** | ~4 | **`config`→con\|fig（55 次）**、`redisson`→redis\|son |
-| 不是复合词，是词形 | ~14 | `emitter`、`matcher`、`limiter`、`validator`、`params`、`configs` |
+| `codegen` | 13 | code \| gen |
+| `frontend` | 4 | front \| end |
+| `endpoint` | 2 | end \| point |
+| `backend` | 2 | back \| end |
 
-**结论：切分这一步的主力是显式边界，不是 Viterbi。**
-Java 项目里开发者严格用 camelCase，run-on 标识符几乎不存在。
-Viterbi 真正能赚钱的是 C/C++（`readahead`、`bufmgr`、`spinlock`）、
-Python（`getattr`、`endswith`）和生成代码——**设计里保留这个机制，
-但别指望它在 Java 上有多大产出**。
+这本身不算错（`timeout`、`metadata` 确实是成立的词），
+但**有一致性风险**：查询写「code generation」，标识符切出来是 `codegen`，
+对不上。
 
-而那 14 个「词形」问题比复合词问题更普遍——需要的是**词形归一**
-（`emitters`→`emitter`→`emit`，`configs`→`config`），不是复合词切分。
-
-### Viterbi：不需要训练，只需要数词频
-
-模型是一元文法：`最优切分 = argmax Σ log P(unit)`，
-用 DP 求最优路径，`O(n·L)`（n = 标识符长度 ≤30，L = 最长单元）——微秒级。
-
-**`P(unit)` 靠数，不靠学。** 三个来源：
-
-| 来源 | 怎么得到 | 作用 |
-|---|---|---|
-| 项目自己的边界切分单元 | 扫符号表，**462 个带频次** | **权重最高**（见下） |
-| 通用英文词频表 | 现成的 | 覆盖普通词 |
-| 通用缩写表 | 现成的 | `mgr`、`cfg`、`idx` |
-
-关键在第一项，而且它有个双重作用：
-
-> **作者写 `bufMgr` 时，已经标注了 `bufmgr` 该怎么切。**
-> 边界清楚的标识符就是边界不清楚那些的**标注数据**——
-> 所以是「数」不是「推断」。
-
-**这同时也是防过切的机制。** `config` 在本项目里作为边界分明的单元
-出现 55 次，`con` 和 `fig` 出现 0 次。只要项目自己的计数权重够高，
-`P(config)` 就远大于 `P(con)·P(fig)`，`con|fig` 自动出不来。
-
-**唯一要调的是一个超参**（调，不是训）：词插入惩罚——
-控制「宁可整体成词」还是「宁可多切」。用什么调？
-**上面那 30 个单元的人工标注就是现成的调参集**，标完只要几分钟。
-
-### 什么时候才真的需要训练
-
-如果放弃词典、想从零学切分单元，那就是
-**unigram LM + EM**（sentencepiece 的 `--model_type=unigram` 就是这个）：
-先撒一大堆候选，反复用 EM 重估概率并剪枝。**这才叫训练。**
-
-**不建议**：
-
-1. 边界信息本来就有（462 个带频次的单元），EM 是在推断已知答案
-2. 462 个单元、103 万 token，EM 会过拟合
-3. 结果不可解释——出错时说不清为什么在那切
-
-**BPE 更不行**：它优化的是编码长度不是语素，`buf` 可能切成 `bu|f`
-而 `buffer` 整体成词，查询侧和代码侧零共享单元。
+**修法**：对这类单元**同时索引再分解的形式**——
+`codegen` 既索引为 `codegen`，也索引为 `code` 和 `gen`。
+超集索引，建表时多几行，查询时零成本。
 
 ### 判定标准是一致性，不是语言学正确
 
-这点决定了上面所有取舍：**目标不是切得对，是两边切得一样。**
+这条决定了上面所有取舍：**目标不是切得对，是两边切得一样。**
 
 ```
-查询  "buffer manager"   ──切分──►  [buffer, manager]
-标识符 bufMgr / bufmgr    ──切分──►  [buf, mgr]
+查询   "buffer manager"  ──split_camel──►  [buffer, manager]
+标识符  bufMgr / bufmgr   ──split_camel──►  [buf, mgr]
 ```
 
-`readahead` 切成 `read|ahead` 还是保持整体都可以接受——
-只要查询侧和代码侧的结果一致，倒排就能对上。
-**所以这里要的是一个确定性函数，不是一个学出来的模型**，
-这也正是不需要训练的根本原因。
+`readahead` 保持整体还是切成 `read|ahead` 都可以接受——
+只要查询侧和代码侧走的是**同一个函数**，倒排就能对上。
+上面缺口 b 之所以要补，正是因为它破坏了这个前提。
+
+**所以这里要的是一个确定性函数，不是一个学出来的模型。**
+`Delimiter.split_camel` 带 `lru_cache`，确定性和性能都有了。
 
 反过来，全局预训练语料也必须用同一套切分——
 否则全局模型的词表和项目的词表对不上，微调就没有共同的锚点。
@@ -751,12 +748,19 @@ Q4a/Q4b「权重怎么定」。
    拿 261 个共享英文词当漂移探针。分开训再 Procrustes 对齐这条路，
    实测锚点数不够（d=128 时只有 1.8x），不推荐。
 
-6. **embedding 和 lexical rules 取合取。** 前者给语义邻近，后者给正字法变体。
+6. **切分用现成的 `srctoolkit.Delimiter.split_camel`。** 它底层是 Ronin
+   （4.6 万个 GitHub Java 项目的频率表），run-on 复合词本来就能切
+   （`bufmgr`→buf|mgr、`spinlock`→spin|lock），也不会把 `config` 切成 `con|fig`。
+   **不需要自建 Viterbi，也不需要训练**——只补两件小事：
+   从 `pom.xml` 生成库名保护表（`redisson`→redis|son 是它唯一的系统性错误），
+   以及对 `codegen`/`frontend` 这类保留整体的复合词做超集索引。
+
+7. **embedding 和 lexical rules 取合取。** 前者给语义邻近，后者给正字法变体。
    另加两个护栏：近邻先滤形态变体（fastText 的 top-k 被 `pool → pools,
    pool.The` 这类霸占），长度 ≤2 的单元（`io`、`vo`）不走向量扩展。
 
-7. **索引保持精确，模糊性放进预计算的扩展表。** 可解释、可审计、
+8. **索引保持精确，模糊性放进预计算的扩展表。** 可解释、可审计、
    阈值按 ICF 自适应。
 
-依赖关系：**分词决定词表，词表决定预训练与微调能否对齐，扩展表决定召回上限。**
-三者要一起设计。
+依赖关系：**分词决定词表，词表决定微调能否对齐，扩展表决定召回上限。**
+三者要一起设计——而分词这一环已经有现成实现，是三者里最省事的。
