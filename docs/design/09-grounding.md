@@ -114,8 +114,19 @@ https://s3.amazonaws.com/code2vec/model/java14m_model.tar.gz
 | 调用链语料 | 302 | **299（99%）** | `result<t>`、`data<t>`、`mybatis` |
 | 符号切分单元 | 462 | **457（99%）** | `aliyun`、`minio`、`starttls`、`redisson`、`mybatis` |
 
-OOV 全是库名和品牌名，靠子词合成即可。**覆盖率不是问题**——
-Common Crawl 里技术文本足够多，`auth`、`cfg`、`impl`、`dict` 这些都在词表里。
+OOV 全是库名和品牌名。但**这个 99% 是虚的**——
+「在词表里」不等于「向量能用」：
+
+| 词 | 项目频次 | cc.en.300 排名 | 通用近邻 |
+|---|---|---|---|
+| `scopes` | 20,501 | 39,299「训得充分」 | Leupolds, 3-9x, reticles ← **步枪瞄准镜** |
+| `perms` | 12,103 | 134,154 | perming, permed, relaxers, hair ← **烫发** |
+| `oss` | — | 110,085 | om, när, gør, göra, som ← **瑞典语「我们」** |
+| `vo` | 1,689 | 97,994 | ne, ro, ri, pe, si, va ← **纯噪音** |
+| `jti` | 136 | 1,532,899 | i.o, ,o, ,c, iuw ← **垃圾** |
+
+`scopes` 是项目第 11 高频词、排名 3.9 万属于「训得充分」——训的是瞄准镜。
+**真正的问题不是覆盖率，是词义错配**，见[第七节](#七微调仍然必需但目标要说清)。
 
 **b. 缩写↔全称：确实编码了，而且不是拼写像。**
 
@@ -482,7 +493,80 @@ ICF 计算直接复用现有的 `icf_term_embedding.py`。
 
 ---
 
-## 七、注解走同一套
+## 七、微调仍然必需，但目标要说清
+
+第六节把第一跳交给了 LLM，但**微调这一步不能省**。理由不是 OOV——
+OOV 只有 3 个词——而是**高频词的词义错配**。
+
+### 量化：28.6% 的 token 落在词义对不上的词上
+
+对每个词 t，取它在项目语料里的共现词（ICF 加权，压掉 `get`/`save`），
+算 t 与这些词在**通用空间**里的平均余弦。分数低 = 通用向量放的位置
+和项目怎么用它对不上。脚本：`scripts/probe_sense_mismatch.py`。
+
+| 词 | 项目频次 | 错配分 | 项目里的共现词 | 通用义 vs 项目义 |
+|---|---|---|---|---|
+| `clean` | 136 | **0.009** | prefix, bearer, token, invalidate | 清洁 vs **清理 JWT** |
+| `recur` | 325 | 0.048 | dept, list, vo, options | — vs **递归部门树** |
+| `vo` | 1,689 | 0.050 | route, build, routes, user | 噪音 vs **Value Object** |
+| `union` | 187 | 0.058 | data, scope, filter, segment | 联合 vs **SQL UNION** |
+| `silent` | 2,288 | 0.062 | login, bind, mobile, token | 安静 vs **静默登录** |
+| `around` | 146 | 0.072 | log, async, save, username | 周围 vs **AOP `@Around`** |
+| `success` | 6,114 | 0.068 | judge, code, result, msg | 成功 vs **返回码** |
+| `exception` | 7,174 | 0.080 | business, change, mobile, bind | 例外 vs **BusinessException** |
+| `commence` | 92 | 0.098 | error, write, failed, code | 开始 vs **Spring Security 入口** |
+| `emitter` | 110 | 0.097 | remove, send, event, broadcast | 发射器 vs **SSE Emitter** |
+
+**错配分 < 0.15 的有 63/187 个词，占项目 token 总量的 28.6%。**
+
+看这批词的构成就明白微调在补什么：
+
+- **框架惯用法**：`around`（AOP 切面）、`commence`（Spring Security）、
+  `authorities`、`emitter`（SSE）、`segment`（SQL）、`authorities`
+- **中式英语**：`judge`＝判断（不是法官）、`silent`＝静默、
+  `recur`＝递归、`business`＝业务
+
+**通用语料里根本没有这些义项。** 这不是罕见词问题——`exception` 排名 4,257、
+`business` 排名 273、`clean` 排名 801，全是极常见的词，只是义项不对。
+
+> **指标的局限要说明**：它把「真错配」和「共现词全是 `get`/`save`
+> 这类无信息动词」混在了一起。`role`（9.6 万次，0.090）多半属于后者。
+> **榜单前 25 可信，28.6% 是上界。**
+
+### 微调要满足的两个门禁
+
+有了上面的排名，微调终于有了可测的目标——而不是拍个学习率了事。
+
+**门禁 1（不能坏）：缩写映射不许退化。**
+第二跳依赖 `cos(dept, department) = 0.749`。微调时 `dept` 会朝项目上下文
+（`recur`、`tree`、`vo`）移动，而 `department` 在项目里 0 次、原地不动——
+**距离可能被拉开**。所以第二节那 13 对缩写就是回归测试集：
+
+```
+微调前后跑 scripts/probe_pretrained_embedding.py
+要求：11/13 的通过率不下降，cos(dept, department) 不低于 0.70
+```
+
+**门禁 2（必须好）：错配榜前 25 要真的被修好。**
+
+```
+微调后 around  的近邻应出现 aspect / log / async，而不是 surrounding
+微调后 perms   的近邻应出现 auth / role / scopes，而不是 perming / hair
+微调后 scopes  的近邻应出现 token / auth / perms，而不是 Leupolds
+```
+
+两个门禁刚好是一对张力：门禁 2 要动，门禁 1 要别动太多。
+**锚定正则的 λ 就该按这两个数来调**，不是凭感觉。
+
+### 顺带解决 OOV
+
+`result<t>`、`data<t>`、`mybatis`、`minio`、`redisson` 这几个 OOV 词
+在微调时通过 FastText 子词获得初始向量，再由项目语料上的共现修正。
+这是微调的副产品，不是主要目的——只有 3~5 个词。
+
+---
+
+## 八、注解走同一套
 
 注解名本身就是标识符，所以完全复用上面的机制：
 
@@ -500,7 +584,7 @@ ICF 计算直接复用现有的 `icf_term_embedding.py`。
 
 ---
 
-## 八、怎么验证
+## 九、怎么验证
 
 两个都不需要端到端评测：
 
@@ -528,7 +612,14 @@ Q4a/Q4b「权重怎么定」。
    **实测确认**：cc.en.300 里 `cos(dept, department) = 0.749`，
    而同前缀干扰词 `depot` 只有 0.301。
 
-3. **两跳的来源不同。** 实测 cc.en.300 覆盖本项目词表 99%，
+3. **微调必需，但目标是词义错配不是 OOV。** OOV 只有 3 个词；
+   而**错配分 <0.15 的词占项目 token 总量 28.6%**——`around`（AOP 切面）、
+   `commence`（Spring Security）、`judge`（判断）、`silent`（静默登录）
+   这些义项通用语料里没有。微调要过两个门禁：13 对缩写映射不退化、
+   错配榜前 25 被修好。
+
+4. **两跳的来源不同。** 实测 cc.en.300 覆盖本项目词表 99%（但「在词表里」
+   不等于「向量能用」，见上条），
    缩写↔全称 11/13 通过正字法对照——**第二跳（规范词→项目写法）
    不需要训练，今天就能用**。第一跳它给不出（`performance` 与
    `cache`/`buffer`/`async` 的余弦全在随机噪音水平），但交给 LLM 即可：
@@ -537,15 +628,15 @@ Q4a/Q4b「权重怎么定」。
    于是**代码语料预训练从阻塞项降为大项目的扩展项**——
    词表塞不进 prompt 时才需要它先做候选收窄。
 
-4. **微调要克制。** 低 LR、少轮次、锚定正则、用 FastText 子词；
+5. **微调要克制。** 低 LR、少轮次、锚定正则、用 FastText 子词；
    拿 261 个共享英文词当漂移探针。分开训再 Procrustes 对齐这条路，
    实测锚点数不够（d=128 时只有 1.8x），不推荐。
 
-5. **embedding 和 lexical rules 取合取。** 前者给语义邻近，后者给正字法变体。
+6. **embedding 和 lexical rules 取合取。** 前者给语义邻近，后者给正字法变体。
    另加两个护栏：近邻先滤形态变体（fastText 的 top-k 被 `pool → pools,
    pool.The` 这类霸占），长度 ≤2 的单元（`io`、`vo`）不走向量扩展。
 
-6. **索引保持精确，模糊性放进预计算的扩展表。** 可解释、可审计、
+7. **索引保持精确，模糊性放进预计算的扩展表。** 可解释、可审计、
    阈值按 ICF 自适应。
 
 依赖关系：**分词决定词表，词表决定预训练与微调能否对齐，扩展表决定召回上限。**
