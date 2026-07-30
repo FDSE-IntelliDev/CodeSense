@@ -5,7 +5,10 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-ROOT_DIR = Path(__file__).resolve().parent.parent
+# 仓库根目录从 codesense.config 取，不要用 __file__ 往上数几层——
+# 那种写法在模块换目录时会静默指到别处。
+from codesense.config import REPO_ROOT as ROOT_DIR
+
 OUTPUT_ROOT = ROOT_DIR / "output"
 
 

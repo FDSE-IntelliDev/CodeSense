@@ -36,7 +36,10 @@ class JavaLSPClient:
 
         # Use a data directory outside the project root to prevent "overlaps the workspace location" error
         proj_hash = hashlib.md5(self.project_root.encode('utf-8')).hexdigest()[:8]
-        repo_root = Path(__file__).resolve().parent.parent
+        # 仓库根目录从 codesense.config 取，不要用 __file__ 往上数几层——
+        # 那种写法在模块换目录时会静默指到别处（本文件搬进 codesense/ 包时
+        # 就发生过：产物目录一度落到了包内而不是仓库根的 output/）。
+        from codesense.config import REPO_ROOT as repo_root
         default_data_dir = repo_root / "output" / f"jdtls_workspace_{proj_hash}"
         default_config_dir = repo_root / "output" / f"jdtls_config_{proj_hash}"
         data_dir = os.path.abspath(os.path.expanduser(self.data_dir or str(default_data_dir)))

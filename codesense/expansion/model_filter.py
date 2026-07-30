@@ -21,8 +21,11 @@ class AbbreviationModelFilter:
 
         if model_name is None:
             # 默认使用本地 models 目录下的模型
-            base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-            model_name = os.path.join(base_dir, "models", "st-codesearch-distilroberta-base")
+            # 仓库根从 config 取；原来用 __file__ 上溯两层，搬进包后指到了
+            # codesense/models/，于是永远找不到本地模型、静默 fallback 去下载。
+            from codesense.config import REPO_ROOT
+
+            model_name = str(REPO_ROOT / "models" / "st-codesearch-distilroberta-base")
             if not os.path.exists(model_name):
                 # fallback
                 model_name = "flax-sentence-embeddings/st-codesearch-distilroberta-base"
