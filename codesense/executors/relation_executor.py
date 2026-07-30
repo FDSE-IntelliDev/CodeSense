@@ -19,17 +19,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Set, Tuple
 
-from definition import QUERY_OUTPUT_DIR,PROJECT_OUTPUT_DIR
-from filters.relation_filter import (
-    filter_candidates_by_callee_entries,
-    filter_candidates_by_caller_entries,
-    filter_candidates_by_roles,
-)
-from filters.relation_graph_store import RelationGraphStore
-from utils.file_utils import load_res, save_res
-
-
-DEFAULT_RELATION_RESULT_PATH = f"{QUERY_OUTPUT_DIR}/filtered_by_relation.json"
+from codesense.config import load_config
+from codesense.filters import RELATION_FILTERS
+from codesense.filters.relation_graph_store import RelationGraphStore
 
 
 def _symbol_key(symbol: Dict[str, Any]) -> str:
@@ -144,7 +136,7 @@ class RelationExecutor:
         self.layer = layer
         self.worker_count = worker_count
         codegraph_path = (
-            PROJECT_OUTPUT_DIR
+            str(load_config().project_output_dir)
             + "/codegraph.sqlite"
         )
         self._graph_store = RelationGraphStore.open_if_ready(str(codegraph_path))
@@ -257,6 +249,19 @@ class RelationExecutor:
             executed_constraint_count += 1
             constraint_counts["file_path"] = len(working.symbols)
 
+        # 三类关系约束原本是三段几乎一样的代码。它们都实现 RelationFilter，
+        # 所以这里只声明「用哪个实现、给什么参数」，按注册名取实现——
+        # 本文件不认识任何一个具体过滤器类。加一种新关系约束不用改这里。
+        preserve = property_name == "include"
+        call_kwargs: Dict[str, Any] = {
+            "graph_store": self._graph_store,
+            "layer": self.layer,
+            "worker_count": self.worker_count,
+            "preserve_on_empty_fallback": preserve,
+        }
+        # 顺序有意义：每一步都在上一步收窄后的集合上继续过滤。
+        specs: List[Tuple[str, Dict[str, Any]]] = []
+
         graph_constraint = clause.get("graph_constraint")
         graph_constraint = (
             graph_constraint if isinstance(graph_constraint, dict) else {}
@@ -268,52 +273,34 @@ class RelationExecutor:
                     f"{clause_id}: code graph unavailable; graph role was not applied"
                 )
             else:
-                filtered = filter_candidates_by_roles(
-                    candidates=list(working.symbols.values()),
-                    roles=[role],
-                    candidate_path=self.candidate_path,
-                    graph_store=self._graph_store,
-                    preserve_non_applicable=property_name == "include",
+                specs.append(
+                    (
+                        "graph_role",
+                        {
+                            "roles": [role],
+                            "graph_store": self._graph_store,
+                            "preserve_non_applicable": preserve,
+                        },
+                    )
                 )
-                working = self._intersect(
-                    (working, _ExecutionSet.from_symbols(filtered))
-                )
-                executed_constraint_count += 1
-                constraint_counts["graph_role"] = len(working.symbols)
 
         caller_entry = self._call_entry(clause.get("caller"))
         if caller_entry is not None:
-            filtered = filter_candidates_by_caller_entries(
-                candidates=list(working.symbols.values()),
-                caller_entries=[caller_entry],
-                candidate_path=self.candidate_path,
-                layer=self.layer,
-                worker_count=self.worker_count,
-                graph_store=self._graph_store,
-                preserve_on_empty_fallback=property_name == "include",
-            )
-            working = self._intersect(
-                (working, _ExecutionSet.from_symbols(filtered))
-            )
-            executed_constraint_count += 1
-            constraint_counts["caller"] = len(working.symbols)
+            specs.append(("caller", {"entries": [caller_entry], **call_kwargs}))
 
         callee_entry = self._call_entry(clause.get("callee"))
         if callee_entry is not None:
-            filtered = filter_candidates_by_callee_entries(
-                candidates=list(working.symbols.values()),
-                callee_entries=[callee_entry],
-                candidate_path=self.candidate_path,
-                layer=self.layer,
-                worker_count=self.worker_count,
-                graph_store=self._graph_store,
-                preserve_on_empty_fallback=property_name == "include",
+            specs.append(("callee", {"entries": [callee_entry], **call_kwargs}))
+
+        for filter_name, filter_kwargs in specs:
+            filtered = RELATION_FILTERS.create(filter_name, **filter_kwargs).apply(
+                list(working.symbols.values())
             )
             working = self._intersect(
                 (working, _ExecutionSet.from_symbols(filtered))
             )
             executed_constraint_count += 1
-            constraint_counts["callee"] = len(working.symbols)
+            constraint_counts[filter_name] = len(working.symbols)
 
         if str(clause.get("code_ql") or "").strip():
             # TODO: execute arbitrary planner-provided CodeQL against a reusable
@@ -394,50 +381,3 @@ class RelationExecutor:
     def _warn(self, message: str) -> None:
         if message not in self._warnings:
             self._warnings.append(message)
-
-
-def run_relation_executor(
-    relation_plan_path: str,
-    surface_search_result_path: str,
-    output_path: Optional[str] = DEFAULT_RELATION_RESULT_PATH,
-    layer: Optional[int] = 1,
-    worker_count: int = 4,
-) -> List[Dict[str, Any]]:
-    """Load ``relation_semql.json`` and execute it over Surface candidates."""
-    relation_plan = load_res(relation_plan_path)
-    candidates = load_res(surface_search_result_path)
-    if not isinstance(candidates, list):
-        candidates = []
-
-    executor = RelationExecutor(
-        candidate_path=surface_search_result_path,
-        layer=layer,
-        worker_count=worker_count,
-    )
-    try:
-        results = executor.execute(relation_plan, candidates)
-    finally:
-        executor.close()
-
-    if output_path:
-        save_res(output_path, results)
-    return results
-
-
-if __name__ == "__main__":
-    import argparse
-
-    parser = argparse.ArgumentParser(description="Run planner-based Relation Executor.")
-    parser.add_argument("relation_plan_path")
-    parser.add_argument("surface_search_result_path")
-    parser.add_argument("--output", default=DEFAULT_RELATION_RESULT_PATH)
-    parser.add_argument("--layer", type=int, default=1)
-    parser.add_argument("--worker-count", type=int, default=4)
-    args = parser.parse_args()
-    run_relation_executor(
-        relation_plan_path=args.relation_plan_path,
-        surface_search_result_path=args.surface_search_result_path,
-        output_path=args.output,
-        layer=args.layer,
-        worker_count=args.worker_count,
-    )
