@@ -303,55 +303,106 @@ Embedding 的词表由分词决定，所以分词要先定。
 也就是说**本节原本要设计的 Viterbi，已经在依赖里了，而且训练语料
 比本项目能提供的多几个数量级。不用建，也不用训。**
 
-### 实测：它确实在做那件事
+### 实测：Java 上很好，系统代码上不行
 
-```
-run-on 复合词（原本要 Viterbi 解决的）
-  bufmgr    → buf | mgr        starttls  → start | tls
-  spinlock  → spin | lock      openid    → open | id
-  getattr   → get | attr       appname   → app | name
+Java 项目上它表现很好——run-on 能切（`bufmgr`→buf|mgr、`spinlock`→spin|lock、
+`getattr`→get|attr），而且不过切（`config` 保持整体，**朴素词典 Viterbi
+一定会切成 `con|fig`**）。在本项目上与朴素驼峰正则结果几乎一致（459 vs 462 个单元）。
 
-不过切（原本最担心的失败模式）
-  config    → config  ✓        captcha   → captcha  ✓
-  configs   → configs ✓        mybatis   → mybatis  ✓
-  emitter   → emitter ✓        params    → params   ✓
-```
+**但换到 Linux kernel 风格的标识符上只有 68%（28/41）**：
 
-`config` 不会变成 `con|fig`——**朴素的词典 Viterbi 一定会犯这个错，
-Ronin 不会**，因为它的频率表知道 `config` 是个成立的整体。
-
-在本项目上，它与朴素驼峰正则的结果几乎一致
-（459 vs 462 个单元），差异集中在 11 个词上，而那正是它的价值所在。
-
-### 两个残留缺口，都很便宜
-
-**a. 品牌/库名会被切开。**
-
-```
-redisson → redis | son      ✗
-minio    → min   | io       ✗
-```
-
-Ronin 的频率表来自通用 Java 语料，不认识这个项目引入的库。
-**修法**：从 `pom.xml` 的依赖列表生成一份**保护词表**，
-命中的整体不切。依赖列表是现成的，零额外成本。
-
-**b. 有些可再分的复合词被整体保留。**
-
-| 保留整体 | 项目频次 | 可再切成 |
+| 失败模式 | 数量 | 例 |
 |---|---|---|
-| `codegen` | 13 | code \| gen |
-| `frontend` | 4 | front \| end |
-| `endpoint` | 2 | end \| point |
-| `backend` | 2 | back \| end |
+| **该切不切** | 11 | `iostat`、`kmalloc`、`vmalloc`、`softirq`、`rwlock`、`runqueue`、`readahead`、`sockfd`、`vmstat`、`blkmq`、`inode` |
+| **切错位置** | 1 | `dentry` → **`den\|try`**（比不切更糟） |
 
-这本身不算错（`timeout`、`metadata` 确实是成立的词），
-但**有一致性风险**：查询写「code generation」，标识符切出来是 `codegen`，
-对不上。
+根因在对照组里一目了然：
 
-**修法**：对这类单元**同时索引再分解的形式**——
-`codegen` 既索引为 `codegen`，也索引为 `code` 和 `gen`。
-超集索引，建表时多几行，查询时零成本。
+```
+IOStat  → io|stat  ✓        io_stat → io|stat  ✓     ← 边界显式时 100% 正确
+iostat  → iostat   ✗                                  ← 只在实心串上失败
+```
+
+**Ronin = 显式边界（完美）+ 对实心串的频率猜测（Java 偏置）。**
+它的频率表挖自约 4.6 万个 GitHub **Java** 项目，对内核词汇零暴露。
+Java 里实心串罕见，所以它看着很好；C/内核里实心串是常态，就掉到 68%。
+
+> 这对本设计是要害问题——贯穿全文的例子 `io performance on disk`
+> 正是系统代码，而 `iostat` 恰好是它切不对的那类。
+
+### 换频率表这条路走不通（实测）
+
+`ronin.init(frequencies=...)` 确实接受自定义频率表。但实测**换了更糟**：
+
+```
+iostat:  默认表 → iostat        换成内核词表 → ios|tat      ✗ 更差
+```
+
+因为 Ronin 除频率表外还有词典检查和 6 个超参
+（`camel_bias=8.63`、`recognition_bias=3.6e-07`、`short_min_freq=286540`……），
+**全部按官方那张大表的量级标定**。换一张小表就得连这 6 个参数一起重标，
+而 `init` 的文档自己写着生成全局表 "not a trivial undertaking"。
+
+**结论：不要试图改造 Ronin，在它外面加一层。**
+
+### 方案：三段式，Ronin 只做第一段
+
+```
+标识符
+  │
+  ├─ 1. Delimiter.split_camel        显式边界，100% 可靠
+  │
+  ├─ 2. 领域词表 Viterbi 二次切分      只处理「留成实心且长度>4」的单元
+  │                                   修「该切不切」
+  │
+  └─ 3. 覆盖表                        修「切错位置」+ 库名
+```
+
+**第 2 段实测修好 9/10，弄坏 0 个**：
+
+| 词 | 仅 Ronin | + 二次切分 |
+|---|---|---|
+| `iostat` | iostat | **io \| stat** |
+| `kmalloc` | kmalloc | **k \| malloc** |
+| `softirq` | softirq | **soft \| irq** |
+| `blkmq` | blkmq | **blk \| mq** |
+| `sockfd` | sockfd | **sock \| fd** |
+| `readahead` | readahead | **read \| ahead** |
+| `config` | config | config（未被破坏） |
+| `dentry` | **den\|try** | den\|try（修不了，见下） |
+
+**只在 Ronin 留成实心的单元上跑，所以它不可能破坏 Ronin 已经切对的结果**——
+这是「弄坏 0 个」的结构性原因，不是运气。
+
+**这一段的词表是免费的**：内核大量使用 snake_case，
+`blk_mq_init`、`io_uring`、`sock_fd_lookup`、`soft_irq` 直接给出
+`blk`、`mq`、`io`、`sock`、`fd`、`soft`、`irq` 及其频次。
+**同一个代码库里边界清楚的标识符，就是边界不清楚那些的标注数据。**
+这一段不需要训练，只需要数词频（一元文法 + DP，`O(n·L)`，微秒级）。
+
+### 第 3 段：二次切分修不了的那类
+
+`dentry` → `den|try` 说明了结构上的限制：**二次切分只能修「该切不切」，
+修不了「切错位置」**——Ronin 已经把它切开了，第 2 段根本看不到它。
+
+这类只能靠覆盖表，来源两处：
+
+- **库/品牌名**：从 `pom.xml` / `Cargo.toml` / `go.mod` 的依赖列表生成
+  （`redisson`→redis|son、`minio`→min|io 是 Ronin 在本项目上唯一的系统性错误）
+- **领域专名**：`dentry`、`inode`、`kobject` 这类，人工列，几十个量级
+
+### 兜底：超集索引
+
+上面三段之后仍会有残留错误。**所以不要依赖切分绝对正确**——
+每个标识符按**多种分解形式同时入索引**：
+
+```
+iostat  →  索引为 [iostat]、[io, stat]
+codegen →  索引为 [codegen]、[code, gen]
+```
+
+查询侧同样处理，任一分解对上即命中。倒排索引多几行的代价，
+换掉对切分正确性的硬依赖。
 
 ### 判定标准是一致性，不是语言学正确
 
@@ -364,7 +415,8 @@ Ronin 的频率表来自通用 Java 语料，不认识这个项目引入的库�
 
 `readahead` 保持整体还是切成 `read|ahead` 都可以接受——
 只要查询侧和代码侧走的是**同一个函数**，倒排就能对上。
-上面缺口 b 之所以要补，正是因为它破坏了这个前提。
+
+而超集索引比这个要求更弱：**两边都发多种形式，连一致都不必强求。**
 
 **所以这里要的是一个确定性函数，不是一个学出来的模型。**
 `Delimiter.split_camel` 带 `lru_cache`，确定性和性能都有了。
@@ -748,12 +800,14 @@ Q4a/Q4b「权重怎么定」。
    拿 261 个共享英文词当漂移探针。分开训再 Procrustes 对齐这条路，
    实测锚点数不够（d=128 时只有 1.8x），不推荐。
 
-6. **切分用现成的 `srctoolkit.Delimiter.split_camel`。** 它底层是 Ronin
-   （4.6 万个 GitHub Java 项目的频率表），run-on 复合词本来就能切
-   （`bufmgr`→buf|mgr、`spinlock`→spin|lock），也不会把 `config` 切成 `con|fig`。
-   **不需要自建 Viterbi，也不需要训练**——只补两件小事：
-   从 `pom.xml` 生成库名保护表（`redisson`→redis|son 是它唯一的系统性错误），
-   以及对 `codegen`/`frontend` 这类保留整体的复合词做超集索引。
+6. **切分是三段式，`srctoolkit.Delimiter.split_camel` 只做第一段。**
+   它底层的 Ronin 在显式边界上 100% 可靠，但频率表挖自 GitHub **Java** 项目——
+   **在 Linux kernel 风格的标识符上只有 68%**（`iostat`、`kmalloc`、`softirq` 都切不开）。
+   换频率表实测更糟（`iostat`→`ios|tat`），因为它另有 6 个按官方表标定的超参。
+   **正确做法是在外面加层**：领域词表 Viterbi 二次切分（只处理 Ronin 留成实心的单元，
+   实测修好 9/10、弄坏 0 个），加覆盖表修 `dentry`→`den|try` 这类切错位置的，
+   最后用超集索引兜底。二次切分的词表从代码库自身带分隔符的标识符里数出来，
+   **不需要训练**。
 
 7. **embedding 和 lexical rules 取合取。** 前者给语义邻近，后者给正字法变体。
    另加两个护栏：近邻先滤形态变体（fastText 的 top-k 被 `pool → pools,
