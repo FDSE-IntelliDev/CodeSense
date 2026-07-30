@@ -97,10 +97,18 @@ match(r"\b(io|input|output|performance|latency|disk|swap|block)\b")
 
 **最有价值的一类。** `performance` → `buffer`、`async`、`cache`、`batch`、`pool`。
 
-这批词**不由 LLM 现场生成**——每条查询、每个单元都调一次大模型，
-延迟和 token 成本都落在关键路径上，不可接受。改为查一张离线建好的
-扩展表，来源是「全局预训练 + 本项目微调」的词向量近邻
-（[09](09-grounding.md)）。
+这批词由**把查询拆成单元的那一次 LLM 调用顺带给出**——不额外开调用，
+不按单元逐个调。关键是同时**把项目词表放进 prompt**（实测 595 tokens，
+固定前缀可缓存），让它**从项目实际用的词里挑**，而不是凭空生成通用词：
+
+```
+本项目词表: get, role, user, save, auth, ..., redis, page, cache
+查询: io performance on disk        → 拆单元 + 每个单元从上表选词
+```
+
+这样输出的词天然落在项目词表里，不会出现「LLM 说 `department`
+但项目写 `dept`」。词表塞不下的大项目，先用向量和 ICF 收窄候选
+再交给 LLM——细节见 [09](09-grounding.md)。
 
 `buffer` **不是** `performance` 的同义词。关系是：
 
@@ -108,7 +116,7 @@ match(r"\b(io|input|output|performance|latency|disk|swap|block)\b")
 
 | | synonym | derived |
 |---|---|---|
-| 来源 | 词表 / 全局向量 | **微调后向量的近邻** |
+| 来源 | 词表 / 全局向量 | **LLM 从项目词表中挑选** |
 | 关系 | 语义等价 | 共现指示 |
 | 代码里出现频率 | 低 | **高** |
 | 单独命中可信度 | 高 | **低** |
@@ -139,13 +147,12 @@ match(r"\b(io|input|output|performance|latency|disk|swap|block)\b")
 审词表时能快速判断该不该删——和 LLM 给的自然语言 `reason` 相比，
 它还是**可排序、可卡阈值**的。
 
-### 项目特有的关联是微调带来的，不是额外一步
+### 项目特有的关联从哪来
 
-`flush`、`sink` 这些词进入 `performance` 的近邻，是因为向量在**本项目语料上
-微调过**——不需要再单独跑一轮共现扩展。
-
-代价是编译依赖离线产物（扩展表）。但这是查表，不是查索引，
-编译仍然不需要访问代码库。
+`redis`、`page` 这类词能进 `performance` 单元，是因为**项目词表在 prompt 里**——
+LLM 看得见这个项目用了 Redis、用了分页。实测本项目 `performance` 相关词里
+恰恰是 `redis`（1289 次）、`page`（10377 次）这两个技术栈相关的词最有信息量，
+而这正是纯通用联想给不出的部分。
 
 ## 单元的产出是片段
 
