@@ -1,9 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" width="1280" height="720">
-<rect x="0" y="0" width="1280" height="720" fill="#F3F5F8"/>
-<rect x="0" y="0" width="1280" height="280" fill="#223A48"/>
-<text x="80" y="170" font-family="PingFang SC, Microsoft YaHei, Arial, sans-serif" font-size="56" font-weight="700" fill="#2E7E94">5</text>
-<text x="160" y="170" font-family="PingFang SC, Microsoft YaHei, Arial, sans-serif" font-size="30" font-weight="700" fill="#FFFFFF">实现现状与研发计划</text>
-<rect x="100" y="360" width="4" height="180" fill="#2E7E94" rx="2"/>
-<text x="132" y="430" font-family="PingFang SC, Microsoft YaHei, Arial, sans-serif" font-size="24" fill="#223A48">从原型模块到可验证评测体系</text>
-<text x="1230" y="705" font-family="PingFang SC, Microsoft YaHei, Arial, sans-serif" font-size="15" fill="#697A84" text-anchor="end">13</text>
-</svg>
