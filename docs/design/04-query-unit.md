@@ -51,8 +51,11 @@ perf = q.unit(
 ```
 
 `annotation` 匹配的是**切分后的注解名单元**而不是字面正则，
-所以项目自定义的 `@AppCache`、`@CacheAside` 会和 `@Cacheable` 一起命中
-（[09](09-grounding.md) 第六节）。
+所以项目自定义的 `@AppCache`、`@CacheAside` 会和 `@Cacheable` 一起命中。
+而且注解还带两样东西：**框架声明的元注解关系**（`@GetMapping` 就是
+`@RequestMapping(GET)`，可信度 1.0）和**参数里的信息**
+（`@Schema(description=…)` 是自然语言，`@PreAuthorize` 里是权限串）。
+详见 [09 第八节](09-grounding.md)。
 
 **为什么这比一条 regex 好**：`@Async` 标注的方法名字里可能一个性能词都没有，
 纯词法必然漏。反过来，一个叫 `cacheKey` 的字段命中了 `cache` 却和性能无关，

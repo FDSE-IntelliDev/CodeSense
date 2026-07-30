@@ -533,6 +533,7 @@ postings 里出现 5 个 term，其中 io/stat 的权重打折（来源不如 ro
 | `container` | 所属类/包 | 0.5 | **`structural` satisfier 靠它** |
 | `doc` | 注释 | 0.3 | 召回高、精度低 |
 | `annotation` | 注解名（切分后） | **0.9** | 见第八节；当前索引里还没有 |
+| `annotation_arg` | 注解参数 | 0.7 | `@Schema(description=…)`、权限串、URL 路径 |
 
 权重是初值，按 [08](08-open-questions.md) 的评测集调。
 
@@ -815,23 +816,167 @@ OOV 拿到了合理起点，逐词控制又精确。门禁 1 对冻结组**按�
 
 ---
 
-## 八、注解走同一套
+## 八、注解
 
-注解名本身就是标识符，所以完全复用上面的机制：
+[07](07-mapping-to-current.md) 把 `annotated_by` 列为**性价比最高的一条边**：
+抽取几乎免费，语义信号最强。但当前索引里**完全没有**。这一节说清楚要抽什么、怎么用。
+
+### 实测：项目里有 77 种注解
+
+源码不在手边，但 `dependency_graph.json` 的 2107 条 import 边能反推出来：
+
+| 类别 | 数量 | 例 |
+|---|---|---|
+| **文档/契约** | 最多 | `@Schema`(63 文件)、`@Tag`(14)、`@Operation`(13)、`@Parameter`(12) |
+| 框架结构 | 多 | `@RestController`、`@RequestMapping`、`@Bean`、`@Configuration`、`@Mapper` |
+| 行为语义 | 中 | `@Transactional`(7)、`@Scheduled`(2)、`@CacheEvict`(2)、`@Around`/`@Aspect`/`@Pointcut` |
+| **项目自定义** | 少但最有价值 | **`@Log`(12)、`@RepeatSubmit`(6)、`@DataPermission`(3)** |
+| 持久化 | 中 | `@TableName`(12)、`@TableField`(6)、`@TableId`、`@EnumValue` |
+
+> `@Around`/`@Aspect`/`@Pointcut` 的存在正好解释了[第七节](#七微调仍然必需但目标要说清)
+> 测出的 `around` 词义错配——它在这个项目里是 AOP 切面，不是「周围」。
+
+### 抽取：tree-sitter 里现成，零成本
+
+`java_parser.py` 已经在用 tree-sitter，注解节点就在 AST 上（实测确认）：
 
 ```
-@AppCache  ──切分──►  [app, cache]  ──扩展──►  匹配 cache 单元
+marker_annotation   name=RestController   args=—
+annotation          name=RequestMapping   args=("/api/v1/users")
+annotation          name=Log              args=(module = "user")
+annotation          name=PreAuthorize     args=("@ss.hasPerm('sys:user:query')")
 ```
 
-于是 `annotation` satisfier 不该是对字面名字的正则
-（[04](04-query-unit.md) 里 `annotation(r"@(Async|Cacheable|Scheduled)")` 那种写法
-需要 LLM 现场生成正则，正是要去掉的），而是
-**对切分后的注解名做单元式匹配**——`@AppCache`、`@CacheAside`、`@Cacheable`
-一起命中 `cache`，分数由扩展表区分。
+`SymbolItem` 现在是：
 
-这样注解 satisfier 也变成纯查表。
+```python
+name, type, file, range, name_pos, signature, language, doc, container
+```
 
----
+加一个字段即可：
+
+```python
+annotations: list[Annotation]     # Annotation = {name, args: dict|str, target}
+```
+
+`target` 记它标在哪（class / method / field / parameter）——
+标在方法上的 `@Transactional` 和标在类上的含义不同。
+
+### 注解是三样东西，不是一样
+
+这是设计上最容易漏的一点：
+
+| 用法 | 落在哪 | 支撑哪个 satisfier |
+|---|---|---|
+| **注解名** | `postings` 的 `annotation` 域（权重 0.9） | `annotation` |
+| **被标注关系** | `annotated_by` 边 | `hop` / 图算子 |
+| **注解参数** | `postings` 的 `annotation_arg` 域 | `lexical` |
+
+三者不可互相替代。举例：
+
+```java
+@PreAuthorize("@ss.hasPerm('sys:user:query')")
+```
+
+- 名字 `PreAuthorize` → 命中 `auth` 单元
+- **参数里的 `sys:user:query`** → 命中 `user`、`query` 单元，且这是**权限字符串**，
+  搜「用户查询权限」时它是最直接的证据
+- 边 `method --annotated_by--> PreAuthorize` → 可以问「所有带鉴权的入口」
+
+只索引名字就丢了后两者。
+
+`@Schema(description="用户分页查询")` 尤其值钱——**参数里是自然语言描述**，
+比 javadoc 更结构化、更可靠，是 `semantic` satisfier 最好的输入。
+本项目有 63 个文件用它。
+
+### 注解名走同一套切分与扩展
+
+注解名就是标识符，直接复用[第三节](#三统一分词)的三段式切分：
+
+```
+@RestController → [rest, controller]
+@AppCache       → [app, cache]        → 命中 cache 单元
+@CacheEvict     → [cache, evict]      → 命中 cache 单元
+@RepeatSubmit   → [repeat, submit]
+```
+
+所以 `annotation` satisfier **不是对字面名字的正则**——
+[04](04-query-unit.md) 里 `annotation(r"@(Async|Cacheable|Scheduled)")` 那种写法
+需要 LLM 现场生成正则，正是[第六节](#六第一跳搭在已有的那次-llm-调用上)要去掉的。
+改成对切分后的单元匹配，项目自定义的 `@AppCache` 自动和 `@Cacheable` 一起命中。
+
+### 元注解：框架自己声明了同义关系
+
+**这是注解相对其它信号的独有优势。** Spring 里：
+
+```
+@RestController  =  @Controller + @ResponseBody
+@GetMapping      =  @RequestMapping(method = GET)
+@PostMapping     =  @RequestMapping(method = POST)
+@Service/@Repository/@Component  ← 都是 @Component
+```
+
+这层关系**是框架在源码里声明的，不是猜的**——比 embedding 近邻和 LLM 联想
+都可靠。一条查询问「HTTP 入口」，应当同时命中
+`@RestController`、`@GetMapping`、`@PostMapping`、`@RequestMapping`。
+
+三层来源，按成本从低到高：
+
+1. **硬编码表**——Spring / JPA / Jackson / MyBatis 的常用元注解关系。
+   几十条，覆盖绝大多数，一次写完长期有效。
+2. **解析项目自己的 `@interface` 声明**——自定义注解的元注解在源码里，
+   直接可得。`@RepeatSubmit` 标了什么、`@DataPermission` 继承什么，一目了然。
+3. **落回名字切分**——不认识的注解，走上一小节。
+
+展开后写进 `expansion` 表，与词的扩展表同构：
+
+```
+expansion["@RequestMapping"] = [("@GetMapping", 1.0, "meta"),
+                                ("@PostMapping", 1.0, "meta"),
+                                ("@RestController", 0.8, "meta-transitive")]
+```
+
+`reason="meta"` 与 `reason="prefix"`/`"ctx"` 并列，**但可信度是 1.0**——
+因为它是声明的事实，不是估计。
+
+### 项目自定义注解是最高价值信号
+
+`@Log`、`@RepeatSubmit`、`@DataPermission` 这三个是本项目自己定义的。
+它们的特点：
+
+- **语义极强且无歧义**——`@RepeatSubmit` 就是防重复提交，没有第二种解释
+- **通用模型完全不认识**——cc.en.300 里没有，LLM 也猜不到
+- **但它们在项目词表里**——所以[第六节](#六第一跳搭在已有的那次-llm-调用上)
+  「把项目词表放进 prompt」的做法能覆盖到：LLM 看得见 `repeat`、`submit`、
+  `permission` 这些单元
+
+这正是那套方案相对「训练 embedding」的优势所在——
+自定义注解出现次数少（3~12 次），embedding 学不出来，但 LLM 看一眼就懂。
+
+### `annotation` satisfier 规格
+
+```python
+annotation(
+    units=["cache", "async"],      # 切分后的单元，不是正则
+    names=["@Transactional"],      # 也可以直接点名，会经元注解展开
+    target="method",               # 可选：只算标在方法上的
+    args_match=None,               # 可选：对参数再加词法条件
+    weight=0.9,
+)
+```
+
+求值时：`names` 先过元注解展开 → 与 `units` 合并 →
+查 `postings` 的 `annotation` / `annotation_arg` 域 → 产出 Frag。
+与其它 satisfier 一样是纯查表，无 LLM。
+
+### 一个几乎免费的附加信号
+
+**共同标注在同一批方法上的注解是相关的。** 若 `@RepeatSubmit` 总是和
+`@PostMapping` 一起出现，那么问「表单提交」时两者应互相加分。
+
+这是从 `annotated_by` 边直接数出来的共现，不需要额外抽取。
+本项目规模小、这个信号弱，但在大型 Spring 项目里很可用——
+**而且它是项目特有的，通用知识给不了。**
 
 ## 九、怎么验证
 
@@ -897,7 +1042,15 @@ Q4a/Q4b「权重怎么定」。
 8. **索引保持精确，模糊性放进预计算的扩展表。** 可解释、可审计、
    阈值按 ICF 自适应。
 
-9. **索引拆成四个产物：`symbols` / `postings` / `terms` / `expansion`。**
+9. **注解要抽，而且要当三样东西用。** 实测项目里有 77 种注解，
+   当前索引里一种都没有，而 tree-sitter 已经在用、节点现成，抽取零成本。
+   注解名进 `annotation` 域、被标注关系进 `annotated_by` 边、
+   **参数进 `annotation_arg` 域**——`@PreAuthorize("@ss.hasPerm('sys:user:query')")`
+   的权限串和 `@Schema(description=…)` 的自然语言描述都在参数里，只索引名字就全丢了。
+   另外**元注解是框架声明的同义关系**（`@GetMapping` = `@RequestMapping(GET)`），
+   可信度 1.0，比任何 embedding 近邻都可靠。
+
+10. **索引拆成四个产物：`symbols` / `postings` / `terms` / `expansion`。**
    现在 posting 里存的是符号对象而非 id——1718 个符号就占 2.2 MB，
    外推到内核量级是 **1 GB vs 11 MB**。分开还有个实际收益：
    `expansion` 与代码解耦，调阈值、换 embedding 不必碰索引。

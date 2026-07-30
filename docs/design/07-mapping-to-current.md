@@ -61,7 +61,9 @@
 | 需求 | 现状 | 差距 |
 |---|---|---|
 | 符号表 | ✅ 1718 个符号，schema 够用 | 缺 `modifiers` 字段 |
-| 注解 | ❌ **完全没有** | 需要在 parser 里抽，成本低收益大 |
+| 注解 | ❌ **完全没有**（项目实测有 77 种） | tree-sitter 节点现成，`SymbolItem` 加一个 `annotations` 字段即可（[09](09-grounding.md) 第八节） |
+| 注解参数 | ❌ 没有 | `@Schema(description=…)`、权限串、URL 路径都在这里 |
+| 元注解关系 | ❌ 没有 | 硬编码常用框架 + 解析项目 `@interface` |
 | `calls` 边 | ✅ 677 条 | — |
 | `contains` 边 | ⚠️ 信息在 `container` 字段里，不是边 | 需要物化成边 |
 | `implements` | ⚠️ 独立表 `code_implementations`（159） | 需要统一进边视图 |
