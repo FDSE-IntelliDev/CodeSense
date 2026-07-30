@@ -21,11 +21,8 @@ import sys
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
-sys.path.append(str(Path(__file__).parent.parent))
-
-from definition import QUERY_OUTPUT_DIR
-from embedding.embedding_main import score_pair_by_average_vector as score_pair
-from embedding.project_term_vocab import tokenize_text
+from codesense.embedding.embedding_main import score_pair_by_average_vector as score_pair
+from codesense.embedding.project_term_vocab import tokenize_text
 import numpy as np
 import re
 
@@ -718,21 +715,6 @@ def run_embedding_filter(
     ).run_filter(candidates, query_profile)
 
 
-if __name__ == "__main__":
-    result_file_path = Path(QUERY_OUTPUT_DIR) / "filtered_by_cluster.json"
-    semql_path = Path(QUERY_OUTPUT_DIR) / "intention_semql.json"
-
-    with open(result_file_path, "r", encoding="utf-8") as f:
-        candidates = json.load(f)
-    with open(semql_path, "r", encoding="utf-8") as f:
-        intention_plan = json.load(f)
-
-    result = run_embedding_filter(
-        candidates,
-        intention_plan.get("query_profile", {}),
-        intention_plan.get("execution_plan", {}).get("embedding", {}),
-    )
-    output_path = Path(QUERY_OUTPUT_DIR) / "filtered_by_embedding.json"
-    with open(output_path, "w", encoding="utf-8") as f:
-        json.dump(result, f, ensure_ascii=False, indent=2)
-    print(f"Embedding filter result saved to: {output_path}")
+# 原来这里有一个 __main__ 块，装着完整的工作流（读文件、拼对象、
+# 跑一遍、写产物）。那是胶水，已搬到 scripts/run_embedding_filter.py。
+# 核心模块只留功能逻辑。

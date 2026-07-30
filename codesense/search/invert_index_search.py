@@ -1,10 +1,8 @@
 import json
 from typing import Any, Dict, Iterable, Optional
 
-from search.full_term_matcher import FullTermMatcher
-from definition import PROJECT_OUTPUT_DIR, QUERY_OUTPUT_DIR
-
-
+from codesense.search.full_term_matcher import FullTermMatcher
+from codesense.config import PROJECT_OUTPUT_DIR, QUERY_OUTPUT_DIR
 def _has_requested_conditions(semql: dict, properties: tuple) -> bool:
     """Return whether grouped SemQL contains any requested property entries."""
     conditions = semql.get("conditions")
@@ -89,50 +87,8 @@ def search_symbols_by_terms(
     }
 
 
-def invert_index_search4symbol(invert_index_path: str, ngramed_symbol_path: str, query_dsl_result_path: str, properties: tuple = ("include",)) -> list:
-    """
-    根据倒排索引和拆词符号进行检索，返回匹配的完整代码元素。
-
-    properties: which property groups to match ("include",) or ("exclude",).
-    """
-    # 1. 从文件读取查询条件 (semQL)
-    with open(query_dsl_result_path, 'r', encoding='utf-8') as f:
-        semQL = json.load(f)
-
-    # 请求的 include/exclude 没有任何条件时，无需加载索引和执行匹配。
-    if not _has_requested_conditions(semQL, properties):
-        return []
-
-    # 2. 初始化匹配器
-    matcher = FullTermMatcher(
-        invert_index_path=invert_index_path,
-        ngramed_symbol_path=ngramed_symbol_path,
-    )
-
-    # 3. 执行匹配
-    result = matcher.match_ngram(semQL, properties)
-    matched_subtokens = result.get('matched_subtokens', {})
-
-    # 4. 读取 ngramed_symbols 以便查找完整信息
-    with open(ngramed_symbol_path, 'r', encoding='utf-8') as f:
-        ngramed_symbols = json.load(f)
-
-    # 5. 从 ngramed_symbols 中过滤出完整的代码元素信息。
-    return _map_subtokens_to_symbols(ngramed_symbols, matched_subtokens)["symbols"]
 
 
-if __name__ == "__main__":
-    # 使用常量和定义好的路径调用函数
-    invert_index_path = f"{PROJECT_OUTPUT_DIR}/invert_index.json"
-    ngramed_symbol_path = f"{PROJECT_OUTPUT_DIR}/ngramed_symbol.json"
-    query_dsl_result_path = f"{QUERY_OUTPUT_DIR}/semQL.json"
-
-    # 执行搜索并返回结果
-    elements = invert_index_search4symbol(
-        invert_index_path=invert_index_path, 
-        ngramed_symbol_path=ngramed_symbol_path, 
-        query_dsl_result_path=query_dsl_result_path
-    )
-
-    print("\nFull Matched Elements:")
-    print(json.dumps(elements, ensure_ascii=False, indent=2))
+# 原来这里有一个 __main__ 块，装着完整的工作流（读文件、拼对象、
+# 跑一遍、写产物）。那是胶水，已搬到 scripts/run_invert_index_search.py。
+# 核心模块只留功能逻辑。

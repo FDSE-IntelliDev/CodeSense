@@ -4,22 +4,23 @@ import json
 from pathlib import Path
 
 # Offline parsing imports
-from code_parser import run as run_code_parser
-from ngram_split import SymbolNgramer
-from invert_index import InvertedIndexBuilder
+from codesense.indexing.code_parser import run as run_code_parser
+from codesense.indexing.ngram_split import SymbolNgramer
+from codesense.indexing.invert_index import InvertedIndexBuilder
 
 # Online query processing imports
-from query_processing.llm_semCon_extractor import LLMSemConExtractor
-from query_processing.semQL_composer import (
+from codesense.query.llm_semCon_extractor import LLMSemConExtractor
+from codesense.query.semQL_composer import (
     compose_query_plans_from_semCon,
     compose_semQL_from_semCon,
 )
-from executor.surface_executor import run_surface_search
-from executor.relation_executor import run_relation_executor
-from executor.intention_executor import run_intention_executor
+from codesense.executors.surface_executor import run_surface_search
+from codesense.executors.intention_executor import run_intention_executor
+# Relation 阶段的接线搬到了 scripts/run_relation.py（核心包只留 RelationExecutor）
+from scripts.run_relation import run_relation_executor
 
-from definition import PROJECT_OUTPUT_DIR, QUERY_ID, get_query_output_dir
-from utils.file_utils import save_res,load_res
+from codesense.config import load_config
+from codesense.utils.file_utils import save_res,load_res
 
 
 def process_offline(project_path: str, output_dir: str):
@@ -55,8 +56,8 @@ def process_offline(project_path: str, output_dir: str):
 
 def process_online(
     query: str,
-    output_dir: str = PROJECT_OUTPUT_DIR,
-    query_id: int = QUERY_ID,
+    output_dir: str | None = None,
+    query_id: int | None = None,
 ):
     """Run the online query pipeline.
 
@@ -64,12 +65,15 @@ def process_online(
         query: natural-language user query.
         output_dir: project-level output/index directory, e.g.
             ``output/<project>``. Offline artifacts such as ``symbols_index.json``
-            and ``invert_index.json`` are read from here.
+            and ``invert_index.json`` are read from here. Defaults to the
+            configured project output dir.
         query_id: per-query id used to isolate online intermediate outputs under
-            ``output/<project>/query_<query_id>``.
+            ``output/<project>/query_<query_id>``. Defaults to ``query.default_id``.
     """
-    project_output_path = Path(output_dir)
-    output_path = Path(get_query_output_dir(str(project_output_path), query_id))
+    cfg = load_config()
+    project_output_path = Path(output_dir) if output_dir else cfg.project_output_dir
+    qid = cfg.query.default_id if query_id is None else query_id
+    output_path = project_output_path / f"query_{qid}"
     output_path.mkdir(parents=True, exist_ok=True)
 
     semQL_path = str(output_path / "semQL.json")
@@ -162,36 +166,40 @@ def process_online(
         "final_results": final_results,
     }
 
-def main():
-    parser = argparse.ArgumentParser(description="CodeSearch Pipeline")
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(prog="codesense", description="CodeSense Pipeline")
+    parser.add_argument("--config", type=str, help="Path to a config YAML (default: configs/default.yaml)")
     parser.add_argument("--init",action="store_true",help="Initialize the project before searching")
-    parser.add_argument("--project_path", type=str, help="Path to the target codebase")
+    parser.add_argument("--project_path", type=str, help="Path to the target codebase (default: target.project_path)")
     parser.add_argument("--output_dir", type=str, help="Directory to save the parsing and indexing results")
     parser.add_argument("--query", type=str, help="A natural language search query for the online phase")
-    parser.add_argument("--query_id", type=int, default=QUERY_ID, help="Query id used for output/<project>/query_<id> online artifacts")
+    parser.add_argument("--query_id", type=int, help="Query id used for output/<project>/query_<id> online artifacts")
+    return parser
 
-    args = parser.parse_args(
-        [
-            "--project_path","/Users/bytedance/old6ma/projects/youlai-boot-master",
-            "--output_dir","/Users/bytedance/old6ma/CodeSearch/output/youlai-boot-master",
-            "--query","Find the entry function that handles user login authentication.",
-            "--query_id","1"
-        ]
-    )
+
+def main(argv=None):
+    args = build_parser().parse_args(argv)
+
+    # 命令行参数优先，没给的从配置里取——参数不写死在代码里（ARCHITECTURE.md 规则 7）。
+    cfg = load_config(args.config) if args.config else load_config()
+    project_path = args.project_path or str(cfg.project_path)
+    output_dir = args.output_dir or str(cfg.project_output_dir)
 
     if args.init:
-        process_offline(args.project_path, args.output_dir)
+        process_offline(project_path, output_dir)
     else:
         print("Skipping offline phase.")
 
     if args.query:
         process_online(
             args.query,
-            output_dir=args.output_dir or PROJECT_OUTPUT_DIR,
+            output_dir=output_dir,
             query_id=args.query_id,
         )
     else:
         print("Skipping online search because no --query provided.")
 
+    return 0
+
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

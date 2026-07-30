@@ -4,8 +4,8 @@ import subprocess
 import threading
 from pathlib import Path
 from typing import List, Optional
-from definition import JDTLS_PATH
-from parsers.tools import get_function_position
+from codesense.config import load_config
+from codesense.parsers.tools import get_function_position
 
 class JavaLSPClient:
     """
@@ -14,7 +14,7 @@ class JavaLSPClient:
     def __init__(
         self,
         project_root: str,
-        jdtls_path: str = JDTLS_PATH,
+        jdtls_path: Optional[str] = None,
         data_dir: Optional[str] = None,
         configuration_dir: Optional[str] = None,
         request_timeout: float = 10.0,
@@ -44,7 +44,10 @@ class JavaLSPClient:
         os.makedirs(data_dir, exist_ok=True)
         os.makedirs(configuration_dir, exist_ok=True)
 
-        cmd = [self.jdtls_path, "-configuration", configuration_dir, "-data", data_dir]
+        # jdtls_path 缺省时落到配置。放在这里而不是 __init__，
+        # 是为了让构造对象本身不产生任何 IO。
+        jdtls = self.jdtls_path or load_config().tools.jdtls_path
+        cmd = [jdtls, "-configuration", configuration_dir, "-data", data_dir]
         self._process = subprocess.Popen(
             cmd,
             stdin=subprocess.PIPE,
@@ -357,35 +360,7 @@ class JavaCallChainExtractor:
             })
         return tree
 
-if __name__ == "__main__":
-    import sys
-    # Add project root to path so we can import parsers as a module
-    sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    import time
 
-    project_root = "/Users/huangzhuochen/IdeaProjects/youlai-boot-master"
-    target_file = f"{project_root}/src/main/java/com/youlai/boot/system/service/impl/UserServiceImpl.java"
-    func_name = "updateUser"
-
-    # You may need to provide the absolute path to `jdtls` if it's not in your PATH
-    lsp_client = JavaLSPClient(project_root=project_root, jdtls_path="jdtls")
-
-    print("Starting LSP Server and indexing project (this may take a few seconds)...")
-    lsp_client.start()
-
-    # Wait for the JDT.LS workspace to initialize
-    time.sleep(10)
-
-    try:
-        extractor = JavaCallChainExtractor(lsp_client)
-        print(f"Extracting call chain for layer=2...")
-        result = extractor.get_call_chain(
-            filepath=target_file,
-            func_name=func_name,
-            layer=2
-        )
-        print("\n=== Call Chain Result ===")
-        print(json.dumps(result, indent=2, ensure_ascii=False))
-    finally:
-        lsp_client.stop()
-        print("\nLSP Server stopped.")
+# 原来这里有一个 __main__ 块，装着完整的工作流（读文件、拼对象、
+# 跑一遍、写产物）。那是胶水，已搬到 scripts/lsp_smoke_check.py。
+# 核心模块只留功能逻辑。

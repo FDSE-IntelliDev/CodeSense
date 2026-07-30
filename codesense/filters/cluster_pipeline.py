@@ -2,9 +2,8 @@ import json
 import numpy as np
 from typing import List, Dict, Any
 from sentence_transformers import SentenceTransformer
-from parsers.read_tools import get_symbol_code
+from codesense.parsers.read_tools import get_symbol_code
 from sklearn.cluster import AgglomerativeClustering
-from definition import QUERY_OUTPUT_DIR
 
 from pathlib import Path
 
@@ -316,53 +315,6 @@ class FiltrationDispatcher:
         }
 
 
-if __name__ == "__main__":
-    from pathlib import Path
-    import json
-
-    # 1. 指定真实的搜索结果文件路径 (动态获取项目根目录并拼接路径)
-    project_root = Path(__file__).resolve().parent.parent
-    result_file_path = Path(QUERY_OUTPUT_DIR) / "filtered_by_type.json"
-
-    print(f"正在读取真实搜索结果: {result_file_path}")
-    with open(result_file_path, "r", encoding="utf-8") as f:
-        real_search_results = json.load(f)
-    print(f"成功加载，共计 {len(real_search_results)} 个代码元素。")
-
-    with open(Path(QUERY_OUTPUT_DIR) / "intention_semql.json", "r", encoding="utf-8") as f:
-        intention_plan = json.load(f)
-
-    print("\n正在加载本地 Embedding 模型...")
-    # 3. 初始化组件
-    embedder = CodeEmbedder()
-    clusterer = SymbolClusterer(distance_threshold=0.3)
-    dispatcher = FiltrationDispatcher(embedder, clusterer)
-
-    print("开始运行过滤 Pipeline...")
-    # 4. 运行调度器
-    result_dict = dispatcher.run_pipeline(
-        real_search_results,
-        intention_plan.get("query_profile", {}).get("semantic_text", ""),
-        intention_plan.get("execution_plan", {}).get("cluster", {}),
-    )
-
-    # 5. 存储结果
-    output_dir = Path(QUERY_OUTPUT_DIR)
-    output_dir.mkdir(parents=True, exist_ok=True)
-
-    kept_file_path = output_dir / "filtered_by_cluster.json"
-    discarded_file_path = output_dir / "exclude_by_cluster.json"
-
-    with open(kept_file_path, "w", encoding="utf-8") as f:
-        json.dump(result_dict.get("kept", []), f, ensure_ascii=False, indent=4)
-
-    with open(discarded_file_path, "w", encoding="utf-8") as f:
-        json.dump(result_dict.get("discarded", []), f, ensure_ascii=False, indent=4)
-
-    # 6. 控制台简要输出
-    print("\n========== Pipeline 运行完成 ==========")
-    stats = result_dict.get("stats", {})
-    print(f"统计信息: 初始总数={stats.get('total_initial')}")
-    print(f"聚类数={stats.get('num_clusters')}, 保留={stats.get('total_kept')}, 丢弃={stats.get('total_discarded')}")
-    print(f"✅ 保留的符号已写入: {kept_file_path}")
-    print(f"❌ 丢弃的符号已写入: {discarded_file_path}")
+# 原来这里有一个 __main__ 块，装着完整的工作流（读文件、拼对象、
+# 跑一遍、写产物）。那是胶水，已搬到 scripts/run_cluster.py。
+# 核心模块只留功能逻辑。

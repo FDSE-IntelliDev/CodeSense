@@ -1,0 +1,67 @@
+{
+  "intent": {
+    "action": {
+      "term": "find",
+      "synonyms": [
+        "search",
+        "locate"
+      ]
+    },
+    "object": {
+      "term": "login function",
+      "synonyms": [
+        "login method",
+        "authentication function",
+        "sign-in function"
+      ]
+    }
+  },
+  "has_exact_code": "1",
+  "exact_code": [
+    {
+      "text": "login",
+      "kind": "code_element",
+      "code_element_type": "function",
+      "match_mode": "fuzzy_match",
+      "source": "The query explicitly mentions 'login function', where 'login' may be a function name or part of a function name."
+    }
+  ],
+  "keywords": [
+    {
+      "term": "login function",
+      "synonyms": [
+        "login method",
+        "authentication function",
+        "sign-in function"
+      ]
+    },
+    {
+      "term": "login",
+      "synonyms": [
+        "sign in",
+        "authenticate",
+        "authentication"
+      ]
+    }
+  ],
+  "target": [
+    "function",
+    "method"
+  ],
+  "filters": [
+    {
+      "concept": "login",
+      "relation": "core responsibility"
+    },
+    {
+      "concept": "authentication",
+      "relation": "related domain"
+    }
+  ],
+  "exclude": [
+    "registration",
+    "logout",
+    "password reset"
+  ],
+  "raw_query": "Find the login function"
+}

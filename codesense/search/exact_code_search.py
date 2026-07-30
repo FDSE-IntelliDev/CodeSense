@@ -12,9 +12,9 @@ import json
 from pathlib import Path
 from typing import Any, Dict, List
 
-from definition import PROJECT_OUTPUT_DIR, QUERY_OUTPUT_DIR
-from parsers.read_tools import read_file_lines
-from search.fuzzy_matcher import FuzzyMatcher
+from codesense.config import PROJECT_OUTPUT_DIR, QUERY_OUTPUT_DIR
+from codesense.parsers.read_tools import read_file_lines
+from codesense.search.fuzzy_matcher import FuzzyMatcher
 
 
 class ExactCodeSearcher:
@@ -252,152 +252,7 @@ class ExactCodeSearcher:
         return round(score, 4)
 
 
-def exact_code_search(symbols_index_path: str, semql_path: str, top_k: int = 50) -> List[Dict[str, Any]]:
-    p = Path(semql_path)
-    if not p.exists():
-        return []
-    with p.open("r", encoding="utf-8") as f:
-        semql = json.load(f)
-    semql={
-  "intent": {
-    "action": {
-      "term": "find",
-      "synonyms": [
-        "search",
-        "locate"
-      ]
-    },
-    "object": {
-      "term": "login function",
-      "synonyms": [
-        "login method",
-        "authentication function",
-        "sign-in function"
-      ]
-    }
-  },
-  "has_exact_code": "1",
-  "exact_code": [
-    {
-      "text": "login",
-      "kind": "code_element",
-      "code_element_type": "function",
-      "match_mode": "fuzzy_match",
-      "source": "The query explicitly mentions 'login function', where 'login' may be a function name or part of a function name."
-    }
-  ],
-  "keywords": [
-    {
-      "term": "login function",
-      "synonyms": [
-        "login method",
-        "authentication function",
-        "sign-in function"
-      ]
-    },
-    {
-      "term": "login",
-      "synonyms": [
-        "sign in",
-        "authenticate",
-        "authentication"
-      ]
-    }
-  ],
-  "target": [
-    "function",
-    "method"
-  ],
-  "filters": [
-    {
-      "concept": "login",
-      "relation": "core responsibility"
-    },
-    {
-      "concept": "authentication",
-      "relation": "related domain"
-    }
-  ],
-  "exclude": [
-    "registration",
-    "logout",
-    "password reset"
-  ],
-  "raw_query": "Find the login function"
-}
-
-    semql={
-  "intent": {
-    "action": {
-      "term": "find",
-      "synonyms": [
-        "search",
-        "locate"
-      ]
-    },
-    "object": {
-      "term": "code line returning login token success result",
-      "synonyms": [
-        "return token success line",
-        "successful login token return",
-        "result success token return"
-      ]
-    }
-  },
-  "has_exact_code": "1",
-  "exact_code": [
-    {
-      "text": "return Result.success(token);",
-      "kind": "code_line",
-      "code_element_type": "unknown",
-      "match_mode": "fuzzy_match",
-      "source": "The query explicitly mentions a code line that returns Result.success(token)."
-    }
-  ],
-  "keywords": [
-    {
-      "term": "return success token",
-      "synonyms": [
-        "return token",
-        "success result",
-        "login token response"
-      ]
-    },
-    {
-      "term": "login token",
-      "synonyms": [
-        "authentication token",
-        "access token",
-        "jwt token"
-      ]
-    }
-  ],
-  "target": [
-    "function",
-    "method"
-  ],
-  "filters": [
-    {
-      "concept": "login",
-      "relation": "related domain"
-    },
-    {
-      "concept": "token",
-      "relation": "returned result"
-    }
-  ],
-  "exclude": [
-    "registration",
-    "logout",
-    "password reset"
-  ],
-  "raw_query": "Find the code line return Result.success(token); in the login function"
-}
-
-    return ExactCodeSearcher(symbols_index_path).search(semql, top_k=top_k)
-
-
-if __name__ == "__main__":
-    symbols_index_path = f"{PROJECT_OUTPUT_DIR}/symbols_index.json"
-    semql_path = f"{QUERY_OUTPUT_DIR}/semQL.json"
-    print(json.dumps(exact_code_search(symbols_index_path, semql_path, top_k=50), indent=4))
+# 原来这里有 exact_code_search(symbols_index_path, semql_path) 和一个 __main__ 块。
+# 那 142 行里 135 行是硬编码的 semql 字面量，函数本身只是「读文件（然后丢掉）
+# + 造 ExactCodeSearcher + 调一下」——纯胶水。已搬到 scripts/run_exact_search.py，
+# 样例 semql 存成了 data/dsl_samples/exact_search_sample_semql.json。

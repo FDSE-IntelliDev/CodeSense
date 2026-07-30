@@ -61,31 +61,5 @@ class AbbreviationModelFilter:
         return len(self.filter_candidates(full_name, [abbr], threshold)) > 0
 
 
-if __name__ == "__main__":
-    # 初次运行会自动下载模型到本地
-    st_filter = AbbreviationModelFilter()
-    from expansion.abbreviate import abbreviate_new
-    abbrs=abbreviate_new("readahead")
-    abbrs={'ra', 'reaa', 'reaahd', 'readaha', 'rdad', 'reahad', 'reahea', 'rahad', 'reahead', 'reaaa', 'reaaad', 'rdahead', 'raad', 'rad', 'rdahad', 'r', 'rahead', 'reaahed', 'rdaha', 'raha', 'rdaad', 'readahead', 'readahea', 'rahed', 'readahd', 'rea', 'read', 'reahed', 'reaha', 'readahed', 'readad', 'rdahd', 'reaad', 'reaahea', 'reaahead', 'rahd', 'rdahea', 'readaad', 'rdaa', 'reahd', 'raa', 'reaahad', 'rahea', 'rdahed', 'readaa', 'reaaha', 'readahad'}
-    test_cases=[]
-    for abbr in abbrs:
-        test_cases.append(("read ahead", abbr))
-    # test_cases = [
-    #     ("configuration", "cfg"),
-    #     ("database", "db"),
-    #     ("message", "msg"),
-    #     ("security check", "secchk"),
-    #     ("readahead","prefetch"),
-    #     ("configuration", "cat"),
-    #     ("database", "apple"),
-    # ]
-    # res=st_filter.filter_candidates("readahead",list({'ra', 'reaa', 'reaahd', 'readaha', 'rdad', 'reahad', 'reahea', 'rahad', 'reahead', 'reaaa', 'reaaad', 'rdahead', 'raad', 'rad', 'rdahad', 'r', 'rahead', 'reaahed', 'rdaha', 'raha', 'rdaad', 'readahead', 'readahea', 'rahed', 'readahd', 'rea', 'read', 'reahed', 'reaha', 'readahed', 'readad', 'rdahd', 'reaad', 'reaahea', 'reaahead', 'rahd', 'rdahea', 'readaad', 'rdaa', 'reahd', 'raa', 'reaahad', 'rahea', 'rdahed', 'readaa', 'reaaha', 'readahad'}))
-    print("====== 本地模型 Zero-Shot 缩写相似度测试 ======")
-    for full, ab in test_cases:
-        # 直接计算分数
-        full_emb = st_filter.model.encode([full], convert_to_tensor=True)
-        ab_emb = st_filter.model.encode([ab], convert_to_tensor=True)
-        score = st_filter.cos_sim(full_emb, ab_emb)[0][0].item()
-
-        is_match = score >= 0.4
-        print(f"Full: {full:15} | Abbr: {ab:6} | Score: {score:.4f} | Pass: {is_match}")
+# 原来这里有一个 __main__ 调试块，参数全部硬编码（一大坨字面量集合），
+# 换个输入只能改代码。已删除；要跑对比实验请自己写脚本放 scripts/。
