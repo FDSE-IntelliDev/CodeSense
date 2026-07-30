@@ -100,6 +100,10 @@ def reachable(self, start_ids, direction, max_depth, ...) -> Set[int]:
 `hop` 需要前驱链。改动会显著增加内存——所以 `max_paths` 和截断日志
 在设计里是必需项而非可选优化。
 
+> 边的构建方案、CodeQL 的定位与落地顺序见 [10](10-graph.md)。
+> 关键结论：**最先做的一步不需要 CodeQL**——把 `contains` 从
+> `code_symbols.container` 物化成边，孤点就从 64% 归零。
+
 **3. 没有数据流。** 这是唯一需要**新建分析能力**的一项，
 其余都是重组已有数据。Java 侧可以走 CodeQL（当前已有 `codesense/codeql/`
 的链路）或扩 LSP 用法。
