@@ -13,18 +13,18 @@ from datetime import datetime
 import re
 import itertools
 from functools import lru_cache
-from typing import Set, List, Dict, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple
 import nltk
 from nltk.corpus import stopwords
 from srctoolkit.delimiter import Delimiter
 from tqdm import tqdm
 from collections import defaultdict
-from tokenizer.tokenizer_core import tokenizer
+from codesense.tokenizer.tokenizer_core import tokenizer
 import time
-from expansion.NameHandler import NameHandler
+from codesense.expansion.NameHandler import NameHandler
 # from NameHandler import NameHandler
 import json,os
-from definition import EXPANSION_DIR
+from codesense.config import EXPANSION_DIR
 
 from nltk.corpus import wordnet as wn
 from nltk.stem import WordNetLemmatizer
@@ -96,10 +96,20 @@ NON_ALPHA_PATTERN = re.compile(r"[^a-zA-Z]+")
 TIME_OUT = 1
 VALID_ABBR_SET_PATH = f'{EXPANSION_DIR}/dataset/valid_abbr.json'
 
-with open(VALID_ABBR_SET_PATH, 'r') as f:
-    VALID_ABBR_SET = json.load(f)
+# 缩写白名单与 NameHandler 原来在这里就加载/实例化了，import 本模块即产生 IO。
+# 现在它们是 AbbreviationGenerator 的惰性状态。下面两个模块级名字保留给
+# 尚未迁移的调用点，同样是惰性的。
 
-handler = NameHandler.get_inst()
+
+def _default_generator() -> "AbbreviationGenerator":
+    """默认实例，供函数式入口复用——白名单只加载一次。"""
+    global _DEFAULT_GENERATOR
+    if _DEFAULT_GENERATOR is None:
+        _DEFAULT_GENERATOR = AbbreviationGenerator()
+    return _DEFAULT_GENERATOR
+
+
+_DEFAULT_GENERATOR: "Optional[AbbreviationGenerator]" = None
 
 
 # =========================
@@ -141,7 +151,7 @@ def tokenize(phrase: str, split_type=False) -> List[str]:
 # =========================
 # 2. Prefix family generation
 # =========================
-def prefix_family(word: str, max_len: int = 8) -> Tuple[str, ...]:
+def prefix_family(word: str, max_len: int) -> Tuple[str, ...]:
     """Generate all prefixes of a word up to max_len. Cached for performance."""
     return tuple(word[:i] for i in range(1, min(len(word), max_len) + 1))
 
@@ -176,7 +186,7 @@ def prefix_family(word: str, max_len: int = 8) -> Tuple[str, ...]:
 # =========================
 # 4. Consonant skeleton + subsequence variants
 # =========================
-def consonant_subsequence_variants(word: str, max_len: int = 8) -> Tuple[str, ...]:
+def consonant_subsequence_variants(word: str, max_len: int) -> Tuple[str, ...]:
     """
     Generate consonant skeleton subsequences.
 
@@ -240,185 +250,281 @@ def consonant_subsequence_variants(word: str, max_len: int = 8) -> Tuple[str, ..
 # 5. Candidates for each word
 # =========================
 @lru_cache(maxsize=4096)
-def word_candidates(word: str, max_len: int = 8) -> Tuple[str, ...]:
+class AbbreviationGenerator:
+    """给一个词或短语生成所有可能的缩写。
+
+    这些原来都是模块级的（ARCHITECTURE.md 规则 1 的 ❌ 写法）：
+
+    - ``max_part_len`` / ``max_abbr_len`` 在三个函数之间逐个透传；
+    - 缩写白名单 ``VALID_ABBR_SET`` 是全局变量，而且**在 import 时就读盘**
+      （顺带违反规则 8：模块顶层不执行逻辑）；
+    - ``handler`` 也是模块级单例。
+
+    现在它们是实例状态：构造时定一次，方法签名保持干净，白名单首次用到才加载。
+
+    用法::
+
+        gen = AbbreviationGenerator()
+        gen.generate("read ahead")
+        AbbreviationGenerator(max_abbr_len=6).generate("configuration")
     """
-    Generate all abbreviation candidates for a single word.
 
-    Combines prefixes, syllable-based prefixes, and consonant skeleton variants.
-    Stop words return simplified candidates. Cached for performance.
+    def __init__(
+        self,
+        max_part_len: int = 8,
+        max_abbr_len: int = 8,
+        valid_abbr_path: Optional[str] = None,
+        handler: Any = None,
+    ) -> None:
+        self.max_part_len = max_part_len
+        self.max_abbr_len = max_abbr_len
+        self._valid_abbr_path = valid_abbr_path or VALID_ABBR_SET_PATH
+        self._valid_abbr_set: Optional[Any] = None
+        self._handler = handler
 
-    Args:
-        word: Word to generate candidates for
-        max_len: Maximum length for candidates
+    @property
+    def valid_abbr_set(self) -> Any:
+        """缩写白名单。首次用到才读盘——import 本模块不该产生 IO。"""
+        if self._valid_abbr_set is None:
+            with open(self._valid_abbr_path, "r", encoding="utf-8") as f:
+                self._valid_abbr_set = json.load(f)
+        return self._valid_abbr_set
 
-    Returns:
-        Tuple of abbreviation candidates (sorted by length)
-    """
-    # Limit max_len to 70% of word length
-    effective_max_len = min(max_len, int(len(word) * 0.75))
+    @property
+    def handler(self) -> Any:
+        if self._handler is None:
+            self._handler = NameHandler.get_inst()
+        return self._handler
 
-    # 大写 小写 复数加s
-    def is_word_valid_abbr(word):
-        upper_word = word.upper()
-        lower_word = word.lower()
-        word_set = [upper_word, lower_word]
-        for w in word_set:
-            if w in VALID_ABBR_SET or (word.endswith('s') and w[:-1] in VALID_ABBR_SET):
-                return True
-        return False
+    def word_candidates(self, word: str) -> Tuple[str, ...]:
+        """
+        Generate all abbreviation candidates for a single word.
 
-    if is_word_valid_abbr(word):
+        Combines prefixes, syllable-based prefixes, and consonant skeleton variants.
+        Stop words return simplified candidates. Cached for performance.
+
+        Args:
+            word: Word to generate candidates for
+            self.max_part_len: Maximum length for candidates
+
+        Returns:
+            Tuple of abbreviation candidates (sorted by length)
+        """
+        # Limit self.max_part_len to 70% of word length
+        effective_max_len = min(self.max_part_len, int(len(word) * 0.75))
+
+        # 大写 小写 复数加s
+        def is_word_valid_abbr(word):
+            upper_word = word.upper()
+            lower_word = word.lower()
+            word_set = [upper_word, lower_word]
+            for w in word_set:
+                if w in self.valid_abbr_set or (word.endswith('s') and w[:-1] in self.valid_abbr_set):
+                    return True
+            return False
+
+        if is_word_valid_abbr(word):
+            candidates = set()
+            candidates.add(word)
+            return candidates
+
+        if not is_english_word(word):
+            candidates = set()
+            candidates.add(word)
+            if len(word) >= 3:
+                candidates.update(prefix_family(word, 3))
+            candidates.add(word[0])
+            return candidates
+
+        if word in STOP_WORDS:
+            candidates = {'', word[0], word}
+            if word in {"and", "or", "for", "to"}:
+                candidates.add('/')
+            if word == "to":
+                candidates.add('2')
+            if word == "for":
+                candidates.add('4')
+            return tuple(sorted(candidates, key=len))
+
         candidates = set()
-        candidates.add(word)
-        return candidates
 
-    if not is_english_word(word):
-        candidates = set()
-        candidates.add(word)
-        if len(word) >= 3:
-            candidates.update(prefix_family(word, 3))
-        candidates.add(word[0])
-        return candidates
+        # Add prefix family
+        candidates.update(prefix_family(word, effective_max_len))
 
-    if word in STOP_WORDS:
-        candidates = {'', word[0], word}
-        if word in {"and", "or", "for", "to"}:
-            candidates.add('/')
-        if word == "to":
-            candidates.add('2')
-        if word == "for":
-            candidates.add('4')
+        # # Add syllable-like prefix
+        # syllable_prefix = syllable_like_prefix(word, effective_max_len)
+        # if syllable_prefix:
+        #     candidates.add(syllable_prefix)
+
+        # Add consonant skeleton subsequences
+        candidates.update(consonant_subsequence_variants(word, effective_max_len))
+
+        # Only truncate candidates that exceed self.max_part_len (optimization)
+        if effective_max_len < self.max_part_len:
+            candidates = {c[:self.max_part_len] if len(c) > self.max_part_len else c for c in candidates}
+
+        # 给名词单独添加单数形式,动词单独添加原型形式，因为max_len限制，名词的单数形式的子序列可能会被过滤掉，而动词如freezing可能在缩写中体现为freeze所以要还原为原型
+        norm_w = normalize_word(word)
+        candidates.update(norm_w)
+
         return tuple(sorted(candidates, key=len))
 
-    candidates = set()
+    def combine_word_candidates(self, word_candidate_dict) -> List[str]:
+        """
+        Generate multi-word abbreviations by combining candidates from each word.
 
-    # Add prefix family
-    candidates.update(prefix_family(word, effective_max_len))
+        Generates combinations using:
+        - All abbreviated parts
+        - First word full + rest abbreviated
+        - Abbreviated + last word full
+        - First and last words full + middle abbreviated
 
-    # # Add syllable-like prefix
-    # syllable_prefix = syllable_like_prefix(word, effective_max_len)
-    # if syllable_prefix:
-    #     candidates.add(syllable_prefix)
+        Args:
+            word_candidate_dict: Dict or list of (word, candidates) tuples preserving order
+            self.max_part_len: Maximum length for combined abbreviations
 
-    # Add consonant skeleton subsequences
-    candidates.update(consonant_subsequence_variants(word, effective_max_len))
+        Returns:
+            Sorted list of valid abbreviation combinations
+        """
+        results = set()
 
-    # Only truncate candidates that exceed max_len (optimization)
-    if effective_max_len < max_len:
-        candidates = {c[:max_len] if len(c) > max_len else c for c in candidates}
+        # Handle both dict and list input
+        if isinstance(word_candidate_dict, dict):
+            words, candidate_lists = zip(*word_candidate_dict.items())
+        else:
+            words, candidate_lists = zip(*word_candidate_dict)
+        first_word = words[0]
+        last_word = words[-1]
+        is_multi_word = len(words) > 1
+        num_words = len(words)
 
-    # 给名词单独添加单数形式,动词单独添加原型形式，因为max_len限制，名词的单数形式的子序列可能会被过滤掉，而动词如freezing可能在缩写中体现为freeze所以要还原为原型
-    norm_w = normalize_word(word)
-    candidates.update(norm_w)
+        # Detect consecutive words with same first letter (e.g., "SQL Standard Scalable" -> "s3")
+        consecutive_pattern = None
+        consecutive_start_idx = -1
+        consecutive_end_idx = -1
 
-    return tuple(sorted(candidates, key=len))
+        if num_words >= 3:
+            # Build acronym from first letters
+            first_letters = [word[0].lower() for word in words]
 
-# =========================
-# 6. Combine tokens into multi-word abbreviations
-# =========================
-def combine_word_candidates(
-        word_candidate_dict,
-        max_len,
-        max_part_len
-) -> List[str]:
-    """
-    Generate multi-word abbreviations by combining candidates from each word.
+            # Find longest sequence of identical consecutive letters (minimum 3)
+            for i in range(num_words - 2):
+                letter = first_letters[i]
+                count = 1
 
-    Generates combinations using:
-    - All abbreviated parts
-    - First word full + rest abbreviated
-    - Abbreviated + last word full
-    - First and last words full + middle abbreviated
+                # Count consecutive occurrences
+                for j in range(i + 1, num_words):
+                    if first_letters[j] == letter:
+                        count += 1
+                    else:
+                        break
 
-    Args:
-        word_candidate_dict: Dict or list of (word, candidates) tuples preserving order
-        max_len: Maximum length for combined abbreviations
+                # If we found 3+ consecutive same letters, create pattern
+                if count >= 3 and (consecutive_pattern is None or count > int(consecutive_pattern[1:])):
+                    consecutive_pattern = letter + str(count)
+                    consecutive_start_idx = i
+                    consecutive_end_idx = i + count
+        start = time.time()
+        for combination in itertools.product(*candidate_lists):
+            # Calculate total length once for reuse
+            total_len = sum(len(c) for c in combination)
+            # if combination==('pg','table','cache'):
+            #     a=1
+            # All parts abbreviated
+            if total_len <= self.max_part_len:
+                results.add("".join(combination))
 
-    Returns:
-        Sorted list of valid abbreviation combinations
-    """
-    results = set()
+            # Add consecutive letter pattern abbreviation (e.g., "as3ap" for "ANSI SQL Standard Scalable and Portable")
+            if consecutive_pattern and consecutive_start_idx >= 0:
+                # Build: prefix + pattern + suffix
+                prefix_parts = combination[:consecutive_start_idx]
+                suffix_parts = combination[consecutive_end_idx:]
+                new_combination = prefix_parts + (consecutive_pattern,) + suffix_parts
 
-    # Handle both dict and list input
-    if isinstance(word_candidate_dict, dict):
-        words, candidate_lists = zip(*word_candidate_dict.items())
-    else:
-        words, candidate_lists = zip(*word_candidate_dict)
-    first_word = words[0]
-    last_word = words[-1]
-    is_multi_word = len(words) > 1
-    num_words = len(words)
+                new_total_len = sum(len(c) for c in new_combination)
+                if new_total_len <= self.max_part_len:
+                    results.add("".join(new_combination))
 
-    # Detect consecutive words with same first letter (e.g., "SQL Standard Scalable" -> "s3")
-    consecutive_pattern = None
-    consecutive_start_idx = -1
-    consecutive_end_idx = -1
+            if is_multi_word:
+                comb_first_len = len(combination[0])
+                comb_last_len = len(combination[-1])
 
-    if num_words >= 3:
-        # Build acronym from first letters
-        first_letters = [word[0].lower() for word in words]
+                # First word full + rest abbreviated
+                new_len = total_len - comb_first_len + 1
+                if new_len <= self.max_part_len:
+                    results.add(first_word + "".join(combination[1:]))
 
-        # Find longest sequence of identical consecutive letters (minimum 3)
-        for i in range(num_words - 2):
-            letter = first_letters[i]
-            count = 1
+                # Abbreviated + last word full
+                new_len = total_len - comb_last_len + 1
+                if new_len <= self.max_part_len:
+                    results.add("".join(combination[:-1]) + last_word)
 
-            # Count consecutive occurrences
-            for j in range(i + 1, num_words):
-                if first_letters[j] == letter:
-                    count += 1
-                else:
-                    break
+                # First and last full + middle abbreviated
+                new_len = total_len - comb_first_len - comb_last_len + 2
+                if new_len <= self.max_part_len:
+                    results.add(first_word + "".join(combination[1:-1]) + last_word)
+            end = time.time()
+            if end - start > TIME_OUT:
+                break
 
-            # If we found 3+ consecutive same letters, create pattern
-            if count >= 3 and (consecutive_pattern is None or count > int(consecutive_pattern[1:])):
-                consecutive_pattern = letter + str(count)
-                consecutive_start_idx = i
-                consecutive_end_idx = i + count
-    start = time.time()
-    for combination in itertools.product(*candidate_lists):
-        # Calculate total length once for reuse
-        total_len = sum(len(c) for c in combination)
-        # if combination==('pg','table','cache'):
-        #     a=1
-        # All parts abbreviated
-        if total_len <= max_len:
-            results.add("".join(combination))
+        return sorted(results, key=lambda x: (len(x), x))
 
-        # Add consecutive letter pattern abbreviation (e.g., "as3ap" for "ANSI SQL Standard Scalable and Portable")
-        if consecutive_pattern and consecutive_start_idx >= 0:
-            # Build: prefix + pattern + suffix
-            prefix_parts = combination[:consecutive_start_idx]
-            suffix_parts = combination[consecutive_end_idx:]
-            new_combination = prefix_parts + (consecutive_pattern,) + suffix_parts
+    def generate(self, phrase: str) -> Set[str]:
+        """
+        Generate all possible abbreviations for a phrase.
 
-            new_total_len = sum(len(c) for c in new_combination)
-            if new_total_len <= max_len:
-                results.add("".join(new_combination))
+        Args:
+            phrase: Input phrase to abbreviate
+            self.max_part_len: Maximum length for individual word abbreviations
+            self.max_abbr_len: Maximum length for combined abbreviations
 
-        if is_multi_word:
-            comb_first_len = len(combination[0])
-            comb_last_len = len(combination[-1])
+        Returns:
+            Set of valid abbreviations (excluding the original phrase)
+        """
+        phrase_stripped = phrase.strip()
 
-            # First word full + rest abbreviated
-            new_len = total_len - comb_first_len + 1
-            if new_len <= max_len:
-                results.add(first_word + "".join(combination[1:]))
+        if len(phrase_stripped) <= 3:
+            return set(phrase_stripped)
 
-            # Abbreviated + last word full
-            new_len = total_len - comb_last_len + 1
-            if new_len <= max_len:
-                results.add("".join(combination[:-1]) + last_word)
+        def _abbreviate_tokens(tokens: Tuple[str]) -> Set[str]:
+            """Helper to abbreviate based on token list."""
+            if not tokens:
+                return set()
 
-            # First and last full + middle abbreviated
-            new_len = total_len - comb_first_len - comb_last_len + 2
-            if new_len <= max_len:
-                results.add(first_word + "".join(combination[1:-1]) + last_word)
-        end = time.time()
-        if end - start > TIME_OUT:
-            break
+            if len(tokens) == 1:
+                abbreviations = self.word_candidates(tokens[0])
+            else:
+                # Use list to preserve order and duplicates
+                candidate_groups = [
+                    (word, self.word_candidates(word))
+                    for word in tokens
+                ]
+                abbreviations = self.combine_word_candidates(candidate_groups)
 
-    return sorted(results, key=lambda x: (len(x), x))
+            # Exclude the original phrase (normalized)
+            res = []
+            for abbr in abbreviations:
+                if len(re.sub(r'[^a-zA-Z0-9]', '', abbr.lower())) < len(abbr) / 2:  # 特殊情况如__s_，符号数过多
+                    continue
+                if abbr != phrase.lower() and abbr != phrase.replace(' ', '').lower() or (
+                        abbr == phrase.replace(' ', '').lower() and len(abbr) < 8):
+                    if self.handler.check_abbr_simple(phrase.lower(), abbr, True):
+                        res.append(abbr)
+            return res
+            # return {abbr for abbr in abbreviations if abbr != phrase.lower()and self.handler.check_abbr(phrase.lower(),abbr,True)}
+        # 目前通过ngram_split的normalize_token函数处理之后所有代码元素都会变成小写形式，所以这里的驼峰分词应该没用
+        abbreviations = set()
+        tokens_without_splitting_camelcase = tuple(tokenize(phrase, split_type=False))
+        abbreviations.update(_abbreviate_tokens(tokens_without_splitting_camelcase))
+        tokens_with_splitting_camelcase = tuple(tokenize(phrase, split_type="camel"))
+        if tokens_with_splitting_camelcase != tokens_without_splitting_camelcase:
+            abbreviations.update(_abbreviate_tokens(tokens_with_splitting_camelcase))
+        tokens_with_splitting_tokenizer=tuple(tokenize(phrase,split_type="tokenizer"))
+        if tokens_with_splitting_tokenizer != tokens_without_splitting_camelcase and tokens_with_splitting_tokenizer != tokens_with_splitting_camelcase:
+            abbreviations.update(_abbreviate_tokens(tokens_with_splitting_tokenizer))
+        return abbreviations
+
+
 
 SPECIAL_CHAR = ['-', '/']
 def normalize_entity(item: str):
@@ -451,207 +557,9 @@ def normalize_entity(item: str):
 # =========================
 # 7. Main abbreviation function
 # =========================
-def abbreviate(
-        phrase: str,
-        max_part_len: int = 8,
-        max_abbr_len: int = 8
-) -> Set[str]:
-    """
-    Generate all possible abbreviations for a phrase.
-
-    Args:
-        phrase: Input phrase to abbreviate
-        max_part_len: Maximum length for individual word abbreviations
-        max_abbr_len: Maximum length for combined abbreviations
-
-    Returns:
-        Set of valid abbreviations (excluding the original phrase)
-    """
-    phrase_stripped = phrase.strip()
-
-    if len(phrase_stripped) <= 3:
-        return set(phrase_stripped)
-
-    def _abbreviate_tokens(tokens: Tuple[str]) -> Set[str]:
-        """Helper to abbreviate based on token list."""
-        if not tokens:
-            return set()
-
-        if len(tokens) == 1:
-            abbreviations = word_candidates(tokens[0], max_part_len)
-        else:
-            # Use list to preserve order and duplicates
-            candidate_groups = [
-                (word, word_candidates(word, max_part_len))
-                for word in tokens
-            ]
-            abbreviations = combine_word_candidates(candidate_groups, max_abbr_len, max_part_len)
-
-        # Exclude the original phrase (normalized)
-        res = []
-        for abbr in abbreviations:
-            if len(re.sub(r'[^a-zA-Z0-9]', '', abbr.lower())) < len(abbr) / 2:  # 特殊情况如__s_，符号数过多
-                continue
-            if abbr != phrase.lower() and abbr != phrase.replace(' ', '').lower() or (
-                    abbr == phrase.replace(' ', '').lower() and len(abbr) < 8):
-                if handler.check_abbr_simple(phrase.lower(), abbr, True):
-                    res.append(abbr)
-        return res
-        # return {abbr for abbr in abbreviations if abbr != phrase.lower()and handler.check_abbr(phrase.lower(),abbr,True)}
-    # 目前通过ngram_split的normalize_token函数处理之后所有代码元素都会变成小写形式，所以这里的驼峰分词应该没用
-    abbreviations = set()
-    tokens_without_splitting_camelcase = tuple(tokenize(phrase, split_type=False))
-    abbreviations.update(_abbreviate_tokens(tokens_without_splitting_camelcase))
-    tokens_with_splitting_camelcase = tuple(tokenize(phrase, split_type="camel"))
-    if tokens_with_splitting_camelcase != tokens_without_splitting_camelcase:
-        abbreviations.update(_abbreviate_tokens(tokens_with_splitting_camelcase))
-    tokens_with_splitting_tokenizer=tuple(tokenize(phrase,split_type="tokenizer"))
-    if tokens_with_splitting_tokenizer != tokens_without_splitting_camelcase and tokens_with_splitting_tokenizer != tokens_with_splitting_camelcase:
-        abbreviations.update(_abbreviate_tokens(tokens_with_splitting_tokenizer))
-    return abbreviations
 
 
-def abbreviate_new(
-        phrase: str,
-        max_part_len: int = 8,
-        max_abbr_len: int = 8
-) -> Set[str]:
-    """
-    New abbreviation generator for CodeSearch:
-    keep high recall from original abbreviate() while adding pragmatic constraints
-    to reduce low-quality/noisy candidates.
 
-    Input/Output format is the same as abbreviate():
-      - input: phrase, max_part_len, max_abbr_len
-      - output: Set[str]
-    """
-    phrase_stripped = phrase.strip()
-    if not phrase_stripped:
-        return set()
-
-    # Keep old behavior contract for very short phrase.
-    if len(phrase_stripped) <= 3:
-        return set(phrase_stripped)
-
-    phrase_lower = phrase_stripped.lower()
-    phrase_compact = re.sub(r"\s+", "", phrase_lower)
-
-    # Code-search oriented soft constraints
-    MIN_ABBR_LEN = 2
-    # Upper bound is adaptive: allow a bit longer than max_abbr_len for multi-word full/partial forms.
-    ABS_MAX_LEN = max(max_abbr_len + 2, int(len(phrase_compact) * 0.9))
-    # Require abbreviation to be sufficiently shorter than full phrase in compact form.
-    # (except very short phrases)
-    MAX_RELATIVE_RATIO = 0.9
-    # Non-alnum too high => noisy candidate
-    MIN_ALNUM_RATIO = 0.6
-
-    def _tokenize_variants(p: str) -> List[Tuple[str, ...]]:
-        variants: List[Tuple[str, ...]] = []
-        t0 = tuple(tokenize(p, split_type=False))
-        if t0:
-            variants.append(t0)
-
-        t1 = tuple(tokenize(p, split_type="camel"))
-        if t1 and t1 != t0:
-            variants.append(t1)
-
-        t2 = tuple(tokenize(p, split_type="tokenizer"))
-        if t2 and t2 != t0 and t2 != t1:
-            variants.append(t2)
-
-        return variants
-
-    def _is_noise_candidate(abbr: str, tokens: Tuple[str, ...]) -> bool:
-        a = abbr.strip()
-        if not a:
-            return True
-
-        compact = re.sub(r"[^a-zA-Z0-9]", "", a.lower())
-        if not compact:
-            return True
-
-        # length constraints
-        if len(compact) < MIN_ABBR_LEN:
-            return True
-        if len(compact) > ABS_MAX_LEN:
-            return True
-
-        # symbol ratio constraint
-        if len(compact) < len(a) * MIN_ALNUM_RATIO:
-            return True
-
-        # Should usually be shorter than full phrase
-        if len(phrase_compact) >= 6 and len(compact) >= int(len(phrase_compact) * MAX_RELATIVE_RATIO):
-            return True
-
-        # Exclude identical full forms
-        if compact == phrase_compact:
-            return True
-
-        # Remove obvious stop-word dominated artifacts for multi-word phrases:
-        # if all alphabetic chars come from stop-words and abbreviation length is short.
-        if len(tokens) > 1:
-            content_tokens = [t for t in tokens if t and t not in STOP_WORDS]
-            if not content_tokens and len(compact) <= 3:
-                return True
-
-        # Very weak patterns: repeated same char like "aaa", "__", etc.
-        alpha_num = re.sub(r"[^a-zA-Z0-9]", "", a)
-        if len(alpha_num) >= 3 and len(set(alpha_num.lower())) == 1:
-            return True
-
-        return False
-
-    def _collect_from_tokens(tokens: Tuple[str, ...]) -> Set[str]:
-        if not tokens:
-            return set()
-
-        if len(tokens) == 1:
-            raw_candidates = word_candidates(tokens[0], max_part_len)
-        else:
-            candidate_groups = [
-                (word, word_candidates(word, max_part_len))
-                for word in tokens
-            ]
-            raw_candidates = combine_word_candidates(candidate_groups, max_abbr_len, max_part_len)
-
-        cleaned: Set[str] = set()
-        for abbr in raw_candidates:
-            if _is_noise_candidate(abbr, tokens):
-                continue
-
-            # Final validity check reused from current pipeline
-            if handler.check_abbr_simple(phrase_lower, abbr, True):
-                cleaned.add(abbr)
-
-        # Add first-letter acronym for multi-word phrases (high value in code-search)
-        if len(tokens) >= 2:
-            initials = "".join(t[0] for t in tokens if t)
-            if initials and not _is_noise_candidate(initials, tokens):
-                if handler.check_abbr_simple(phrase_lower, initials, True):
-                    cleaned.add(initials)
-
-        return cleaned
-
-    result: Set[str] = set()
-    for tv in _tokenize_variants(phrase_stripped):
-        result.update(_collect_from_tokens(tv))
-
-    # Safety post-filter: keep deterministic stable outputs.
-    # 1) Remove overly long surface forms.
-    # 2) Keep only meaningful alnum ratio.
-    final_set = {
-        x for x in result
-        if x
-        and len(re.sub(r"[^a-zA-Z0-9]", "", x)) >= MIN_ABBR_LEN
-        and len(re.sub(r"[^a-zA-Z0-9]", "", x)) <= ABS_MAX_LEN
-        and len(re.sub(r"[^a-zA-Z0-9]", "", x)) >= len(x) * MIN_ALNUM_RATIO
-    }
-
-    return final_set
-
-# a=abbreviate_new("auth_check")
 # b=abbreviate("auth_check")
 # c=1
 # def build_corpus_maps(corpus):
@@ -962,3 +870,21 @@ if __name__ == "__main__":
     #     ]))
     # abbreviate("dpcsrx_rx_cntl__dpcs_rx_lane0_en_mask")
     test(3000)
+
+
+# ---------------------------------------------------------------- 函数式入口
+#
+# 三处调用点（invert_index、full_term_matcher、detect_abbr）用的是
+# abbreviate(phrase)。保持签名不变，内部复用同一个 AbbreviationGenerator，
+# 因此白名单只加载一次。新代码建议直接持有 AbbreviationGenerator（规则 5）。
+
+
+def abbreviate(phrase: str, max_part_len: int = 8, max_abbr_len: int = 8) -> Set[str]:
+    """生成一个短语的所有可能缩写。"""
+    if (max_part_len, max_abbr_len) == (8, 8):
+        return _default_generator().generate(phrase)
+    return AbbreviationGenerator(max_part_len, max_abbr_len).generate(phrase)
+
+
+
+

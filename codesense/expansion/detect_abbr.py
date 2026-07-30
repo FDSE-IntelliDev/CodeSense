@@ -8,10 +8,9 @@ import json
 import os
 from collections import defaultdict
 
-from abbreviate import pair, abbreviate
+from codesense.expansion.abbreviate import pair, abbreviate
 
-from definition import ABBR_RESULT_DIR
-
+from codesense.config import ABBR_RESULT_DIR
 EXPERIMENT_LABEL = "0106"
 MATCH_TYPE = "entity_to_code_identifier"
 DETECT_FINAL_RESULT_DIR = f"{ABBR_RESULT_DIR}/{EXPERIMENT_LABEL}/{MATCH_TYPE}"
@@ -25,7 +24,6 @@ PROCESSED_CHUNK_ID = []
 CHUNK_LOG_DIR = f"{ABBR_RESULT_DIR}/{EXPERIMENT_LABEL}/{MATCH_TYPE}/log"
 SPECIAL_CHAR = ['-', '/']
 # FULL_NAME_NUMBER=0
-print(cpu_count())
 
 def gen_special_char_combinations():
     results = []
@@ -480,75 +478,9 @@ def merge_reflect_chunks(
 
 # 3027632
 # ps -ef | grep python | grep -v grep
-if __name__ == "__main__":
-
-    # parallel_reflect(DETECT_RESULT_OUTPUT_FILE,'./usual_entity_cls_by_name_all.json','./code_identifier_cls_by_name_cleaned.json',REFLECT_RESULT_PATH,False,True,corpus_entity_ngram_dict_path='./ngramed_to_origin_cleaned.json',n_process=4,chunk_size=500)
-    # merge_reflect_chunks()
-    def test_in_benchmark():
-        entities_to_detect = []
-        corpus = []
-        answer_set = []  # 此处的answer_set应该是实体名到子词的一个匹配，比如pin memory->pin mm
-        with open('./benchmark.json', 'r') as f:
-            benchmark = json.load(f)
-            for k, v in benchmark.items():
-                for pair in v:
-                    entities_to_detect.append(v[0])
-                    corpus.append(v[1])
-                    answer_set.append(pair)
-
-        parallel_pair(entities_to_detect, corpus, n_process=8, chunk_size=1000)
-
-        # Merge
-        merge_chunk_files()
-
-        detect_result = []
-        with open(DETECT_RESULT_OUTPUT_FILE, 'r') as f:
-            datas = json.load(f)
-            for k, v in datas.items():
-                for abbr in v:
-                    detect_result.append([k, abbr])
-        matched = []
-        missed = []
-        for ans in answer_set:
-            if ans in answer_set:
-                matched.append(ans)
-            else:
-                missed.append(ans)
-
-        # with open(f"{ABBR_RESULT_DIR}/{EXPERIMENT_LABEL}/{MATCH_TYPE}/test")
 
 
-    # for root,dir,files in os.walk(CHUNK_OUTPUT_DIR):
-    #     for file in files:
-    #         PROCESSED_CHUNK_ID.append(int(file.split('_')[1].split('.')[0]))
-
-    # entity_results=[]
-    # entities_to_detect=[]#存放用于检测的实体，这些实体会被用于生成子序列，即可能的缩写
-    # corpus=[]#语料库，生成的子序列会和corpus内的实体做交集，若交集存在，则集合内的所有实体被认为是可能的缩写
-
-    # with open('./usual_entity_cls_by_name_all.json','r') as f:
-    #     detect_datas=json.load(f)
-
-    # with open('./ngram_keys_cleaned.json','r')as f:
-    #     corpus_datas=json.load(f)
-
-    #     entities_to_detect=[e for e in list(detect_datas.keys()) if 'support' not in e.lower()]
-    #     corpus=corpus_datas
-    #     # entities_to_detect=["folio duplication"]
-    #     # corpus=["folio dup"]
-
-    # #benchmark测试的输入
-    # # with open('/home/fdse/hzc/KernelConcept/output/abbr_result/benchmark_test/entities_to_detect.json','r') as f:
-    # #     entities_to_detect=json.load(f)
-    # # with open('/home/fdse/hzc/KernelConcept/output/abbr_result/benchmark_test/ngram_keys.json','r') as f:
-    # #     corpus=json.load(f)
-    with open('/home/fdse/hzc/KernelConcept/dataset/abbreviation_match_algorithm/ngram_keys_cleaned.json', 'r') as f:
-        corpus = json.load(f)
-    entities_to_detect = ["page"]
-    parallel_pair(entities_to_detect, corpus, n_process=8, chunk_size=1000)
-
-    # # Merge
-    # merge_chunk_files()
-
-    # # post process
-    # abbr_is_code_identifier(DETECT_RESULT_OUTPUT_FILE,DETECT_FINAL_RESULT_POST_PROCESSED_PATH)
+# 原来这里有一个 __main__ 块：内嵌 def test_in_benchmark()、for 循环，
+# 并读 './benchmark.json' 等仓库里并不存在的文件——是早期跑基准留下的草稿。
+# 那是一段程序，不是入口。已移除；要跑基准请在 scripts/ 下写正式入口，
+# 数据放 data/ 并在 data/README.md 里写清怎么拿。

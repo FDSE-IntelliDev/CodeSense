@@ -1,10 +1,12 @@
+from functools import lru_cache
+
 import sentencepiece as spm
 import os
 import re
 from wordfreq import zipf_frequency
 import json
-from definition import TOKENIZER_DIR,OUTPUT_DIR
-
+from codesense.config import TOKENIZER_DIR
+from codesense.config import OUTPUT_DIR
 corpus_file = f"{TOKENIZER_DIR}/code_symbols.txt"
 model_prefix = f"{TOKENIZER_DIR}/sentencepiece_unigram"
 
@@ -74,11 +76,15 @@ def train_kernel_unigram(corpus_file,
     print(f"Unigram模型训练完成, 模型文件: {model_prefix}.model, 词表: {model_prefix}.vocab")
 
 
+@lru_cache(maxsize=4)
 def load_tokenizer(model_file=f"{model_prefix}.model"):
     sp = spm.SentencePieceProcessor(model_file=model_file)
     return sp
 
 
+# 词表是文件内容的纯函数，缓存它。原来 *_tokenizer_post_process 每调用一次
+# 就要把整个 .vocab 重读并重新解析一遍，而建索引时每个符号都会走到这里。
+@lru_cache(maxsize=4)
 def load_vocab_freq(vocab_file=f"{model_prefix}.vocab"):
     vocab = {}
     with open(vocab_file, "r", encoding="utf-8") as f:
