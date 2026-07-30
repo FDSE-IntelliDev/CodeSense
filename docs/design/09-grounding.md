@@ -100,26 +100,97 @@ https://s3.amazonaws.com/code2vec/model/java14m_model.tar.gz
 而且它的训练目标是「从 AST 路径预测方法名」，没有可复用的语言模型。
 没有输出权重就没法继续训。
 
-**但 cc.en.300 的弱点恰好落在最要命的地方**：
+### 实测 cc.en.300（2M 词表 / d=300）
+
+> 下面全部是在本项目词表上跑出来的真实数字，不是估计。
+> 探针脚本：`scripts/probe_pretrained_embedding.py`。
+
+**a. 覆盖率 99%——比预期好得多。**
+
+| | 词表大小 | 在 cc.en.300 里 | OOV |
+|---|---|---|---|
+| 调用链语料 | 302 | **299（99%）** | `result<t>`、`data<t>`、`mybatis` |
+| 符号切分单元 | 462 | **457（99%）** | `aliyun`、`minio`、`starttls`、`redisson`、`mybatis` |
+
+OOV 全是库名和品牌名，靠子词合成即可。**覆盖率不是问题**——
+Common Crawl 里技术文本足够多，`auth`、`cfg`、`impl`、`dict` 这些都在词表里。
+
+**b. 缩写↔全称：确实编码了，而且不是拼写像。**
+
+fastText 有子词，`dept` 和 `department` 共享 n-gram `<de`/`dep`，
+所以余弦会被正字法重叠本身抬高。**必须拿同前缀但语义无关的词作对照**：
+
+| 缩写 | 全称 | cos | 同前缀干扰词 | cos | |
+|---|---|---|---|---|---|
+| `dept` | department | **0.749** | depot | 0.301 | ✓ |
+| `auth` | authentication | **0.673** | authority | 0.205 | ✓ |
+| `config` | configuration | **0.641** | conflict | 0.139 | ✓ |
+| `mgr` | manager | **0.579** | mugger | 0.064 | ✓ |
+| `addr` | address | 0.578 | adder | 0.236 | ✓ |
+| `dict` | dictionary | 0.520 | diction | 0.296 | ✓ |
+| `pwd` | password | 0.515 | powder | 0.238 | ✓ |
+| `buf` | buffer | 0.468 | buffalo | 0.219 | ✓ |
+| `msg` | message | 0.442 | massage | 0.126 | ✓ |
+| `impl` | implementation | 0.410 | imply | 0.209 | ✓ |
+| `cfg` | configuration | 0.367 | cog | 0.056 | ✓ |
+
+**11/13 通过**（随机词对基线：均值 0.074，95 分位 0.222）。
+
+这直接证实了本节开头的判断——**跨语料确实编码了缩写与全称的对应**，
+而且**不需要任何训练就能用**。第二跳（规范形 → 项目表层写法）今天就能做。
+
+> 两个没通过的是测试设计问题不是模型问题：`req`↔`request` 输给了
+> `reque`（Common Crawl 词表里的垃圾词条），`dto`↔`object` 本来就不是
+> 截断关系（`dto` 是 data transfer object 的首字母缩合）。
+
+**c. 但单元扩展完全做不到——这才是真正的短板。**
 
 ```
-pool    → 游泳池     thread  → 线      stream → 溪流
-flush   → 冲水       swap    → 易货    sector → 行业
-buffer  → 缓冲垫     block   → 街区
+performance 的 top-15 近邻:
+  perfomance, peformance, performace, performance.The, perfromance,
+  performance.This, performanc, preformance, performance.But, ...
 ```
 
-这些正是 `io performance on disk` 这条查询的核心词汇。
-`user`/`role`/`token`/`controller`/`service` 这类在 Common Crawl 里
-有大量软件语境（StackOverflow、GitHub README、文档都在里面），问题不大；
-**但底层系统词汇必须靠代码语料续训纠正**。所以 cc.en.300 是起点不是终点。
+**全是拼写变体和分词垃圾，零语义信息。** `disk` 一样。`io` 更糟——
+`digr, lu, eio, uiv, iini, wnu, aiiu` 完全是噪音（两字符的词子词哈希撑不住）。
 
-**另两个当第二通道用**，不参与续训：
+即便绕开 top-k 直接看两两余弦，期望词也都在噪音水平：
 
-- **code2vec tokens 的词表就是 Java 标识符子词**——`vo`、`impl`、`dto`、`mgr`
-  这些在里面都有真实训出来的向量。恰好覆盖 cc.en.300 最弱的那 41 个非词，
-  是[第四节](#四lexical-rules补-embedding-补不到的-14)那个合取式里很好的第三个信号。
-- **SO_vectors** 适合做**评估参照**：同一批词在两个独立模型里的近邻是否一致，
-  可以在没有标注的情况下交叉验证微调结果。
+```
+performance:  cache 0.18   buffer 0.14   async 0.17   pool 0.08
+              （随机基线 95 分位 = 0.222，这些还不如随机）
+              仅 throughput 0.43 / latency 0.32 有效
+disk:         storage 0.43  sync 0.27  sector 0.26  flush 0.19
+```
+
+道理很直白：自然语言里 "performance" 挨着的是 "improve"、"review"，
+不是 "buffer"。**这个关联只存在于代码语料里。**
+
+### 结论：两跳的来源不同
+
+| | 靠什么 | 现状 |
+|---|---|---|
+| **第一跳** unit → 规范词<br>`performance` → `cache`/`buffer` | **必须用代码语料训**（0/7 实测确认） | 要做 |
+| **第二跳** 规范词 → 项目写法<br>`buffer` → `buf`，`department` → `dept` | cc.en.300 现成的 + lexical rules | **今天就能用** |
+
+**这比原来的设计更省事**：第二跳不需要微调，直接查预训练向量配合正字法规则
+即可；代码语料的训练只服务于第一跳。两件事可以分开做、分开验证。
+
+### 两个必须加的护栏
+
+**1. 近邻必须先滤掉形态变体。** fastText 的 top-k 被拼写变体霸占
+（`pool → pools, pool.The, pool.This`），直接用等于什么都没扩。
+建表时要先按编辑距离/词干去掉变体，再取前 N。
+
+**2. 长度 ≤2 的单元不可信。** `io` 的近邻是纯噪音。这类单元
+（`io`、`vo`、`id`、`ts`）只能走 lexical/精确匹配，不能走向量扩展。
+
+### 另两个模型的定位
+
+- **code2vec tokens** 的词表就是 Java 标识符子词，`vo`、`impl`、`dto` 都有
+  真实训出来的向量——正好补 cc.en.300 那 5 个 OOV 和短单元的空缺。
+- **SO_vectors** 做**评估参照**：同一批词在两个独立模型里的近邻是否一致，
+  可以在无标注的情况下交叉验证。
 
 ### 全局语料怎么建
 
@@ -370,16 +441,24 @@ Q4a/Q4b「权重怎么定」。
 2. **全局预训练 + repo 微调，不从零训。** 单项目 302 词 / 103 万 token
    撑不起 128 维；而 `dept ≈ department` 在单个 repo 里学不到
    （`department` 出现 0 次），在跨 repo 语料里学得到——换语料就有信号。
+   **实测确认**：cc.en.300 里 `cos(dept, department) = 0.749`，
+   而同前缀干扰词 `depot` 只有 0.301。
 
-3. **微调要克制。** 低 LR、少轮次、锚定正则、用 FastText 子词；
+3. **两跳的来源不同，可以分开做。** 实测 cc.en.300 覆盖本项目词表 99%，
+   缩写↔全称 11/13 通过正字法对照——**第二跳（规范词→项目写法）
+   不需要训练，今天就能用**。但第一跳（unit→规范词）它给不出
+   （`performance` 与 `cache`/`buffer`/`async` 的余弦全在随机噪音水平），
+   **必须靠代码语料训**。
+
+4. **微调要克制。** 低 LR、少轮次、锚定正则、用 FastText 子词；
    拿 261 个共享英文词当漂移探针。分开训再 Procrustes 对齐这条路，
    实测锚点数不够（d=128 时只有 1.8x），不推荐。
 
-4. **embedding 和 lexical rules 分工明确、取合取。**
-   前者覆盖 86% 的普通英文词、给语义邻近；后者覆盖 14% 的缩写专名、
-   给正字法变体。单用哪个都不准，两个相乘就可用。
+5. **embedding 和 lexical rules 取合取。** 前者给语义邻近，后者给正字法变体。
+   另加两个护栏：近邻先滤形态变体（fastText 的 top-k 被 `pool → pools,
+   pool.The` 这类霸占），长度 ≤2 的单元（`io`、`vo`）不走向量扩展。
 
-5. **索引保持精确，模糊性放进预计算的扩展表。** 可解释、可审计、
+6. **索引保持精确，模糊性放进预计算的扩展表。** 可解释、可审计、
    阈值按 ICF 自适应。
 
 依赖关系：**分词决定词表，词表决定预训练与微调能否对齐，扩展表决定召回上限。**
