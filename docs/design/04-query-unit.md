@@ -42,13 +42,17 @@ perf = q.unit(
     concept="代码在优化或影响性能表现",
     satisfiers=[
         lexical(terms=["buffer", "async", "cache", "batch", "pool", "latency"], weight=0.5),
-        annotation(r"@(Async|Cacheable|Scheduled)", weight=0.9),
+        annotation(units=["async", "cache", "schedule"], weight=0.9),   # 切分后按单元匹配
         structural(package=r".*\.(cache|pool|buffer)\..*", weight=0.7),
         modifier("async", weight=0.6),
     ],
     combine="noisy_or",
 )
 ```
+
+`annotation` 匹配的是**切分后的注解名单元**而不是字面正则，
+所以项目自定义的 `@AppCache`、`@CacheAside` 会和 `@Cacheable` 一起命中
+（[09](09-grounding.md) 第六节）。
 
 **为什么这比一条 regex 好**：`@Async` 标注的方法名字里可能一个性能词都没有，
 纯词法必然漏。反过来，一个叫 `cacheKey` 的字段命中了 `cache` 却和性能无关，
@@ -93,12 +97,18 @@ match(r"\b(io|input|output|performance|latency|disk|swap|block)\b")
 
 **最有价值的一类。** `performance` → `buffer`、`async`、`cache`、`batch`、`pool`。
 
+这批词**不由 LLM 现场生成**——每条查询、每个单元都调一次大模型，
+延迟和 token 成本都落在关键路径上，不可接受。改为查一张离线建好的
+扩展表，来源是「全局预训练 + 本项目微调」的词向量近邻
+（[09](09-grounding.md)）。
+
 `buffer` **不是** `performance` 的同义词。关系是：
 
 > 代码在处理性能问题时，通常会出现 buffer 这样的东西。
 
 | | synonym | derived |
 |---|---|---|
+| 来源 | 词表 / 全局向量 | **微调后向量的近邻** |
 | 关系 | 语义等价 | 共现指示 |
 | 代码里出现频率 | 低 | **高** |
 | 单独命中可信度 | 高 | **低** |
@@ -107,7 +117,7 @@ match(r"\b(io|input|output|performance|latency|disk|swap|block)\b")
 所以 derived 词**不能单独下结论**——要么和同单元其它信号合成，
 要么靠 `hop` 的图约束锚住，要么交给 `intent` 复核。
 
-派生产物带来源与理由：
+派生产物带来源与证据：
 
 ```json
 {
@@ -116,27 +126,26 @@ match(r"\b(io|input|output|performance|latency|disk|swap|block)\b")
   "terms": [
     {"value": "performance", "source": "literal", "weight": 1.0},
     {"value": "latency",     "source": "synonym", "weight": 0.8},
-    {"value": "buffer",      "source": "derived", "weight": 0.5,
-     "reason": "缓冲是减少 IO 次数的常见手段"},
-    {"value": "async",       "source": "derived", "weight": 0.5,
-     "reason": "异步化是常见性能手段"}
+    {"value": "cache",       "source": "derived", "weight": 0.5, "sim": 0.81},
+    {"value": "buffer",      "source": "derived", "weight": 0.5, "sim": 0.76,
+     "surface": [{"form": "buf", "score": 0.91, "rule": "prefix"}]},
+    {"value": "flush",       "source": "derived", "weight": 0.5, "sim": 0.71,
+     "note": "本项目特有：微调后才进入 performance 的近邻"}
   ]
 }
 ```
 
-`reason` 不是装饰：结果跑偏时能看出是哪个联想的锅，人工审词表时能快速判断该不该删。
+`sim` 和 `surface` 不是装饰：结果跑偏时能看出是哪一跳的锅，
+审词表时能快速判断该不该删——和 LLM 给的自然语言 `reason` 相比，
+它还是**可排序、可卡阈值**的。
 
-### 用项目语料再扩一轮
+### 项目特有的关联是微调带来的，不是额外一步
 
-上面是**语料无关**的派生。还可以拿这些词去项目词表找共现词：
+`flush`、`sink` 这些词进入 `performance` 的近邻，是因为向量在**本项目语料上
+微调过**——不需要再单独跑一轮共现扩展。
 
-```
-"buffer" 在本项目里常与 "flush"、"sink"、"drain" 同现
-   → 加进 performance 单元
-```
-
-用的是**这个项目自己的命名习惯**，召回收益明显。代价是编译不再纯粹
-（依赖索引）。建议做成**可选的第二阶段**。
+代价是编译依赖离线产物（扩展表）。但这是查表，不是查索引，
+编译仍然不需要访问代码库。
 
 ## 单元的产出是片段
 
