@@ -1,4 +1,80 @@
-# CodeSearch Changelog
+# CodeSense Changelog
+
+## 2026-07-30 — 仓库结构按 DEV-COOKBOOK 整理
+
+只搬位置、改名、补配套设施，**没有改动任何函数内部逻辑**。
+
+### 代码收进 `codesense/` 包
+
+原来 12 个目录 + 5 个 `.py` 全平铺在仓库根目录，现在收进一个与项目同名的包。
+路径映射（本文件下方的历史条目仍沿用旧路径，未回改）：
+
+| 旧 | 新 |
+|---|---|
+| `definition.py` | `codesense/config.py` |
+| `main.py` | `codesense/__main__.py` |
+| `code_parser.py` / `ngram_split.py` / `invert_index.py` | `codesense/indexing/` |
+| `init/` | `codesense/indexing/codegraph/` |
+| `DSL/` | `codesense/dsl/` |
+| `codeQL/` | `codesense/codeql/` |
+| `executor/` | `codesense/executors/` |
+| `query_processing/` | `codesense/query/` |
+| `parsers/` `search/` `filters/` `embedding/` `expansion/` `tokenizer/` `utils/` | `codesense/<同名>/` |
+| `query_processing/run_*.py`、`search/run_regex_search.py` | `scripts/` |
+
+共重写 153 处 import，全部 178 个包内导入目标已静态校验可解析。
+
+### 配置与密钥
+
+- 新增 `configs/default.yaml`；`codesense/config.py` 提供 `frozen` 的 `Config`
+  与 `load_config()`，YAML 字段拼错/缺失/多写立刻报错。
+- **移除了 `definition.py` 里明文写死的 dashscope API key**，改为从环境变量
+  `CODESENSE_API_KEY` 读取，新增 `.env.example`。
+  ⚠️ 该 key 仍在 git 历史里（commit `652a37f`），**必须去控制台吊销重发**。
+- 旧的模块级常量（`PROJECT_OUTPUT_DIR` 等 40 处调用点）通过 PEP 562 的模块级
+  `__getattr__` 保留为惰性属性，属过渡措施，见 ARCHITECTURE.md 的待办。
+
+### 顺手修掉的既有问题
+
+- `main.py:173` 把 `parse_args` 的参数写死成固定列表，命令行传什么都没用；
+  `code_parser.py:174` 同样。两处都改成正常读 argv。
+- `expansion/detect_abbr.py` 顶部 `from codesense.config import ABBR_RESULT_DIR`
+  引用了一个**从来不存在**的常量，该模块此前根本 import 不进来；
+  现已作为正式配置项 `output.abbr_result_dir` 补上。
+- `expansion/detect_abbr.py` 和 `init/code_db.py` 用的是 Python 2 风格的隐式
+  相对导入，收进包后必然失效，已改为绝对导入。
+- 清掉 7 个文件里的 `/Users/huangzhuochen/...`、`/home/fdse/hzc/...`
+  等机器专属绝对路径，以及 `edge_builder.py` 里一处写死路径的调试分支。
+- `detect_abbr.py` 模块顶层的 `print(cpu_count())` 已移除。
+
+### 版本库瘦身
+
+`git rm --cached` 了 `output/`（30M 产物）和 `slides/`（34M 答辩 PPT 与素材，
+由原 `projects/`、`*.pptx`、`中期答辩ppt*_files/` 归拢而来）。
+文件都还在磁盘上，旧提交里也仍在（本次未重写历史）。
+跟踪体积 65M → 2.1M。
+
+### 新增配套设施
+
+- `pyproject.toml`：依赖按真实 import 反查重列（原 `requirements.txt` 里的
+  `javalang` / `scipy` / `flask` / `thinc` 全仓库无人 import，已移除），
+  含 ruff 与 pytest 配置；`requirements.txt` 删除。
+- `tests/`：70 个单元测试（config / SemQL 字段抽取 / 计划模型 / 产物读写 /
+  代码元素类型），另有 3 个标 `slow` 的离线索引集成测试和一个
+  `tests/fixtures/mini_project/` 夹具。
+- `evaluation/`、`experiments/`、`data/`、`scripts/`：目录与 README 约定就位。
+- 文档：新增 `ARCHITECTURE.md`、`CONTRIBUTING.md`、`docs/README.md`、
+  `docs/decisions/0001-semcon-three-condition-split.md`；
+  根目录 5 份 md 收进 `docs/`，生成的 html 收进 `docs/html/`；
+  `changelog.md` → `CHANGELOG.md`。
+
+### 已知遗留
+
+- 在线 pipeline 目前只有 Intention Executor 是打开的，Surface 与 Relation
+  两步在 `codesense/__main__.py` 里被注释掉——这是原有的调试状态，本次原样保留。
+- ruff 对老模块挂了逐条列出的规则号豁免（约 1900 条积压），新代码受全套规则约束。
+
+---
 
 ## 2026-07-09 — v0-current：三类 SemCon 串行执行流程
 

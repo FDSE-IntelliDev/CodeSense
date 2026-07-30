@@ -84,7 +84,7 @@ Query Compiler 接受自然语言 Query，产出结构化的 SemQL 查询计划�
 实现文件：
 
 ```text
-query_processing/llm_semCon_extractor.py
+codesense/query/llm_semCon_extractor.py
 ```
 
 输出为 `semCon.json`，包含 `surface`、`intention`、`relation` 三个列表。
@@ -94,7 +94,7 @@ query_processing/llm_semCon_extractor.py
 实现文件：
 
 ```text
-query_processing/semQL_composer.py
+codesense/query/semQL_composer.py
 ```
 
 输出为 `semQL.json`，按 `include` / `exclude` 分组。
@@ -121,7 +121,7 @@ query_processing/semQL_composer.py
 | `term_embed` | 基于词向量的同义词/近义词过滤 | Term-level Embedding（FastText + ICF + Intention） |
 | `code_line` | 匹配代码行或代码片段 | 源码扫描 |
 
-**JSON Schema**（来源：`DSL/surface_con.py`）：
+**JSON Schema**（来源：`codesense/dsl/surface_con.py`）：
 
 ```json
 {
@@ -138,9 +138,9 @@ query_processing/semQL_composer.py
 
 | 匹配类型 | 模块 |
 |---|---|
-| `match_kind=code_element` | `search/exact_code_search.py`、`search/fuzzy_matcher.py` |
-| `match_kind=code_line` | `search/exact_code_search.py` |
-| `keywords/synonyms` | `search/full_term_matcher.py`、`search/invert_index_search.py` |
+| `match_kind=code_element` | `codesense/search/exact_code_search.py`、`codesense/search/fuzzy_matcher.py` |
+| `match_kind=code_line` | `codesense/search/exact_code_search.py` |
+| `keywords/synonyms` | `codesense/search/full_term_matcher.py`、`codesense/search/invert_index_search.py` |
 
 ---
 
@@ -156,7 +156,7 @@ query_processing/semQL_composer.py
 | Tier 2（次快） | 内存调用图 BFS/DFS（基于 LSP 解析构建） | < 10ms | `graph_constraint`、`caller`、`callee` |
 | Tier 3（精确） | 完整 CodeQL 执行（离线/缓存）| 秒级 | `code_ql` 字段；Tier 1/2 无法覆盖时 fallback |
 
-**JSON Schema**（来源：`DSL/relation_con.py`）：
+**JSON Schema**（来源：`codesense/dsl/relation_con.py`）：
 
 ```json
 {
@@ -201,7 +201,7 @@ query_processing/semQL_composer.py
 
 **Tier 2 内存调用图后端**：
 
-项目离线阶段通过 `code_parser.py` 基于 LSP 解析全库代码，产出 `symbols_index.json` 和调用关系。查询时在内存图中执行 BFS/DFS，支持以下原语：
+项目离线阶段通过 `codesense/indexing/code_parser.py` 基于 LSP 解析全库代码，产出 `symbols_index.json` 和调用关系。查询时在内存图中执行 BFS/DFS，支持以下原语：
 
 ```python
 def graph_distance(target_symbol, anchor, max_hops) -> bool
@@ -229,7 +229,7 @@ $$P(\text{match} \mid \text{code}, \text{intent}) \in [0, 1]$$
 2. **模型可替换**：前期用 LLM Zero-shot，后期可蒸馏为小型 Cross-Encoder 判别模型。
 3. **证据可解释**：Yes/No 的同时强制输出 reasoning，作为结果证据供 Agent 引用。
 
-**JSON Schema**（来源：`DSL/intention_con.py`）：
+**JSON Schema**（来源：`codesense/dsl/intention_con.py`）：
 
 ```json
 {
@@ -259,9 +259,9 @@ $$P(\text{match} \mid \text{code}, \text{intent}) \in [0, 1]$$
 
 | 阶段 | 模块 |
 |---|---|
-| 粗粒度语义过滤 | `filters/cluster_pipeline.py` |
-| 细粒度 Term-level 过滤 | `filters/embedding_filter.py` |
-| LLM 保底验证（后续） | `executor/intentional_executor.py` |
+| 粗粒度语义过滤 | `codesense/filters/cluster_pipeline.py` |
+| 细粒度 Term-level 过滤 | `codesense/filters/embedding_filter.py` |
+| LLM 保底验证（后续） | `codesense/executors/intention_executor.py` |
 
 ---
 
@@ -318,9 +318,9 @@ Physical Plan (after RBO + CBO):
 
 | 路径 | 模块 | 说明 |
 |---|---|---|
-| Exact Search | `search/exact_code_search.py` | code_element 精准匹配、code_line 扫描、fuzzy_match |
-| Inverted Index Search | `search/full_term_matcher.py`、`search/invert_index_search.py` | keywords → subseqs → subtokens → symbols |
-| Term Expansion | `embedding/embedding_main.py` | 用 FastText + ICF + Intention 对 subsequence 做过滤（阈值 0.4），fallback 到 top3 |
+| Exact Search | `codesense/search/exact_code_search.py` | code_element 精准匹配、code_line 扫描、fuzzy_match |
+| Inverted Index Search | `codesense/search/full_term_matcher.py`、`codesense/search/invert_index_search.py` | keywords → subseqs → subtokens → symbols |
+| Term Expansion | `codesense/embedding/embedding_main.py` | 用 FastText + ICF + Intention 对 subsequence 做过滤（阈值 0.4），fallback 到 top3 |
 
 两条路径结果合并，形成高召回候选集，并按匹配类型保留证据字段。
 
@@ -328,11 +328,11 @@ Physical Plan (after RBO + CBO):
 
 **Tier 1 — 符号索引后端**（`code_element_type`、`file_path`、`container`）：
 
-直接查询预构建的 Symbol Index，O(log n) 响应，延迟 < 1ms。对应现有 `filters/cluster_pipeline.py` 之前的 rule-based filter 逻辑。
+直接查询预构建的 Symbol Index，O(log n) 响应，延迟 < 1ms。对应现有 `codesense/filters/cluster_pipeline.py` 之前的 rule-based filter 逻辑。
 
 **Tier 2 — 内存调用图后端**（`graph_constraint`、`caller`、`callee`）：
 
-基于 `code_parser.py` 离线阶段产出 `symbols_index.json` 中的调用关系，构建有向调用图。查询时执行 BFS/DFS，延迟 < 10ms。
+基于 `codesense/indexing/code_parser.py` 离线阶段产出 `symbols_index.json` 中的调用关系，构建有向调用图。查询时执行 BFS/DFS，延迟 < 10ms。
 
 **Tier 3 — CodeQL 后端**（`code_ql` 子类型）：
 
@@ -351,8 +351,8 @@ Tier 1/2 失败或需形式化验证                →  fallback to Tier 3
 
 **当前已实现**：
 
-- **Cluster Filter**（`filters/cluster_pipeline.py`）：SentenceTransformer 编码 query + 候选，AgglomerativeClustering 聚类，按 priority_1/2/3/4_discarded 分层。
-- **Embedding Filter**（`filters/embedding_filter.py`）：从 SemQL 的 intention 条件抽取 query terms，与候选的 `signature`/`container`/`name` 做 term-level 相似度比对。
+- **Cluster Filter**（`codesense/filters/cluster_pipeline.py`）：SentenceTransformer 编码 query + 候选，AgglomerativeClustering 聚类，按 priority_1/2/3/4_discarded 分层。
+- **Embedding Filter**（`codesense/filters/embedding_filter.py`）：从 SemQL 的 intention 条件抽取 query terms，与候选的 `signature`/`container`/`name` 做 term-level 相似度比对。
 
 **后续规划 — LLM-as-a-Judge**：
 
@@ -410,21 +410,21 @@ $$\text{BundleScore}(B) = \frac{1}{k} \sum_{i=1}^{k} \text{score}(v_i) + \alpha 
 
 | 阶段 | 模块 | 状态 |
 |---|---|---|
-| 离线解析 | `code_parser.py`（LSP 解析 → symbols_index, call graph） | ✅ |
-| 离线索引 | `ngram_split.py` + `invert_index.py`（N-gram + 倒排索引） | ✅ |
-| 离线 Embedding | `embedding/icf_term_embedding.py`（FastText + ICF 共现通道） | ✅ |
-| 离线 Embedding | `embedding/semantic_term_embedding.py`（SentenceTransformer 语义通道） | ✅ |
-| 离线 Embedding | `embedding/hybrid_term_embedding.py`（双通道融合） | ✅ |
-| 离线 Embedding | `embedding/pairwise_term_reranker.py`（CrossEncoder 判别重排） | ✅ |
-| SemCon 抽取 | `query_processing/llm_semCon_extractor.py`（LLM 抽取 SemCon） | ✅ |
-| SemQL 组织 | `query_processing/semQL_composer.py`（SemCon → SemQL，Agent 或人工组织） | ✅ |
-| Surface Executor | `search/exact_code_search.py`（精准 code_element / code_line 搜索） | ✅ |
-| Surface Executor | `search/full_term_matcher.py`（倒排索引 + ngram 匹配） | ✅ |
-| Surface Executor | `search/fuzzy_matcher.py`（加权编辑距离模糊匹配） | ✅ |
+| 离线解析 | `codesense/indexing/code_parser.py`（LSP 解析 → symbols_index, call graph） | ✅ |
+| 离线索引 | `codesense/indexing/ngram_split.py` + `codesense/indexing/invert_index.py`（N-gram + 倒排索引） | ✅ |
+| 离线 Embedding | `codesense/embedding/icf_term_embedding.py`（FastText + ICF 共现通道） | ✅ |
+| 离线 Embedding | `codesense/embedding/semantic_term_embedding.py`（SentenceTransformer 语义通道） | ✅ |
+| 离线 Embedding | `codesense/embedding/hybrid_term_embedding.py`（双通道融合） | ✅ |
+| 离线 Embedding | `codesense/embedding/pairwise_term_reranker.py`（CrossEncoder 判别重排） | ✅ |
+| SemCon 抽取 | `codesense/query/llm_semCon_extractor.py`（LLM 抽取 SemCon） | ✅ |
+| SemQL 组织 | `codesense/query/semQL_composer.py`（SemCon → SemQL，Agent 或人工组织） | ✅ |
+| Surface Executor | `codesense/search/exact_code_search.py`（精准 code_element / code_line 搜索） | ✅ |
+| Surface Executor | `codesense/search/full_term_matcher.py`（倒排索引 + ngram 匹配） | ✅ |
+| Surface Executor | `codesense/search/fuzzy_matcher.py`（加权编辑距离模糊匹配） | ✅ |
 | Relation Executor | Rule-based filtering（`code_element_type` / `file_path` / `container`） | ✅ |
-| Intention Executor | `filters/cluster_pipeline.py`（粗粒度语义过滤） | ✅ |
-| Intention Executor | `filters/embedding_filter.py`（细粒度 term-level 过滤） | ✅ |
-| DSL Schema | `DSL/surface_con.py`、`DSL/intention_con.py`、`DSL/relation_con.py` | ✅ |
+| Intention Executor | `codesense/filters/cluster_pipeline.py`（粗粒度语义过滤） | ✅ |
+| Intention Executor | `codesense/filters/embedding_filter.py`（细粒度 term-level 过滤） | ✅ |
+| DSL Schema | `codesense/dsl/surface_con.py`、`codesense/dsl/intention_con.py`、`codesense/dsl/relation_con.py` | ✅ |
 
 ### 8.2 待实现的模块
 
@@ -434,7 +434,7 @@ $$\text{BundleScore}(B) = \frac{1}{k} \sum_{i=1}^{k} \text{score}(v_i) + \alpha 
 | Query Optimizer | `planner/cbo.py`（CBO 代价分析器） | 高 |
 | Relation Executor | 内存调用图 BFS/DFS（graph_constraint 执行） | 高 |
 | Relation Executor | CodeQL 后端集成（Tier 3） | 中 |
-| Intention Executor | `executor/intentional_executor.py`（LLM-as-a-Judge） | 中 |
+| Intention Executor | `codesense/executors/intention_executor.py`（LLM-as-a-Judge） | 中 |
 | Bundle Reranker | `reranker/bundle_generator.py`（Bundle 构建） | 中 |
 | Bundle Reranker | `reranker/synergy_scorer.py`（协同评分） | 中 |
 

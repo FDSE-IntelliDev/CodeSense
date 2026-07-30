@@ -805,7 +805,7 @@ $E_B$ 是 Bundle 内节点间的关系边，$w_{ij}$ 是对应关系权重，$\a
 - 制定 Intentional 判别协议（Judgment Protocol）：Prompt 模板、强制输出 schema、confidence 阈值定义。
 - 编写 SemQL Schema 合法性校验器，确保 Compiler 输出符合规范。
 
-**交付物**：`DSL/surface_con.py`、`DSL/relational_con.py`、`DSL/intentional_con.py`、`DSL/semql_schema.json`
+**交付物**：`codesense/dsl/surface_con.py`、`codesense/dsl/relation_con.py`、`codesense/dsl/intention_con.py`、`codesense/dsl/semql_schema.json`
 
 ### Phase 2 — 查询规划器与优化器（~3 weeks）
 
@@ -826,7 +826,7 @@ $E_B$ 是 Bundle 内节点间的关系边，$w_{ij}$ 是对应关系权重，$\a
 - **Relational Executor**：构建全库内存调用图，实现四个图查询原语，支持 BFS 查询与 CodeQL 离线接入。
 - **Intentional Executor**：实现批处理 + 并发 LLM 调用、Judgment Protocol 标准化、语义缓存及三级模型降级链。
 
-**交付物**：`executor/surface_executor.py`、`executor/relational_executor.py`、`executor/intentional_executor.py`
+**交付物**：`codesense/executors/surface_executor.py`、`codesense/executors/relation_executor.py`、`codesense/executors/intention_executor.py`
 
 ### Phase 4 — Bundle 生成与 Grouped Reranking（~3 weeks）
 

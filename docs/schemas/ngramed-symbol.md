@@ -5,7 +5,7 @@
 ## 1) 文件定位
 
 - 默认产物路径：`output/youlai-boot-master/ngramed_symbol.json`
-- 生成入口（脚本级）：`ngram_split.py`
+- 生成入口（脚本级）：`codesense/indexing/ngram_split.py`
 
 ## 2) 当前数据 Schema（基于代码读写行为）
 
@@ -45,12 +45,12 @@ symbol 记录在当前消费逻辑中至少依赖这些字段：
 
 ## A. 直接读取/依赖 `ngramed_symbol.json` Schema 的函数
 
-1. `query_processing/full_term_matcher.py` -> `FullTermMatcher.__init__`
+1. `codesense/search/full_term_matcher.py` -> `FullTermMatcher.__init__`
    - 用法：加载 `self.ngramed_symbol = self._load_json(ngramed_symbol_path)`
    - 影响：
      - 若顶层不再是 `dict`，会被 `_load_json` 置为空 `{}`。
 
-2. `query_processing/full_term_matcher.py` -> `FullTermMatcher._resolve_symbols`
+2. `codesense/search/full_term_matcher.py` -> `FullTermMatcher._resolve_symbols`
    - 用法：
      - 按 `subtoken` 读取 `self.ngramed_symbol.get(st)`。
      - 假设 value 是 `list[dict]`。
@@ -58,14 +58,14 @@ symbol 记录在当前消费逻辑中至少依赖这些字段：
    - 影响：
      - 顶层 key/value 结构变化、symbol 字段重命名、`range` 结构变化都会直接影响匹配结果。
 
-3. `query_processing/full_term_matcher.py` -> `FullTermMatcher.match_keywords`
+3. `codesense/search/full_term_matcher.py` -> `FullTermMatcher.match_keywords`
    - 用法：调用 `_resolve_symbols`，间接受 `ngramed_symbol` Schema 影响。
    - 影响：
      - `_resolve_symbols` 解析失败会导致 `matched_symbols` 为空或质量下降。
 
 ## B. 直接写入/定义 `ngramed_symbol.json` 结构的函数
 
-4. `ngram_split.py` -> `SymbolNgramer.build_ngramed_symbol`
+4. `codesense/indexing/ngram_split.py` -> `SymbolNgramer.build_ngramed_symbol`
    - 用法：
      - 从 `symbols_index.json` 读取条目。
      - 按 subtoken 构建 `dict[subtoken] -> list[item]`。
@@ -73,29 +73,29 @@ symbol 记录在当前消费逻辑中至少依赖这些字段：
    - 影响：
      - 这是 `ngramed_symbol.json` 的“生产者”。如果想改 Schema，应优先修改此函数。
 
-5. `ngram_split.py` -> `get_ngramed_symbol`
+5. `codesense/indexing/ngram_split.py` -> `get_ngramed_symbol`
    - 用法：整文件读取。
    - 影响：
      - 对新 Schema 无解析约束，但调用方可能有约束。
 
 ## C. 间接/配置级引用（非核心解析函数）
 
-6. `query_processing/run_keyword_expansion.py` -> `main`
+6. `scripts/run_keyword_expansion.py` -> `main`
    - 用法：通过 `ExpansionConfig(ngram_index_path=...)` 传入文件路径。
    - 影响：
      - 该函数本身不解析 schema，但下游模块会消费该文件。
 
-7. `ngram_split.py` -> 模块级脚本入口（文件末尾）
+7. `codesense/indexing/ngram_split.py` -> 模块级脚本入口（文件末尾）
    - 用法：实例化 `SymbolNgramer(..., output_path=.../ngramed_symbol.json)` 并执行构建。
    - 影响：
      - 仅路径与构建触发点；Schema 由 `build_ngramed_symbol` 决定。
 
-8. `query_processing/full_term_matcher.py` -> 模块级脚本入口（`__main__`）
+8. `codesense/search/full_term_matcher.py` -> 模块级脚本入口（`__main__`）
    - 用法：传入 `ngramed_symbol_path` 到 `FullTermMatcher`。
    - 影响：
      - 仅演示入口，实际影响同 `__init__` + `_resolve_symbols`。
 
-9. `invert_index.py` -> 模块级脚本入口（`__main__`）
+9. `codesense/indexing/invert_index.py` -> 模块级脚本入口（`__main__`）
    - 用法：当前把 `ngramed_symbol.json` 当作 `symbols_index_path` 传给 `InvertedIndexBuilder`。
    - 影响：
      - 该处属于“文件级引用”，不属于正常 `ngramed_symbol` 解析链路。
@@ -105,10 +105,10 @@ symbol 记录在当前消费逻辑中至少依赖这些字段：
 
 若你计划修改 `ngramed_symbol.json`，至少检查以下函数：
 
-- [ ] `ngram_split.py` -> `SymbolNgramer.build_ngramed_symbol`（生产端）
-- [ ] `query_processing/full_term_matcher.py` -> `FullTermMatcher.__init__`（加载策略）
-- [ ] `query_processing/full_term_matcher.py` -> `FullTermMatcher._resolve_symbols`（核心消费端）
-- [ ] `query_processing/full_term_matcher.py` -> `FullTermMatcher.match_keywords`（输出结构联动）
+- [ ] `codesense/indexing/ngram_split.py` -> `SymbolNgramer.build_ngramed_symbol`（生产端）
+- [ ] `codesense/search/full_term_matcher.py` -> `FullTermMatcher.__init__`（加载策略）
+- [ ] `codesense/search/full_term_matcher.py` -> `FullTermMatcher._resolve_symbols`（核心消费端）
+- [ ] `codesense/search/full_term_matcher.py` -> `FullTermMatcher.match_keywords`（输出结构联动）
 - [ ] 所有传递 `ngramed_symbol_path` / `ngram_index_path` 的 runner 与配置
 
 ## 5) 建议的兼容策略（可选）

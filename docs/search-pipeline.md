@@ -57,7 +57,7 @@ SemCon（Semantic Condition）用于表达一个独立、可执行的搜索或�
 来源文件：
 
 ```text
-DSL/surface_con.py
+codesense/dsl/surface_con.py
 ```
 
 Schema：
@@ -73,7 +73,7 @@ surface_condition = {
         "<optional surface variants or synonyms; use empty list if not needed>"
     ],
     "match_kind": "<code_element|code_snippet|code_line|unknown>",
-    "code_element_type": "<when kind is code_element, choose from parsers/code_element_types.py common types>"
+    "code_element_type": "<when kind is code_element, choose from codesense/parsers/code_element_types.py common types>"
 }
 ```
 
@@ -95,7 +95,7 @@ surface_condition = {
 来源文件：
 
 ```text
-DSL/intention_con.py
+codesense/dsl/intention_con.py
 ```
 
 Schema：
@@ -147,7 +147,7 @@ intention_condition = {
 来源文件：
 
 ```text
-DSL/relation_con.py
+codesense/dsl/relation_con.py
 ```
 
 Schema：
@@ -202,7 +202,7 @@ relation_condition = {
 `code_element_type` 来自：
 
 ```text
-parsers/code_element_types.py
+codesense/parsers/code_element_types.py
 ```
 
 中的 common 类型。
@@ -271,12 +271,12 @@ SemQL 组合逻辑为：
 
 | SemCon | 映射到现有执行阶段 |
 |---|---|
-| `surface.match_kind=code_element` | `search/exact_code_search.py` |
-| `surface.match_kind=code_line` | `search/exact_code_search.py` |
-| `surface.keywords/synonyms` | `search/full_term_matcher.py`, `search/invert_index_search.py` |
-| `intention.intent` | `filters/embedding_filter.py` |
-| `intention.keywords` | `filters/cluster_pipeline.py`, `filters/embedding_filter.py` |
-| `intention.intent_statement` | `executor/intentional_executor.py`（后续 LLM-as-a-Judge 阶段） |
+| `surface.match_kind=code_element` | `codesense/search/exact_code_search.py` |
+| `surface.match_kind=code_line` | `codesense/search/exact_code_search.py` |
+| `surface.keywords/synonyms` | `codesense/search/full_term_matcher.py`, `codesense/search/invert_index_search.py` |
+| `intention.intent` | `codesense/filters/embedding_filter.py` |
+| `intention.keywords` | `codesense/filters/cluster_pipeline.py`, `codesense/filters/embedding_filter.py` |
+| `intention.intent_statement` | `codesense/executors/intention_executor.py`（后续 LLM-as-a-Judge 阶段） |
 | `relation.code_element_type` | rule-based filter / target filter |
 | `relation.file_path` | rule-based filter / path filter |
 | `relation.container` | rule-based filter / container filter |
@@ -331,7 +331,7 @@ Step 7. Priority 分层输出
 对应模块：
 
 ```text
-search/exact_code_search.py
+codesense/search/exact_code_search.py
 ```
 
 处理：
@@ -346,8 +346,8 @@ search/exact_code_search.py
 对应模块：
 
 ```text
-search/full_term_matcher.py
-search/invert_index_search.py
+codesense/search/full_term_matcher.py
+codesense/search/invert_index_search.py
 ```
 
 处理：
@@ -367,7 +367,7 @@ search/invert_index_search.py
 对应模块：
 
 ```text
-search/exact_code_search.py
+codesense/search/exact_code_search.py
 ```
 
 当前支持：
@@ -422,7 +422,7 @@ symbol.file + symbol.range.start_line/end_line
 由：
 
 ```text
-search/fuzzy_matcher.py
+codesense/search/fuzzy_matcher.py
 ```
 
 提供。
@@ -441,8 +441,8 @@ search/fuzzy_matcher.py
 对应模块：
 
 ```text
-search/full_term_matcher.py
-search/invert_index_search.py
+codesense/search/full_term_matcher.py
+codesense/search/invert_index_search.py
 ```
 
 `full_term_matcher.py` 会：
@@ -482,7 +482,7 @@ search/invert_index_search.py
 对应模块：
 
 ```text
-filters/cluster_pipeline.py
+codesense/filters/cluster_pipeline.py
 ```
 
 作用：
@@ -514,7 +514,7 @@ Cluster Filter 是粗粒度语义过滤。
 对应模块：
 
 ```text
-filters/embedding_filter.py
+codesense/filters/embedding_filter.py
 ```
 
 Embedding Filter 只处理 cluster 保留下来的候选：
