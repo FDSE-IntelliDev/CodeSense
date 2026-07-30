@@ -1,0 +1,121 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "codesense"
+version = "0.1.0"
+description = "基于语义查询语言（SemQL）的代码搜索系统"
+requires-python = ">=3.10"
+
+# 这份列表是按代码里真实的 import 反查出来的，不是历史 requirements.txt 的照抄。
+# 原 requirements.txt 里的 javalang / scipy / flask / thinc 全仓库没有任何地方
+# import，已经不再列出；哪天重新用上，加回来即可。
+dependencies = [
+    "pyyaml>=5.4",
+    "numpy>=1.24.0",
+    "tqdm>=4.60",
+    # 解析
+    "tree-sitter<0.22.0",
+    "tree-sitter-languages",
+    "srctoolkit",
+    # 分词与缩写扩展
+    "sentencepiece",
+    "nltk>=3.8.1",
+    "wordfreq",
+    "textdistance",
+    "spacy",
+    # embedding 与重排
+    "gensim>=4.3.0",
+    "sentence-transformers",
+    "scikit-learn",
+    "keybert",
+    # LLM
+    "openai>=1.40.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "ruff>=0.4",
+]
+
+[project.scripts]
+codesense = "codesense.__main__:main"
+
+[tool.setuptools.packages.find]
+# 只打包核心实现。evaluation/ 是研究脚手架，刻意不随核心发布，
+# 边界说明见 ARCHITECTURE.md「核心与脚手架的边界」。
+where = ["."]
+include = ["codesense*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+# 默认跳过 slow：那些测试要装齐 tree-sitter / gensim / spacy 才跑得动，
+# 不该让「刚 clone 下来的人跑 pytest」直接见红。要跑就显式 `pytest -m slow`。
+addopts = "-q -m 'not slow'"
+markers = [
+    "slow: 需要重型依赖（tree-sitter / gensim / spacy）或真实 LLM 调用的测试",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+src = [".", "tests", "scripts"]
+
+[tool.ruff.format]
+# 和下面 lint 的豁免名单同一个道理：老模块从没被格式化过，全量 format 会产生
+# 一个覆盖 70 个文件的 diff，把真正的改动淹掉。所以先把它们排除在格式化之外，
+# 让 `ruff format --check .` 从今天起是绿的，新代码才有个真门禁。
+# 改到哪个老模块，就顺手 `ruff format` 它，并从这里删掉对应路径。
+exclude = [
+    "codesense/*/**",
+    "codesense/__main__.py",
+]
+
+[tool.ruff.lint]
+select = [
+    "E", "F", "W",   # pycodestyle / pyflakes
+    "I",             # import 排序
+    "UP",            # 用新语法
+    "B",             # 常见 bug 模式
+    "SIM",           # 可简化的写法
+    "A",             # 别用内置名当变量/模块名
+]
+
+# ---------------------------------------------------------------- 待还的债
+#
+# 这一轮整理只搬了位置、改了导入，没碰函数内部逻辑，所以老模块里积压的
+# 1900 多条风格问题原样还在。整族关掉等于门禁形同虚设，一次性全修又会把
+# 「搬包」这个 diff 淹掉，所以下面**逐条列出具体规则号**豁免，含义是：
+#
+#   - 新写的代码（codesense/config.py、scripts/、tests/、evaluation/）
+#     受全套规则约束，`ruff check` 对它们是真门禁；
+#   - 老模块只豁免下面这些已知条目，别的照查——F821 未定义名这类真 bug 拦得住；
+#   - 改到哪个老模块，就顺手把它涉及的那几条清掉。
+#
+# 数量最大的三条是 UP006(1020) / UP045(171) / UP035(164)，全是 typing 写法
+# 现代化，`ruff check --fix --unsafe-fixes` 能一次修完，但会产生一个覆盖全仓库
+# 的 diff——建议单独开一个 PR 做，别和结构调整混在一起。
+[tool.ruff.lint.per-file-ignores]
+"codesense/*/**" = [
+    "A002",
+    "B006", "B007", "B019", "B020", "B033", "B904", "B905",
+    "E401", "E402", "E501",
+    "F401", "F541", "F811", "F841",
+    "I001",
+    "SIM102", "SIM103", "SIM105", "SIM108", "SIM110", "SIM115", "SIM118", "SIM300",
+    "UP006", "UP007", "UP009", "UP015", "UP028", "UP031", "UP035", "UP037", "UP045",
+    "W191", "W291", "W292",
+]
+"codesense/__main__.py" = [
+    "A002",
+    "B006", "B007", "B019", "B020", "B033", "B904", "B905",
+    "E401", "E402", "E501",
+    "F401", "F541", "F811", "F841",
+    "I001",
+    "SIM102", "SIM103", "SIM105", "SIM108", "SIM110", "SIM115", "SIM118", "SIM300",
+    "UP006", "UP007", "UP009", "UP015", "UP028", "UP031", "UP035", "UP037", "UP045",
+    "W191", "W291", "W292",
+]
