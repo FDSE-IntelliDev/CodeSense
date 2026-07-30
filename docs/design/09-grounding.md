@@ -78,20 +78,68 @@ config  出现 4 次    configuration 出现 0 次
 所以全局模型不只是「词表大」，它**本身就编码了缩写与全称的对应关系**——
 这正是我们最需要的那部分知识，而且不用 LLM。
 
+### 现成的预训练模型：三个候选，没有一个全中
+
+| | 词级静态向量 | 可续训 | 有子词 | 代码域词义 | 体积 |
+|---|---|---|---|---|---|
+| **fastText `cc.en.300.bin`** | ✓ | **✓ 原生** | **✓** | ✗ | 4.5G(gz) / 7G |
+| **SO_vectors_200** | ✓ | △ 只能 seed | ✗ | ✓ SE 领域 | 1.5G |
+| **code2vec java14m tokens** | ✓ | ✗ | ✗ | **✓✓ Java 标识符** | ~2G |
+| CodeBERT / UniXcoder | ✗ 上下文 BPE | — | BPE | ✓✓ | — |
+
+```
+https://dl.fbaipublicfiles.com/fasttext/vectors-crawl/cc.en.300.bin.gz
+https://doi.org/10.5281/zenodo.1199620          # SO_vectors_200.bin
+https://s3.amazonaws.com/code2vec/model/java14m_model.tar.gz
+```
+
+**只有 fastText 能当底座。** 原因是格式：`load_facebook_model()` 拿到的是
+**完整模型**（输入+输出权重都在），`build_vocab(update=True)` + `train()`
+就是标准续训。另两个只有输入向量——SO_vectors 是 word2vec C 格式，
+读出来是 `KeyedVectors`；code2vec 的 `tokens.txt` 是纯文本向量，
+而且它的训练目标是「从 AST 路径预测方法名」，没有可复用的语言模型。
+没有输出权重就没法继续训。
+
+**但 cc.en.300 的弱点恰好落在最要命的地方**：
+
+```
+pool    → 游泳池     thread  → 线      stream → 溪流
+flush   → 冲水       swap    → 易货    sector → 行业
+buffer  → 缓冲垫     block   → 街区
+```
+
+这些正是 `io performance on disk` 这条查询的核心词汇。
+`user`/`role`/`token`/`controller`/`service` 这类在 Common Crawl 里
+有大量软件语境（StackOverflow、GitHub README、文档都在里面），问题不大；
+**但底层系统词汇必须靠代码语料续训纠正**。所以 cc.en.300 是起点不是终点。
+
+**另两个当第二通道用**，不参与续训：
+
+- **code2vec tokens 的词表就是 Java 标识符子词**——`vo`、`impl`、`dto`、`mgr`
+  这些在里面都有真实训出来的向量。恰好覆盖 cc.en.300 最弱的那 41 个非词，
+  是[第四节](#四lexical-rules补-embedding-补不到的-14)那个合取式里很好的第三个信号。
+- **SO_vectors** 适合做**评估参照**：同一批词在两个独立模型里的近邻是否一致，
+  可以在没有标注的情况下交叉验证微调结果。
+
 ### 全局语料怎么建
 
-**用和现在完全相同的构造方式，只是换成几百上千个 repo**：
+**别为此搭 LSP 流水线。** 全局模型要的是标识符共现，不是精确调用图——
+直接拿现成的 Java 源码数据集，按方法/文件切「句子」就够：
 
 ```
-每个 repo → 解析符号 → 标识符切成单元 → 调用链作为「句子」
+CodeSearchNet (Java 子集, ~50 万方法)   ← 推荐起点，HuggingFace 直接可取
+The Stack v2 (BigCode)                  ← 更大，但磁盘代价高
+java-large (code2vec 的 9500 个项目)     ← 与 code2vec 词表同源
 ```
 
-关键是**上下文的定义要一致**：现在用调用链作句子，全局预训练也用调用链。
-如果全局模型用自然语言句子训（GloVe / Common Crawl），
-上下文含义就变了——那里的 `service` 是「服务业」，不是 `UserService`。
-
-规模上，几百个 Java repo 就能到 10⁸ 量级 token、10⁵ 量级词表，
+每个方法体里的标识符切成单元、去重后作为一个「句子」，
+不需要解析调用关系。50 万方法大致能到 10⁷~10⁸ 量级 token、10⁵ 量级词表，
 足以支撑 d=200~300。这是**一次性**成本，所有项目共享。
+
+**上下文定义的不一致要记一笔**：全局用方法内共现，微调用调用链，
+两者的窗口语义不同（前者是「同一段代码里出现」，后者是「调用路径上相邻」）。
+这不致命——都是「标识符在同一代码单元里共现」，调用链只是更长程的版本——
+但它会体现在锚点漂移上，所以下面那个漂移指标要认真看。
 
 ### 微调：别把预训练空间搞坏
 
