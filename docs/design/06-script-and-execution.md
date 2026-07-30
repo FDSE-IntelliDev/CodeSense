@@ -26,38 +26,34 @@
 编译自：io performance on disk
 生成时间：<stamp>    索引版本：<commit>
 """
-from codesense.ql import Query, endpoints, hop, intent, match, of_type
+from codesense.ql import Query, annotation, hop, intent, lexical, of_kind, structural
 
 q = Query("io performance on disk")
 
 # ── query units ──────────────────────────────────────────────
-io = q.unit(
-    "io",
-    match(r"\b(io|input|output|read|write|stream|flush)\w*", unit="io"),
-    intent="和输入输出有关的代码",
-)
-perf = q.unit(
-    "performance",
-    match(r"\w*(buffer|async|cache|batch|pool|latency|throughput)\w*", unit="performance"),
-    intent="和性能表现有关的代码",
-)
-disk = q.unit(
-    "disk",
-    match(r"\w*(disk|swap|block|sector|volume|storage)\w*", unit="disk"),
-    intent="和磁盘有关的代码",
-)
+io = q.unit("io", concept="和输入输出有关的代码", satisfiers=[
+    lexical(["io", "input", "output", "read", "write", "stream", "flush"]),
+])
+disk = q.unit("disk", concept="和磁盘存储有关的代码", satisfiers=[
+    lexical(["disk", "swap", "block", "sector", "volume", "storage"]),
+    structural(package=r".*\.(storage|fs|vfs)\..*", weight=0.7),
+])
+perf = q.unit("performance", concept="代码在优化或影响性能表现", satisfiers=[
+    lexical(["buffer", "async", "cache", "batch", "pool", "latency"], weight=0.5),
+    annotation(r"@(Async|Cacheable)", weight=0.9),
+])
 
 # ── 编排 ─────────────────────────────────────────────────────
 # 磁盘 IO 的落点：同时沾 io 和 disk 的可调用元素
-disk_io = of_type(io & disk, "function", "method")
+disk_io = of_kind(io & disk, "function", "method")
 
-# 从落点出发，三跳内够到 performance 相关代码
-paths = hop(disk_io, perf, edge="calls", len=(1, 3), avoid=q.tests)
+# 从落点出发，三跳内够到 performance；调用或数据流都算
+f = hop(disk_io, perf, edge=["calls", "flows_to"], len=(1, 3), avoid=q.tests)
 
-# 只对路径起点做语义判定 —— intent 最贵，放最后、作用在最小集合上
-answer = intent(endpoints(paths, "source"), "这段代码影响磁盘 IO 的性能表现")
+# 只对路径起点做语义判定 —— intent 最贵，放最后、作用在最小片段上
+answer = intent(f.roots(), perf.concept)
 
-q.emit(answer, evidence=paths)
+q.emit(answer, context=f)
 ```
 
 几个刻意的选择：
@@ -65,7 +61,8 @@ q.emit(answer, evidence=paths)
 - **每个单元一个变量。** 脚本读起来就是查询的语义结构。
 - **注释解释编排理由，不解释算子。** 算子语义在 [05](05-operators.md) 里，
   这里只说「为什么这么排」。
-- **`q.emit` 显式声明产物。** 结果和证据分开传，避免把路径塞进元素集。
+- **`q.emit` 分开传结果与上下文。** `answer` 是要给用户的，`context` 是
+  支撑它的完整片段——两者都要落盘，但呈现方式不同。
 - **头部记录索引版本。** 同一段脚本在不同索引上结果不同，不记就没法复现。
 
 ## 执行
@@ -78,7 +75,7 @@ q.emit(answer, evidence=paths)
                         │
                         ├─ 读索引 / 图库（IO 在这里发生）
                         ├─ 追加证据
-                        └─ 返回新的 ElementSet / PathSet
+                        └─ 返回新的 Frag
 ```
 
 **IO 边界**：算子内部会读倒排索引、codegraph、embedding 产物。按
@@ -89,6 +86,38 @@ q.emit(answer, evidence=paths)
 q = Query("...", index=index, graph=graph_store, judge=judge_client)
 ```
 
+## 编译回路：编译不必是一次性的
+
+初稿默认「SemCon → 脚本」一步到位。不受限地看，编译更该是个**带反馈的回路**：
+
+```
+   拟一版脚本
+        │
+        ▼
+   试跑（可以只跑便宜的算子，跳过 intent）
+        │
+        ▼
+   看结果规模与形态
+        │
+   ┌────┴────────────────────────────┐
+   │ 太少（0～3 个）                  │ 太多（几百个）
+   │  → 放宽：& 改 |、len 放大、        │  → 收紧：加 unit、缩 len、
+   │    降低 satisfier 权重门槛         │    提高权重门槛、加 avoid
+   └────┬────────────────────────────┘
+        ▼
+   收敛后再跑 intent，出结果
+```
+
+为什么值得做成回路：**编排的好坏在跑之前判断不了**。
+`io & disk` 会剩几个候选，取决于这个项目的命名习惯——
+同一段脚本在 Spring 项目和内核代码上表现可能差一个数量级。
+
+试跑时**跳过 `intent`** 是关键：它最贵，而规模判断不需要它。
+便宜算子跑一遍通常在毫秒级，可以反复试。
+
+这也回答了[08](08-open-questions.md) 里 Q2（单元之间默认什么关系）的一半——
+不必一开始就猜对，试跑会告诉你。
+
 ## 优化
 
 编译期决定顺序，执行期做局部优化。**编译期的顺序更重要**——
@@ -96,29 +125,28 @@ q = Query("...", index=index, graph=graph_store, judge=judge_client)
 
 ### 编排原则（编译期）
 
-1. **便宜的先跑。** `match` / `of_type` / `degree` 是索引查询，
+1. **便宜的先跑。** `unit` / `of_kind` / `degree` 是索引查询，
    `hop` 是图遍历，`similar` 要算向量，`intent` 要调 LLM。
-2. **选择性高的先跑。** 能把候选从 1718 压到 30 的条件，
-   比只能压到 800 的先跑。
+2. **选择性高的先跑。** 能把候选压到几十个的条件，比只能压到几百个的先跑。
 3. **`intent` 永远最后。** 如果它前面还有没用上的便宜约束，是编排错了。
 
 ### 执行期优化
 
 - **短路**：集合空了就不再往下算。
-- **缓存**：同一个 `match` 在脚本里出现多次（`io & disk` 和后面的
-  `hop(..., io)`）只算一次。按 `(算子, 参数)` 做 key。
+- **缓存**：同一个 `unit` 在脚本里被引用多次（`io & disk` 与后面的
+  `hop(..., io)`）只求值一次。按 `(算子, 参数)` 做 key。
 - **路径截断**：`hop` 的 `max_paths` 到顶就停，并 `log` 出来。
   **不能静默截断**——那会让人以为「结果就这么多」。
-- **`intent` 批量**：当前 `llm_judge_filter` 已经在按 batch 调，直接复用。
+- **`intent` 批量**：一次判定多个候选，减少往返。
 
 ### 一个反直觉的点
 
 「先词法后图」不总是对的。`io performance on disk` 里三个单元的词都很泛，
-`match` 之后可能还剩几百个候选；而 `hop` 在只有 677 条边的图上非常快。
-先跑 `hop` 圈定范围、再在范围内做词法匹配，可能整体更省。
+词法匹配后可能还剩几百个候选；而图遍历在稀疏调用图上非常快。
+先用图圈定范围、再在范围内匹配，可能整体更省。
 
 **所以顺序应该由编译期根据查询特征决定，而不是写死。**
-这正是当前固定管线做不到的事（[01](01-motivation.md) 问题 1）。
+这正是固定管线做不到的事（[01](01-motivation.md) 问题 1）。
 
 ## 安全
 
@@ -143,14 +171,16 @@ q = Query("...", index=index, graph=graph_store, judge=judge_client)
 ```
 query_<id>/
 ├── query.ql.py             编译出来的脚本（复现的唯一依据）
-├── units.json              单元与派生词表，含来源与理由
-├── result.json             最终元素集
-├── evidence.json           每个元素的证据链
-├── paths.json              路径集
-└── trace.json              每个算子的输入输出规模与耗时
+├── compile_trace.json      编译回路：拟了几版、每版为什么被改
+├── units.json              单元与派生信号，含来源、权重、理由
+├── answer.json             最终片段（节点 + 边）
+├── evidence.json           每个节点的证据链
+├── paths.json              路径见证
+└── run_trace.json          每个算子的输入输出规模与耗时
 ```
 
-`trace.json` 是新增的，用来回答「时间花在哪」「哪一步把结果砍没了」——
-当前排查这类问题只能靠 print。
+两个 trace 分别回答不同的问题：`compile_trace` 回答「为什么是这段脚本」，
+`run_trace` 回答「时间花在哪、哪一步把结果砍没了」。后者尤其重要——
+查询返回空结果时，第一个要问的就是「哪个算子清零的」。
 
 下一篇：[07 与当前实现的对应](07-mapping-to-current.md)。

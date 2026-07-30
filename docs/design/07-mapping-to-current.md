@@ -1,117 +1,142 @@
-# 07 与当前实现的对应
+# 07 索引需要什么：能力需求与当前差距
 
-这套设计不是推倒重来。**大部分执行层能力已经有了**，缺的是组织方式。
+设计不受现有索引限制。**先定查询需要什么，再看现在缺什么。**
+本章前半是能力需求，后半是与当前实现的差距。
 
-## 概念对应
+## 索引必须提供的能力
 
-| 新设计 | 当前实现 | 差别 |
+### A. 元素与属性
+
+| 能力 | 用在哪 |
+|---|---|
+| 符号表（id、名、种类、文件、位置、签名、容器） | 一切的基础 |
+| **修饰符**（`async` / `static` / `abstract` / `final`） | `has_modifier` |
+| **注解**（`@Async`、`@RestController`……） | `annotation` satisfier —— Java 项目最强的语义信号 |
+| 文档注释 | `lexical(field="doc")`、`semantic` |
+| 包 / 模块层级 | `structural` satisfier |
+
+### B. 边
+
+[03](03-data-model.md) 定义了九种边。按对查询的价值排：
+
+| kind | 价值 | 抽取难度 |
 |---|---|---|
-| Query Unit | `SurfaceKeywordGroup`（组内 OR、组间 AND） | 现在的组只在匹配阶段有身份，匹配完拍平；新设计里单元贯穿到最终证据 |
-| `match` | `FullTermMatcher` + 倒排索引 + 缩写扩展 | 基本可直接用，需补 `field` 参数（现在只匹配名字相关字段） |
-| `hop` | `SurfaceGroupLogic(graph_scope, hop_count)` + `RelationGraphStore.reachable` | **现在返回可达元素集，路径在遍历时就丢了**——最大的一处改动 |
-| `degree` | `filter_candidates_by_roles`（entry_point/leaf/isolate） | 三个命名角色 → 通用出入度谓词 |
-| `of_type` | `filter_symbols_by_type` | 可直接用 |
-| `intent` | `LLMJudgeFilter` | 批量、结构化返回、三分（kept/discarded/uncertain）都有了 |
-| `similar` | `EmbeddingFilter` + `FiltrationDispatcher` | 现在是写死的两级（cluster→embedding），新设计里是脚本里的两行 |
-| `&` `\|` `-` | surface executor 的四层集合运算 | 从写死的执行顺序变成普通表达式 |
-| 证据 | `surface_evidence_hop_0.json`、`matched_subtokens` | 已有雏形，需要统一成 `ElementEvidence` 并贯穿所有算子 |
-| QL 脚本 | 三份 `*_semql.json` + 三个 executor | 解释执行 → 生成代码 |
+| `calls` | 高，最基础 | 中（LSP / AST） |
+| `contains` | 高，几乎免费（符号表里就有容器信息） | 低 |
+| `annotated_by` | **高**，Java 场景语义密度最大 | **低**（AST 直接可得） |
+| `implements` | 高 | 中 |
+| `imports` | 中 | 低 |
+| `reads` / `writes` | **高**，「谁改了这个状态」这类查询靠它 | 中 |
+| `flows_to` | **高**，数据流查询靠它 | **高**（需要 def-use 分析） |
+| `instantiates` / `throws` | 中 | 中 |
 
-## 已有、可直接复用
+**`annotated_by` 是性价比最高的一条**：抽取几乎免费（注解就在 AST 上），
+但语义信号极强——`@RestController` 直接告诉你这是 HTTP 入口，
+比任何关键词组合都准。
 
-这些不用重写：
+**`flows_to` 是最贵但最不可替代的一条**：没有它，
+「这个参数的值从哪来」「哪些路径会把用户输入带到 SQL 拼接处」
+这类查询完全答不了，而它们恰恰是理解和审计代码时最常问的。
 
-- **倒排索引与缩写扩展**（`indexing/invert_index.py`、`expansion/`、`tokenizer/`）——
-  `match` 的底座，且刚重构过（`CodeTokenizer`、`AbbreviationGenerator` 已收成类）
-- **代码图库**（`codegraph.sqlite`：1718 符号、677 调用边、159 实现关系、
-  2107 文件依赖）——`hop` 的底座
-- **LLM judge**（`llm_judge_filter.py`）——`intent` 的实现
-- **Embedding 通道**（ICF / semantic / hybrid）——`similar` 的实现
-- **SemCon 抽取**（`llm_semCon_extractor.py`）——编译期第一步
+### C. 图查询语义
 
-## 需要改的
+- **保留路径的遍历**：`hop` 要的是路径，不是可达集
+- **按边类型与置信度过滤**
+- **双向遍历**：`dir="any"`
+- **等价符号合并**：接口方法与其实现应视为同一个查询目标
+  （当前 `equivalent_symbol_ids` 已在做）
 
-### 1. `hop` 要保留路径（最大的一处）
+### D. 向量与词表
 
-`RelationGraphStore.reachable()` 现在是 BFS 求可达集：
+- 项目词表与共现（`derived` 词的语料扩展、`similar` 算子）
+- 元素级向量（`semantic` satisfier）
+
+---
+
+## 当前实现的差距
+
+| 需求 | 现状 | 差距 |
+|---|---|---|
+| 符号表 | ✅ 1718 个符号，schema 够用 | 缺 `modifiers` 字段 |
+| 注解 | ❌ **完全没有** | 需要在 parser 里抽，成本低收益大 |
+| `calls` 边 | ✅ 677 条 | — |
+| `contains` 边 | ⚠️ 信息在 `container` 字段里，不是边 | 需要物化成边 |
+| `implements` | ⚠️ 独立表 `code_implementations`（159） | 需要统一进边视图 |
+| `imports` | ⚠️ 独立表 `code_dependencies`（2107，文件级） | 同上 |
+| `reads`/`writes`/`flows_to` | ❌ 没有 | 需要数据流分析 |
+| 保留路径的遍历 | ❌ `reachable()` 返回可达集，路径在遍历时丢弃 | **最大的一处改动** |
+| 置信度过滤 | ✅ `code_edges.confidence` 已有 | — |
+| 等价符号合并 | ✅ `equivalent_symbol_ids` | — |
+| 项目词表与共现 | ✅ ICF / semantic / hybrid 三个通道 | — |
+| 元素级向量 | ⚠️ 现在是 term 级 | 需要补元素级 |
+
+### 三处结构性差距
+
+**1. 边散在三张表里。** `code_edges` / `code_implementations` /
+`code_dependencies` 各一张表、各自 schema。`hop(edge=[...])` 要跨表查，
+每加一种边都要改 `hop` 的实现。**应当统一成一个边视图**，
+`kind` 作为普通查询条件。
+
+**2. 遍历丢路径。** 现在是 BFS 求可达集：
 
 ```python
 def reachable(self, start_ids, direction, max_depth, ...) -> Set[int]:
-    frontier = ...
-    visited = set(frontier)
     result: Set[int] = set()          # ← 只留终点
 ```
 
-`hop` 需要路径。改法是遍历时记前驱链，或者改成双向 BFS 后回溯。
-**这会显著增加内存**，所以 `max_paths` 的默认值和截断日志是必须的，
-不是可选优化。
+`hop` 需要前驱链。改动会显著增加内存——所以 `max_paths` 和截断日志
+在设计里是必需项而非可选优化。
 
-### 2. 图只有 `calls` 边
+**3. 没有数据流。** 这是唯一需要**新建分析能力**的一项，
+其余都是重组已有数据。Java 侧可以走 CodeQL（当前已有 `codesense/codeql/`
+的链路）或扩 LSP 用法。
 
-```
-code_edges          677 行，kind 全是 'calls'
-code_implementations 159 行   ← 独立的表
-code_dependencies   2107 行   ← 文件级，独立的表
-```
+---
 
-`hop(edge="implements")` 和 `hop(edge="imports")` 现在得跨表查。
-建议在 QL 层统一成一个边视图，把 `kind` 作为查询条件——
-否则每加一种边就要改 `hop` 的实现。
+## 可直接复用的
 
-`dataflow` 边（def-use）目前完全没有，`dataflow` 算子做不了，
-要先扩索引（见 [08](08-open-questions.md)）。
+不用重写，这些是资产：
 
-### 3. 关键词派生要加 `derived` 这一类
+- **倒排索引 + 缩写扩展 + 分词**（`indexing/`、`expansion/`、`tokenizer/`）
+  —— `lexical` satisfier 的底座
+- **LLM judge**（批量、结构化返回、三分）—— `intent` 的实现
+- **Embedding 三通道**（ICF / semantic / hybrid）—— `similar` 与 `semantic` satisfier
+- **SemCon 抽取** —— 编译期第一步（切单元）
+- **等价符号合并** —— `hop` 直接要用
 
-当前 `Term.source` 只有 `keyword | synonym`。要加 `derived`（语义联想），
-并给每个词带 `weight` 和 `reason`（[04](04-query-unit.md)）。
+还有一处**已经存在的雏形**值得记：`SurfaceGroupLogic(groups, graph_scope,
+hop_count)` 允许 keyword group 之间声明图约束——那正是「unit 之间 hop」的
+原型，只是产出被拍平成扁平集合，路径丢了。所以这不是新增能力，是把埋着的
+能力提上来并让它返回片段。
 
-这是**改 prompt 加改 schema**，不动执行层，成本低但收益大——
-`io performance on disk` 这类泛词查询的召回主要靠它。
+---
 
-### 4. 证据要统一
+## 迁移路径
 
-现在证据散在几处，形态不一：`matched_subtokens`（surface）、
-`_embedding_score` / `_cluster_tier`（直接挂在候选 dict 上）、
-judge 的 `reason`。
+**不要一次性替换。** 三个阶段，每阶段独立可验证：
 
-新设计要求所有算子往同一个 `ElementEvidence` 里**追加**。
-顺带能解决一个现存问题：现在有些算子会往候选 dict 上原地挂字段，
-这是 [ARCHITECTURE.md](../../ARCHITECTURE.md) 明确禁止的原地修改。
+### 阶段 A：QL 层 + 索引补齐
 
-### 5. 产物路径知识要收口
+实现 `codesense/ql/`（数据模型 + 算子），同时补三件索引欠账：
+注解抽取、边视图统一、遍历保留路径。
 
-`hop` 要读 codegraph，`match` 要读倒排索引。这些资源应当在 `Query`
-构造时注入。当前虽然已经把 relation 那条链改成了构造函数注入
-（`RelationGraphStore` 从外面传进来），但别处还有从候选文件路径反推
-产物目录的写法（`_project_output_dir_from_candidate_path`）——
-那是产物布局知识渗进了业务层，新设计里不应保留。
+**手写** 3–5 段 QL 覆盖不同查询类型，验证算子集合够不够。
+写不出来的地方就是缺的算子——这一步很便宜（几百行），
+但能避免把编译器建在错的算子集上。
 
-## 迁移路径（建议）
+验证：拿真实查询手写等价 QL，结果应与现有 golden 一致
+（`tests/integration/test_golden_relation_filter.py` 已经在锚定这条）。
 
-**不要一次性替换。** 三个阶段，每个阶段都能独立验证：
+### 阶段 B：编译器与编译回路
 
-### 阶段 A：QL 层落地，不动现有管线
+SemCon → QL 脚本，含试跑修正（[06](06-script-and-execution.md)）。
+此时两条路并存，在同一批查询上比对差异——**差异本身就是最好的评测材料**。
 
-实现 `codesense/ql/`：数据模型 + 算子，底层调现有的 matcher / graph store /
-filter。**手写**几段 QL 脚本，验证能不能表达真实查询。
+### 阶段 C：数据流与切换
 
-验证方式：拿 `output/<project>/query_1/` 那条真实查询，
-手写等价的 QL 脚本，结果应与 `filtered_by_relation.json` 一致。
-这是现成的 golden（`tests/integration/test_golden_relation_filter.py` 已经在用）。
+补 `flows_to`，解锁数据流类查询；新路径不差于老路径后切换。
 
-### 阶段 B：编译器
-
-SemCon → QL 脚本。此时两条路并存：老管线仍可跑，新脚本作为对照。
-在同一批查询上比对两者的结果差异，差异本身就是最好的评测材料。
-
-### 阶段 C：切换
-
-新路径的召回与精度不差于老路径后，把老 executor 降级为兼容层，
-再逐步删除。
-
-**每个阶段结束都应该能回答「比老的好在哪、差在哪」**，
-而不是做完才发现方向不对。这需要先有评测——见
-[evaluation/README.md](../../evaluation/README.md)，那个目录目前还是空骨架。
+**每个阶段结束都应能回答「比老的好在哪、差在哪」**，
+而这需要先有评测——见 [08](08-open-questions.md)，那是最高优先级的前置工作。
 
 下一篇：[08 待定问题](08-open-questions.md)。

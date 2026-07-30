@@ -1,183 +1,164 @@
-# 04 Query Unit：查询单元与关键词派生
+# 04 Query Unit：查询单元
 
-整套设计里最重要的一个概念。**它不是关键词，是语义槽位。**
+整套设计里最重要的概念。**它是语义槽位，不是关键词，也不是一条 regex。**
 
 ## 定义
-
-一个 query unit 由三部分组成：
 
 ```python
 @dataclass(frozen=True)
 class QueryUnit:
-    name: str                  # "performance"
-    intent: str                # "和性能表现有关的代码" —— 给 intent 算子和人看
-    terms: tuple[Term, ...]    # 派生出来的词
-```
-
-```python
-@dataclass(frozen=True)
-class Term:
-    value: str
-    source: str        # literal | synonym | derived
-    weight: float = 1.0
-    reason: str = ""   # 为什么派生出这个词
+    name: str                      # "performance"
+    concept: str                   # "和性能表现有关的代码" —— 给人和 intent 看
+    satisfiers: tuple[Satisfier, ...]   # 怎样算命中这个槽位
+    combine: str = "max"           # 多信号怎么合成：max | sum | noisy_or
 ```
 
 单元是**后续所有条件的挂载点**：
 
 ```python
-hop(io, disk)                      # 两个单元之间的图约束
-intent(perf_elements, perf.intent) # 单元自带的意图描述
+hop(io, disk)        # 两个单元之间的图约束
+intent(f, perf)      # 用单元的 concept 做语义判定
 ```
 
-## 为什么不把关键词拼成一条 regex
+## 一个单元可以被多种信号满足
 
-朴素做法：
+这是相对「一个单元一条 regex」最重要的一处解绑。
+
+判断一段代码是不是「和性能有关」，词法只是**最弱的一种**证据。真实可用的信号：
+
+| signal | 怎么命中 | 强度 | 例 |
+|---|---|---|---|
+| `lexical` | 标识符/签名/文档匹配派生词 | 弱～中 | 名字里有 `buffer` |
+| `annotation` | 被特定注解标记 | **强** | `@Async`、`@Cacheable` |
+| `structural` | 位于特定包/类/层 | 中 | 在 `io.buffer` 包下 |
+| `modifier` | 语言级修饰符 | 中 | `async` / `volatile` |
+| `graph` | 图上的位置 | 中 | 是入口点、在热路径上 |
+| `semantic` | 与 concept 的向量相似度 | 中 | doc 语义接近 |
+| `judged` | LLM 判定 | **强但贵** | 复核用 |
+
+```python
+perf = q.unit(
+    "performance",
+    concept="代码在优化或影响性能表现",
+    satisfiers=[
+        lexical(terms=["buffer", "async", "cache", "batch", "pool", "latency"], weight=0.5),
+        annotation(r"@(Async|Cacheable|Scheduled)", weight=0.9),
+        structural(package=r".*\.(cache|pool|buffer)\..*", weight=0.7),
+        modifier("async", weight=0.6),
+    ],
+    combine="noisy_or",
+)
+```
+
+**为什么这比一条 regex 好**：`@Async` 标注的方法名字里可能一个性能词都没有，
+纯词法必然漏。反过来，一个叫 `cacheKey` 的字段命中了 `cache` 却和性能无关，
+但它没有注解、不在相关包下，多信号合成后分数自然低。
+
+**`combine` 的选择有实际后果**：
+
+- `max` —— 任一强信号即可，召回优先
+- `sum` —— 多个弱信号可以累积，但容易被一堆噪音词刷高
+- `noisy_or` —— `1 - Π(1 - wᵢ)`，多个独立弱信号能累积但有上界，**默认**
+
+## 为什么不把所有词拼成一条 regex
+
+即便只谈词法，也不该拼：
 
 ```python
 # ❌
 match(r"\b(io|input|output|performance|latency|disk|swap|block)\b")
 ```
 
-四个问题：
+1. **单元身份丢了。** 命中 `swap` 和命中 `latency` 的元素混成一堆，
+   后面说不出「performance 那组调用了 disk 那组」。
+2. **语义被稀释成 OR。** 三个单元本该都要沾边（AND），拼起来变成沾任一即可。
+3. **强度没法区分。** 命中 `disk` 和命中 `swap` 的可信度不同。
+4. **没法分别调。** 想单独收紧 io 那组，一条大 regex 牵一发动全身。
 
-**1. 单元身份丢了。** 命中 `swap` 的元素和命中 `latency` 的元素被混成一堆，
-后面没法说「performance 那组的元素调用了 disk 那组的元素」。
+**一个单元一组信号，单元之间的关系由算子表达。**
 
-**2. 语义被稀释成 OR。** 三个单元本该是 AND 关系（都要沾边），拼成一条 regex
-之后变成了「沾上任意一个词就算」，噪音爆炸。
+## 词从哪来：三种来源
 
-**3. 命中强度没法区分。** 命中 `disk` 和命中 `swap` 的置信度不同，
-拼进一条 regex 之后无法分别加权。
+`io performance on disk` 字面只有三个词，但能在代码里定位的词远不止。
 
-**4. 没法分别调。** 发现结果里全是 io 噪音时，想单独收紧 io 那组——
-一条大 regex 改起来牵一发动全身。
+### literal —— 查询里直接出现
 
-所以：**一个单元一条 regex，单元之间的关系由算子表达。**
-
-```python
-io   = q.unit("io",          match(r"\b(io|input|output|read|write|stream|flush)\w*"))
-perf = q.unit("performance", match(r"\w*(buffer|async|cache|batch|pool|latency)\w*"))
-disk = q.unit("disk",        match(r"\w*(disk|swap|block|sector|volume)\w*"))
-```
-
-> 当前实现里的 `SurfaceKeywordGroup`（组内 OR、组间 AND）已经是这个形态的雏形。
-> 差别在于：现在的组只在**匹配阶段**有身份，匹配完就拍平了；
-> 新设计里单元的身份贯穿全程，直到最终证据。
-
-## 关键词从哪来：三种来源
-
-这是本章的另一半。`io performance on disk` 字面上只有三个词，
-但真正能在代码里定位的词远不止这三个。
-
-### literal —— 查询里直接出现的
-
-`io`、`performance`、`disk`。置信度最高，但在代码里**往往最不常出现**：
-没有多少函数叫 `performance`。
+置信度最高，但在代码里**往往最不常出现**：没多少函数叫 `performance`。
 
 ### synonym —— 同义词
 
-`disk` → `storage`、`volume`。语义等价，可以互换。
-当前实现的 `terms[].source: synonym` 覆盖的就是这一类。
+`disk` → `storage`、`volume`。语义等价，可互换。
 
 ### derived —— 语义联想
 
-**这是当前实现缺的一类，也是最有价值的一类。**
+**最有价值的一类。** `performance` → `buffer`、`async`、`cache`、`batch`、`pool`。
 
-`performance` → `buffer`、`async`、`cache`、`batch`、`pool`
-
-`buffer` **不是** `performance` 的同义词。它们的关系是：
+`buffer` **不是** `performance` 的同义词。关系是：
 
 > 代码在处理性能问题时，通常会出现 buffer 这样的东西。
-
-同理 `disk` → `swap`、`flush`、`sync`、`sector`：这些不是「磁盘」的同义词，
-是磁盘相关代码的**典型词汇**。
-
-这类词的特点：
 
 | | synonym | derived |
 |---|---|---|
 | 关系 | 语义等价 | 共现指示 |
-| 在代码里出现的频率 | 低 | **高** |
-| 单独命中的可信度 | 高 | **低**（`cache` 可能跟性能无关） |
-| 作用 | 提高召回，不太伤精度 | **大幅提高召回，明显伤精度** |
+| 代码里出现频率 | 低 | **高** |
+| 单独命中可信度 | 高 | **低** |
+| 效果 | 提召回，不太伤精度 | **大幅提召回，明显伤精度** |
 
-所以 derived 词**必须配合别的条件用**——要么和同单元的其它词一起加权，
-要么靠 `hop` 的图约束把它锚住，要么最后交给 `intent` 复核。
-单靠一个 derived 词就下结论，噪音会淹没结果。
+所以 derived 词**不能单独下结论**——要么和同单元其它信号合成，
+要么靠 `hop` 的图约束锚住，要么交给 `intent` 复核。
 
-这也解释了为什么 `Term` 要带 `weight` 和 `source`：
-它们不只是给人看的注释，是排序和阈值判断的输入。
-
-### 派生怎么做
-
-编译期由 LLM 完成，输入是单元名 + 原始查询上下文，输出是带来源和理由的词表：
+派生产物带来源与理由：
 
 ```json
 {
   "unit": "performance",
-  "intent": "和性能表现有关的代码",
+  "concept": "代码在优化或影响性能表现",
   "terms": [
-    {"value": "performance", "source": "literal",  "weight": 1.0},
-    {"value": "perf",        "source": "synonym",  "weight": 0.9},
-    {"value": "latency",     "source": "synonym",  "weight": 0.8},
-    {"value": "buffer",      "source": "derived",  "weight": 0.5,
+    {"value": "performance", "source": "literal", "weight": 1.0},
+    {"value": "latency",     "source": "synonym", "weight": 0.8},
+    {"value": "buffer",      "source": "derived", "weight": 0.5,
      "reason": "缓冲是减少 IO 次数的常见手段"},
-    {"value": "async",       "source": "derived",  "weight": 0.5,
-     "reason": "异步化是常见的性能手段"},
-    {"value": "batch",       "source": "derived",  "weight": 0.4,
-     "reason": "批处理减少单次开销"}
+    {"value": "async",       "source": "derived", "weight": 0.5,
+     "reason": "异步化是常见性能手段"}
   ]
 }
 ```
 
-`reason` 不是装饰。它有两个实际用途：结果不对时能看出是哪个联想跑偏了；
-以及人工审查词表时能快速判断该不该删。
+`reason` 不是装饰：结果跑偏时能看出是哪个联想的锅，人工审词表时能快速判断该不该删。
 
-### 派生要不要看代码库
+### 用项目语料再扩一轮
 
-上面的派生是**语料无关**的——只靠通用知识。还可以再走一步：
-拿单元的词去项目词表里找共现词。
+上面是**语料无关**的派生。还可以拿这些词去项目词表找共现词：
 
 ```
-"buffer" 在本项目里常和 "flush"、"sink"、"drain" 一起出现
-   → 把这三个也加进 performance 单元
+"buffer" 在本项目里常与 "flush"、"sink"、"drain" 同现
+   → 加进 performance 单元
 ```
 
-这一步能显著提高召回，因为它用的是**这个项目自己的命名习惯**。
-项目词表和共现数据当前实现里已经有了（`term_project_vocab.json`、
-`enhanced_call_chain_corpus.json`、ICF 通道），可以直接接。
+用的是**这个项目自己的命名习惯**，召回收益明显。代价是编译不再纯粹
+（依赖索引）。建议做成**可选的第二阶段**。
 
-代价是引入了对索引的依赖，编译不再纯粹。**建议做成可选的第二阶段**：
-先出语料无关的词表，需要时再用项目语料扩一轮。
+## 单元的产出是片段
 
-## 匹配到哪些字段
+```python
+perf: Frag = q.unit("performance", satisfiers=[...])
+```
 
-一个词可以在多个位置命中，可信度不同：
+单元求值后就是一个 Frag（只有节点，没有边），每个节点的证据里记着
+它被哪个 signal、以哪个 detail 命中，以及合成后的分数。
 
-| 字段 | 说明 | 相对权重 |
-|---|---|---|
-| `name` | 标识符名 | 最高 |
-| `signature` | 签名（含参数名、类型） | 高 |
-| `container` | 所属类 / 包 | 中 |
-| `doc` | 文档注释 | 中 |
-| `body` | 函数体文本 | 低，噪音大 |
-
-`match` 默认匹配 `name`，其余靠参数打开。这个默认值是有意的：
-`body` 匹配几乎总能命中，但几乎总是噪音。
+这让单元可以直接参与片段代数（`io & disk`）和图算子（`hop(io, disk)`），
+不需要额外的转换。
 
 ## 分词与缩写扩展
 
-代码标识符不是自然语言，`flushBuffer` 要先拆成 `flush` + `buffer` 才能匹配。
-当前实现的 `CodeTokenizer`（驼峰 + sentencepiece）和 `AbbreviationGenerator`
-（前缀 / 辅音骨架 / 子序列）解决的正是这个问题，直接复用。
+代码标识符不是自然语言：`flushBuffer` 要先拆成 `flush` + `buffer`。
+这是 `lexical` satisfier 的底层能力，方向有两个：
 
-方向上有个区别值得注意：
+- **分词**：`flushBuffer` → `flush buffer`
+- **缩写扩展**：查询词 `buffer` → 代码里可能的写法 `buf`、`bfr`
 
-- **缩写扩展**是把查询词展开成代码里可能的写法：`buffer` → `buf`、`bfr`
-- **分词**是把代码标识符拆成词：`flushBuffer` → `flush buffer`
-
-两者是同一件事的两个方向，实现上通过倒排索引（`标识符 → 缩写子词`）连起来。
-新设计不改这一层，只是把它的产物按单元组织。
+两者是同一件事的两个方向，通过倒排索引（`标识符 → 子词/缩写`）连起来。
+设计上不改这一层，只是把产物按单元组织。
 
 下一篇：[05 算子](05-operators.md)。

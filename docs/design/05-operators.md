@@ -2,73 +2,77 @@
 
 ## 全表
 
+所有算子的类型都是 `Frag -> Frag`（[03](03-data-model.md)）。**没有类型转换，
+因此可以任意串联。**
+
 | 算子 | 签名 | 代价 | 说明 |
 |---|---|---|---|
 | **取数** | | | |
-| `match` | `(pattern, field=, types=) -> ElementSet` | 低 | 正则匹配，产生候选 |
-| `all_of` | `(types=, file=) -> ElementSet` | 低 | 全集，图优先的查询用它起手 |
+| `unit` | `(name, concept, satisfiers) -> Frag` | 低 | 求值一个查询单元，多信号合成 |
+| `lexical` `annotation` `structural` `modifier` | satisfier | 低 | 单元的命中方式（[04](04-query-unit.md)） |
+| `universe` | `(kind=, file=) -> Frag` | 低 | 全集。图优先的查询用它起手 |
 | **图** | | | |
-| `hop` | `(src, dst, edge=, dir=, len=) -> PathSet` | 中 | 两集合之间满足图约束的路径 |
-| `endpoints` | `(paths, side) -> ElementSet` | 低 | 路径集回到元素集 |
-| `nodes` | `(paths) -> ElementSet` | 低 | 含中间节点 |
-| `expand` | `(set, radius, dir=) -> ElementSet` | 中 | 邻域扩展，补上下文 |
-| `degree` | `(set, in_=, out=) -> ElementSet` | 低 | 按出入度筛（entry_point / leaf / isolate） |
+| `hop` | `(src, dst, edge=, dir=, len=, via=, avoid=) -> Frag` | 中 | 两片段之间满足图约束的路径 |
+| `reach` | `(src, edge=, dir=, len=) -> Frag` | 中 | 单向可达，无目标 |
+| `degree` | `(f, in_=, out=, edge=) -> Frag` | 低 | 按出入度筛 |
+| `neighbors` | `(f, radius=, edge=) -> Frag` | 中 | 邻域扩展，补上下文 |
 | **结构** | | | |
-| `contains` | `(outer, inner) -> ElementSet` | 低 | 包含关系（类含方法、文件含类） |
-| `within` | `(inner, outer) -> ElementSet` | 低 | `contains` 的反向 |
-| `of_type` | `(set, *types) -> ElementSet` | 低 | 按元素类型筛 |
-| `in_file` | `(set, pattern) -> ElementSet` | 低 | 按路径筛 |
+| `contains` / `within` | `(a, b) -> Frag` | 低 | 结构包含，非调用 |
+| `of_kind` | `(f, *kinds) -> Frag` | 低 | 按元素种类筛 |
+| `in_file` | `(f, pattern) -> Frag` | 低 | 按路径筛 |
+| `has_modifier` | `(f, *mods) -> Frag` | 低 | static / async / abstract |
 | **语义** | | | |
-| `intent` | `(set, description) -> ElementSet` | **高** | 语义判定，会调 LLM |
-| `similar` | `(set, text, top=) -> ElementSet` | 中 | embedding 相似度筛/排 |
-| **集合** | | | |
-| `&` `\|` `-` | `(ElementSet, ElementSet) -> ElementSet` | 低 | 交并差 |
-| `rank` | `(set, by=, top=) -> ElementSet` | 低 | 排序取前 N |
+| `intent` | `(f, concept) -> Frag` | **高** | 语义判定，调 LLM |
+| `similar` | `(f, text, top=) -> Frag` | 中 | embedding 相似度 |
+| **片段代数** | | | |
+| `&` `\|` `-` | `(Frag, Frag) -> Frag` | 低 | 交并差 |
+| `rank` | `(f, by=, top=) -> Frag` | 低 | 排序取前 N |
+| `roots` `leaves` `only_nodes` | `(f) -> Frag` | 低 | 投影 |
 
-代价一列是编排时的依据：**贵的算子应该作用在尽量小的集合上**，
-所以 `intent` 通常排在最后。
+代价一列是编排的依据：**贵的算子作用在尽量小的片段上**，所以 `intent` 通常最后。
 
 ---
 
 ## 取数
 
-### `match`
+### `unit`
 
 ```python
-def match(
-    pattern: str,
-    *,
-    field: str | Sequence[str] = "name",   # name | signature | container | doc | body
-    types: Sequence[str] | None = None,    # 限定元素类型
-    unit: str | None = None,               # 归属的 query unit
-) -> ElementSet
+def unit(name: str, *, concept: str, satisfiers: Sequence[Satisfier],
+         combine: str = "noisy_or") -> Frag
 ```
 
-接收正则，返回元素集。**这是唯一从无到有产生候选的词法入口。**
-
-- 匹配前标识符已经过分词与缩写扩展（[04](04-query-unit.md)），
-  所以 `flushBuffer` 能被 `\bbuffer\b` 命中。
-- `field` 默认 `name`。开 `body` 要谨慎，它几乎总能命中。
-- 每个命中都往证据里追加一条 `UnitHit`，记下 unit、term、field、位置。
+求值一个查询单元，返回命中它的片段（只有节点）。多信号合成见
+[04](04-query-unit.md)。
 
 ```python
-io = match(r"\b(io|input|output|read|write|stream|flush)\w*", unit="io")
+perf = q.unit("performance", concept="代码在优化或影响性能表现", satisfiers=[
+    lexical(["buffer", "async", "cache", "batch", "pool"], weight=0.5),
+    annotation(r"@(Async|Cacheable)", weight=0.9),
+    structural(package=r".*\.(cache|pool|buffer)\..*", weight=0.7),
+])
 ```
 
-### `all_of`
+**这是词法进入系统的唯一入口。** 没有裸的 `match` 算子——
+词法匹配是 `lexical` satisfier，必须挂在某个单元下。
+
+这个限制是刻意的：脱离单元的关键词命中没法解释（「它为什么在结果里」
+答不上来），也没法参与后续的图约束。
+
+### `universe`
 
 ```python
-def all_of(*, types: Sequence[str] | None = None, file: str | None = None) -> ElementSet
+def universe(*, kind: Sequence[str] | None = None, file: str | None = None) -> Frag
 ```
 
-不做词法匹配，直接取全集（可按类型/路径预筛）。
+不做匹配，直接取全集（可按种类/路径预筛）。
 
-存在的理由：**有些查询根本没有有意义的关键词**。
-「哪些函数被 `TokenManager.refresh` 调用」——这里没有词可匹配，
-起手就该是图。当前实现表达不了这种查询，因为管线强制先跑 surface。
+存在的理由：**有些查询根本没有关键词。** 「哪些方法被 `TokenManager.refresh`
+调用」——没有词可匹配，起手就该是图。
 
 ```python
-callers = endpoints(hop(all_of(types=["method"]), refresh, edge="calls", len=1), "source")
+refresh = q.unit("target", concept="令牌刷新", satisfiers=[lexical(["refresh"])])
+callers = hop(universe(kind=["method"]), refresh, edge="calls", len=1).roots()
 ```
 
 ---
@@ -79,85 +83,73 @@ callers = endpoints(hop(all_of(types=["method"]), refresh, edge="calls", len=1),
 
 ```python
 def hop(
-    src: ElementSet,
-    dst: ElementSet,
+    src: Frag,
+    dst: Frag,
     *,
-    edge: str | Sequence[str] = "calls",       # calls | implements | contains | imports
-    dir: str = "forward",                      # forward | backward | any
-    len: int | tuple[int, int] = (1, 3),       # 跳数，闭区间
-    via: ElementSet | None = None,             # 路径必须经过
-    avoid: ElementSet | None = None,           # 路径不得经过
-    max_paths: int | None = 10_000,            # 防爆
-) -> PathSet
+    edge: str | Sequence[str] = "calls",
+    dir: str = "forward",                  # forward | backward | any
+    len: int | tuple[int, int] = (1, 3),   # 跳数，闭区间
+    via: Frag | None = None,               # 必须经过
+    avoid: Frag | None = None,             # 不得经过
+    min_confidence: float = 0.0,           # 边的置信度门槛
+    max_paths: int | None = 10_000,
+) -> Frag
 ```
 
-**两个元素集之间，满足图约束的所有路径。** 整套设计的核心算子。
+**两个片段之间满足图约束的路径。整套设计的核心算子。**
 
-它的作用不是过滤，是**把分散在多处的语义连成一个整体**（[02](02-overview.md)
-里论证过为什么必须如此）。
+它不是过滤器，是**把分散在多处的语义连成一个整体**（[02](02-overview.md)）。
+返回的 Frag 含路径上的全部节点、边，以及路径见证。
 
 ```python
-paths = hop(disk_io, perf, edge="calls", len=(1, 3))
+f = hop(disk_io, perf, edge="calls", len=(1, 3), avoid=q.tests)
 ```
 
-几个设计点：
+设计点：
 
-- **`len` 是区间不是上限。** `len=(2, 2)` 表示恰好两跳——
-  「间接调用而非直接调用」是真实的查询意图。
-- **`dir="any"` 走无向。** 「这两块代码有没有关系」不关心方向。
-  当前 `undirected_call_pairs` 已经在做这件事。
-- **`avoid` 的典型用途是排除测试代码**，让路径落在生产代码里。
-- **`max_paths` 必须有默认值。** 路径数随跳数指数增长，没有上限的话
-  三跳就能打爆内存。截断时要 `log` 出来，不能静默——
-  静默截断会让人误以为「就这么多结果」。
+- **`len` 是区间不是上限。** `len=(2, 2)` 表示恰好两跳——「间接调用而非直接调用」
+  是真实意图。
+- **`edge` 可以给多种。** `edge=["calls", "flows_to"]` 表示「调用或数据流可达」。
+- **`dir="any"` 走无向**：「这两块有没有关系」不关心方向。
+- **`min_confidence`** 用来排除动态分派、反射这类低置信边。
+- **`max_paths` 必须有默认值且截断要 log。** 路径数随跳数指数增长；
+  静默截断会让人以为「结果就这么多」。
 
-> 当前 `RelationGraphStore.reachable()` 返回可达元素集，遍历时丢掉了路径。
-> 支持 `hop` 需要改成保留前驱链，见 [07](07-mapping-to-current.md)。
-
-### `endpoints` / `nodes`
+### `reach`
 
 ```python
-def endpoints(paths: PathSet, side: str = "source") -> ElementSet   # source | target | both
-def nodes(paths: PathSet) -> ElementSet                             # 含中间节点
+def reach(src: Frag, *, edge="calls", dir="forward", len=(1, 3)) -> Frag
 ```
 
-路径集回到元素集的**唯一通道**。
-
-`nodes` 单列是因为中间节点常常才是答案：`io → perf` 路径上那个
-`AsyncWriter.submit`，往往比两端更值得看。
-
-### `expand`
-
-```python
-def expand(set_: ElementSet, radius: int = 1, *, dir: str = "any",
-           edge: str = "calls") -> ElementSet
-```
-
-邻域扩展。和 `hop` 的区别：
-
-- `hop` 有**目标集**，是约束，回答「A 和 B 有没有关系」
-- `expand` **没有目标**，是补全，回答「A 周围还有什么」
-
-用途是给结果补上下文——单看一个函数往往看不懂，把它的直接调用方和被调用方
-带上就清楚了。对应 `semql-report.md` 里的 Bundle 概念。
+无目标的可达，回答「从这里出发能到哪」。与 `hop` 的区别是没有 `dst`
+——它在探索，不在验证约束。
 
 ### `degree`
 
 ```python
-def degree(set_: ElementSet, *, in_: int | tuple | None = None,
-           out: int | tuple | None = None) -> ElementSet
+def degree(f: Frag, *, in_=None, out=None, edge: str = "calls") -> Frag
 ```
 
-按调用图出入度筛。当前实现里的三个图角色是它的特例：
+按出入度筛。三个常见图角色是它的特例：
 
 ```python
-entry_points = degree(s, in_=0, out=(1, None))    # 无人调用，但调用别人
-leaves       = degree(s, in_=(1, None), out=0)
-isolates     = degree(s, in_=0, out=0)
+entry_points = degree(f, in_=0, out=(1, None))
+leaves       = degree(f, in_=(1, None), out=0)
+hot          = degree(f, in_=(20, None))          # 被调用超过 20 次
 ```
 
-做成通用的 `degree` 而不是三个命名角色，是因为「被调用超过 20 次的函数」
-（热点）这类条件同样有用，没必要为每种情况新增一个算子。
+做成通用谓词而非三个命名角色，是因为「热点」这类条件同样有用，
+没必要每种情况新增一个算子。**`edge` 参数让它能问「被多少个类实现」
+（`edge="implements"`）**，不只是调用度。
+
+### `neighbors`
+
+```python
+def neighbors(f: Frag, radius: int = 1, *, edge="calls", dir="any") -> Frag
+```
+
+邻域扩展，给结果补上下文——单看一个函数常看不懂，带上直接调用方和被调用方
+就清楚了。与 `hop` 的区别：`hop` 有目标（约束），`neighbors` 没有（补全）。
 
 ---
 
@@ -166,28 +158,28 @@ isolates     = degree(s, in_=0, out=0)
 ### `contains` / `within`
 
 ```python
-def contains(outer: ElementSet, inner: ElementSet) -> ElementSet   # 返回 outer 的子集
-def within(inner: ElementSet, outer: ElementSet) -> ElementSet     # 返回 inner 的子集
+def contains(outer: Frag, inner: Frag) -> Frag   # 返回 outer 的子集
+def within(inner: Frag, outer: Frag) -> Frag     # 返回 inner 的子集
 ```
 
-**结构包含，不是调用关系**——类含方法、文件含类、包含文件。
-它走的是 `container` / `file` / 行号区间，不是 `code_edges`。
+**结构包含，不是调用**——类含方法、文件含类、包含文件。走 `contains` 边。
 
-单列出来是因为它和 `hop` 语义完全不同，混在一起会让脚本难读：
+单列是因为它与 `hop` 语义完全不同，混在一起脚本会难读：
 
 ```python
-# 含有缓冲相关方法的类
-buffer_classes = contains(of_type(all_of(), "class"), perf)
+buffer_classes = contains(universe(kind=["class"]), perf)   # 含性能相关方法的类
 ```
 
-### `of_type` / `in_file`
+### `of_kind` / `in_file` / `has_modifier`
 
 ```python
-def of_type(set_: ElementSet, *types: str) -> ElementSet
-def in_file(set_: ElementSet, pattern: str) -> ElementSet
+def of_kind(f: Frag, *kinds: str) -> Frag
+def in_file(f: Frag, pattern: str) -> Frag
+def has_modifier(f: Frag, *mods: str) -> Frag     # async / static / abstract ...
 ```
 
-属性过滤。`of_type` 对应当前的 `type_filter`。
+属性过滤。`has_modifier` 是相对初稿新增的——「异步的写盘方法」里
+`async` 是语言级事实，比任何关键词都准，不该靠正则从签名里抠。
 
 ---
 
@@ -196,86 +188,65 @@ def in_file(set_: ElementSet, pattern: str) -> ElementSet
 ### `intent`
 
 ```python
-def intent(
-    set_: ElementSet,
-    description: str,
-    *,
-    mode: str = "judge",      # judge | rank
-    threshold: float = 0.5,
-    batch_size: int = 5,
-) -> ElementSet
+def intent(f: Frag, concept: str, *, mode="judge", threshold=0.5,
+           batch_size=5, fallback="similar") -> Frag
 ```
 
-**接收一个集合，返回其中满足某个意图的子集。** 执行期唯一会调 LLM 的算子，
-也是最贵的一个。
+**返回片段中满足某个意图的部分。** 执行期唯一调 LLM 的算子，也是最贵的。
 
 ```python
-answer = intent(candidates, "这段代码影响磁盘 IO 的性能表现")
+answer = intent(f.roots(), "这段代码影响磁盘 IO 的性能表现")
 ```
 
-三条使用纪律：
+三条纪律：
 
-1. **放在最后，作用在最小的集合上。** 编排时如果 `intent` 前面还有便宜的
-   约束没用上，那是编排错了。
-2. **判定结果必须进证据。** `verdict` + `reason` 都要留，
-   否则用户没法判断该不该信。
-3. **要能降级。** LLM 不可用时应退化成 `similar`（embedding 打分）
-   或直接放行，而不是让整条查询失败。
-
-当前 `filters/llm_judge_filter.py` 就是它的实现原型（批量、结构化返回、
-kept/discarded/uncertain 三分），可以直接复用。
+1. **放最后，作用在最小片段上。** 如果它前面还有没用上的便宜约束，是编排错了。
+2. **判定必须进证据**（verdict + reason），否则用户无从判断该不该信。
+3. **必须能降级**（`fallback`）。LLM 不可用时退化成 `similar` 或放行，
+   而不是让整条查询失败。
 
 ### `similar`
 
 ```python
-def similar(set_: ElementSet, text: str, *, top: int | None = None,
-            threshold: float | None = None) -> ElementSet
+def similar(f: Frag, text: str, *, top=None, threshold=None) -> Frag
 ```
 
-Embedding 相似度。比 `intent` 便宜一个数量级，适合做粗筛，
-把集合压到 `intent` 能负担的规模。
-
-当前 `filters/embedding_filter.py` 与 `filters/cluster_pipeline.py` 是它的原型。
-两者的分工（cluster 粗筛 → embedding 细筛 → judge 兜底）在新模型里
-变成脚本里的三行，顺序由编排决定而不是写死。
+Embedding 相似度，比 `intent` 便宜一个数量级。典型用法是把片段压到
+`intent` 负担得起的规模。
 
 ---
 
-## 集合代数
+## 片段代数
 
 ```python
-a & b     # 交
-a | b     # 并
-a - b     # 差
+a & b      # 交：节点交，边保留两端都在的，证据合并
+a | b      # 并
+a - b      # 差
 ```
 
-对应当前 surface executor 的四层集合运算（term OR、group AND(n)、
-condition subtract、跨 condition 合并）。区别是：现在这四层是**写死的执行顺序**，
-新模型里就是脚本里的普通表达式。
-
-### `rank`
+**交集必须合并证据**——一个元素同时满足两边，两边的理由都要留。
+这条最容易漏，漏了就出现「结果里有个元素但说不出为什么」。
 
 ```python
-def rank(set_: ElementSet, *, by: str = "score", top: int | None = None) -> ElementSet
+def rank(f: Frag, *, by: str = "score", top: int | None = None) -> Frag
 ```
 
-排序取前 N。`by` 可以是证据里的任一分数（unit 命中权重之和、embedding 相似度、
-路径长度倒数……）。
+`by` 可以是证据里任一分数：单元命中合成分、embedding 相似度、
+路径长度倒数、路径条数……
 
 ---
 
-## 还需要什么算子？（待定）
+## 待定的算子
 
-以下是想到但没定下来的，见 [08](08-open-questions.md)：
+见 [08](08-open-questions.md)：
 
-- **`dataflow`** —— 定义-使用链上的 hop。现在图里只有 `calls` 边，
-  没有 def-use，做不了。要先扩索引。
-- **`same_file` / `co_change`** —— 「在同一个文件里」「在 git 历史里
-  总是一起改」。后者信号很强（我在整理这个仓库时用共现分析找出过真实的抽象泄漏），
-  但需要接 git 历史。
-- **`text_search`** —— 在函数体全文里搜，而不是标识符。
-  当前 `exact_code_search` 的 `code_line` 模式是雏形。
-- **`negate` 的语义** —— `-` 是集合差，但「不调用任何 IO 函数的性能代码」
-  是路径级的否定，集合差表达不了。
+- **`co_change`** —— 「git 历史里总是一起改」。信号很强，但它是与代码结构
+  **正交**的信息源，塞进 `hop(edge="co_change")` 会让「边」的含义变味。
+  倾向单独做工具，不进 QL。
+- **路径级否定** —— `-` 是片段差。「不经过任何 IO 函数的性能路径」是
+  路径级否定，`avoid` 参数能表达一部分，但「不存在任何一条路径满足 X」
+  这种全称否定还表达不了。
+- **聚合** —— 「调用 IO 最多的那个类」需要按容器分组再排序，
+  现在的算子都是过滤，没有 group-by。
 
 下一篇：[06 脚本与执行](06-script-and-execution.md)。
