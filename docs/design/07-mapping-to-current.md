@@ -74,6 +74,9 @@
 | 词向量 | ⚠️ 单项目**从零训**（d=128, epochs=100, 词表仅 302） | 改全局预训练 + repo 微调（[09](09-grounding.md)） |
 | 全局预训练语料 | ❌ 没有 | 多 repo、与本项目同一套切分与上下文定义 |
 | 元素级向量 | ⚠️ 现在是 term 级 | 需要补元素级 |
+| 倒排表结构 | ❌ posting 存符号对象（2.2 MB / 1718 符号） | 改存 symbol_id（[09](09-grounding.md) 第五节），内核量级差 1 GB vs 11 MB |
+| 索引分域 | ❌ 只索引 `name` | 补 signature / container / doc / annotation |
+| 索引用 ICF | ⚠️ 只有调用链级 | 补符号级 `log(N_symbols/df)` |
 | 统一切分器 | ✅ `srctoolkit.Delimiter.split_camel`（底层 Ronin）已在用 | 补库名保护表 + 复合词超集索引（[09](09-grounding.md)） |
 | 项目缩写词典 | ❌ 现在是运行时**生成**候选再碰语料 | 改为离线**挖掘**并落成可审的表 |
 | 术语扩展表 | ❌ 没有 | 索引保持精确，模糊性放这里 |

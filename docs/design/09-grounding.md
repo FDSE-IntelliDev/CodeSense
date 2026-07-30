@@ -393,16 +393,9 @@ iostat:  默认表 → iostat        换成内核词表 → ios|tat      ✗ 更
 
 ### 兜底：超集索引
 
-上面三段之后仍会有残留错误。**所以不要依赖切分绝对正确**——
-每个标识符按**多种分解形式同时入索引**：
-
-```
-iostat  →  索引为 [iostat]、[io, stat]
-codegen →  索引为 [codegen]、[code, gen]
-```
-
-查询侧同样处理，任一分解对上即命中。倒排索引多几行的代价，
-换掉对切分正确性的硬依赖。
+三段之后仍会有残留错误（`dentry` 就是），**所以不要依赖切分绝对正确**——
+每个标识符按多种分解形式同时入索引，查询侧同样处理，任一分解对上即命中。
+具体形态见[第五节](#超集索引一个标识符发多种形式)。
 
 ### 判定标准是一致性，不是语言学正确
 
@@ -470,54 +463,142 @@ score(surface, canonical) = orth(surface, canonical) · cos(v(surface), v(canoni
 
 ---
 
-## 五、扩展表：查询时纯查表
+## 五、索引
 
-### 两跳扩展，全部预计算
+### 现状的三个问题
 
-```
-第一跳（embedding）:  unit concept  →  语义邻近的规范词
-    performance → [cache 0.81, buffer 0.76, async 0.74, flush 0.71, pool 0.68]
+| 问题 | 实测 | 后果 |
+|---|---|---|
+| **posting 存符号对象而非 ID** | `ngramed_symbol.json` 449 term / 3707 posting = **2197 KB**，而全部 1718 个符号才 750 KB | 外推到内核量级（80 万符号）是 **1 GB vs 11 MB** |
+| **只索引 `name` 字段** | 符号里有 `signature`/`doc`/`container`，都没进索引 | `structural`/`semantic` satisfier 无处落地 |
+| **ICF 量纲不对** | 现有 `icf_term_embedding.py` 用 `log(154686 调用链 / df_chains)` | 索引打分需要的是 `log(1718 符号 / df_symbols)`，两者不可混用 |
 
-第二跳（lexical）:    规范词  →  项目里的表层写法
-    buffer → [buf 0.91, bfr 0.72]
-    config → [cfg 0.88]
-```
-
-查询时：查表 → 对每个表层写法做**精确**倒排查询 → 分数 = 单元权重 × 跳一 × 跳二。
-
-**没有 LLM，没有向量计算，两次哈希查表。**
-
-第一跳的产物就是 [04](04-query-unit.md) 里 `derived` 那类词——
-原先设想由 LLM 生成，现在由微调后的 embedding 生成。而且它**比 LLM 更好**：
-LLM 给的是通用联想，微调后的 embedding 给的是**这个项目里真实共现**的词
-（`buffer` 在本项目常与 `flush`、`sink` 同现）。
-
-### 索引保持精确，模糊性放进扩展表
-
-不要把倒排索引本身改成相似度索引：
-
-1. 索引保持精确，不改数据结构，不引入 ANN 近似误差
-2. 可解释——能说清「命中 `buf`，因为它是你查询词 `buffer` 的缩写，0.91」
-3. 可审计——扩展表能 dump 出来给人看
-4. 调阈值不用重建索引
-
-代价是要离线算。但词表几百量级，全量比较也就几十万次，秒级完成。
-
-### 阈值按 ICF 自适应
+第一个是唯一会致命的：
 
 ```
-threshold(t) = base + k · (1 − norm_icf(t))
+              符号数      存对象      存 ID
+youlai-boot     1718        2 MB     0.03 MB
+中型项目       50,000       62 MB      0.7 MB
+内核量级      800,000      999 MB     11.4 MB
 ```
 
-- 高 ICF 的稀有词（`swap`、`sector`）：阈值放低，多扩几个
-- 低 ICF 的泛词（`get`、`data`、`by`）：阈值拉高，基本不扩
+### Schema：四个产物，职责分离
 
-实测 `get` 出现 207 次——什么都和它「相似」，扩展只会制造噪音。
-省事的做法：**低 ICF 的词直接不进扩展表**。
+```
+symbols     symbol_id → {name, type, file, range, signature, doc, container, ...}
+                        ← 符号对象的唯一存放处，其余产物只引用 id
 
-ICF 计算直接复用现有的 `icf_term_embedding.py`。
+postings    term → [(symbol_id, field, tf), ...]
+                        ← 只存 id，不存对象
 
----
+terms       term → {df, icf, source}
+                        ← df/icf 按**符号**算，不是按调用链
+                        ← source: ronin | second_pass | override | whole
+
+expansion   canonical → [(project_term, score, reason), ...]
+                        ← 离线建，见第六、七节；索引本身保持精确
+```
+
+**四者分离的理由**：`expansion` 会随 LLM/embedding 迭代频繁重建，
+`postings` 只随代码变化重建，`symbols` 是解析产物。绑在一起就得整体重建。
+
+### 超集索引：一个标识符发多种形式
+
+第三节的三段式切分不保证正确，所以**不依赖它正确**——
+每个标识符把所有分解形式都入索引，并记来源：
+
+```
+符号 iostat_show
+  ├ Ronin           → iostat, show          source=ronin
+  ├ 二次切分         → io, stat              source=second_pass
+  └ 整体            → iostat_show           source=whole
+
+postings 里出现 5 个 term，其中 io/stat 的权重打折（来源不如 ronin 可靠）
+```
+
+查询侧同样发多种形式，**任一分解对上即命中**。
+代价是 posting 数量增加约 1.5~2 倍——按上表，内核量级仍在 20 MB 内。
+
+> 这比「保证两边切得一致」是更弱的要求，因此更稳健：
+> 切分器换版本、词表更新，都不会让旧查询突然失配。
+
+### 分域：命中在哪个字段不一样重
+
+`field` 不是可选字段，它是 `structural` 和 `semantic` satisfier 的落地点：
+
+| field | 来自 | 初始权重 | 说明 |
+|---|---|---|---|
+| `name` | 符号名 | **1.0** | 最强证据 |
+| `signature` | 参数/返回类型 | 0.6 | `Buffer` 作参数类型也算相关 |
+| `container` | 所属类/包 | 0.5 | **`structural` satisfier 靠它** |
+| `doc` | 注释 | 0.3 | 召回高、精度低 |
+| `annotation` | 注解名（切分后） | **0.9** | 见第八节；当前索引里还没有 |
+
+权重是初值，按 [08](08-open-questions.md) 的评测集调。
+
+### 查询时：两次查表 + 一次合并
+
+```python
+def eval_unit(unit) -> Frag:
+    acc = defaultdict(float); ev = defaultdict(list)
+    for canon, w1 in expansion[unit.name]:          # 第一跳（LLM 离线产物）
+        for term, w2, reason in expansion[canon]:   # 第二跳（向量 + lexical）
+            t = terms.get(term)
+            if not t or t.icf < ICF_FLOOR:          # get/data/name 直接跳过
+                continue
+            for sym_id, field, tf in postings[term]:
+                s = unit.weight * w1 * w2 * FIELD_W[field] * t.icf
+                acc[sym_id] += s
+                ev[sym_id].append((term, canon, field, reason, s))
+    return Frag(nodes=acc, evidence=ev)
+```
+
+**没有 LLM，没有向量计算，两层哈希查表加一次累加。**
+`evidence` 逐条记下「命中 `buf`，因为它是你查询词 `buffer` 的缩写，
+出现在 `name` 字段」——这是 [03](03-data-model.md) 要求的证据链。
+
+### 打分：为什么是乘不是加
+
+```
+score = 单元权重 × 跳一相似度 × 跳二映射分 × 字段权重 × ICF
+```
+
+乘法的含义是**每一跳都是一次打折**：经过语义联想（0.76）+ 缩写映射（0.91）
++ 命中在 doc 而非 name（0.3）之后，这条证据只值 0.21——
+它**应该**远低于直接命中 `name` 的那条。加法做不到这个衰减。
+
+同一符号被多个 term 命中时用**累加**（不同证据互相印证），
+但单元内部的多信号合成仍按 [04](04-query-unit.md) 的 `combine`（默认 `noisy_or`）走。
+
+### ICF 用符号级，不是调用链级
+
+```
+term       df(符号)   icf = log(1718/df)
+get           207        2.12      ← 12% 的符号都含它
+user          125        2.62
+token          64        3.29
+login          20        4.45      ← 有区分度
+captcha        26        4.19
+```
+
+**`ICF_FLOOR` 直接卡在这里**：`get`/`id`/`name` 这类 icf < 2.5 的词
+不进扩展表也不参与打分，只作为精确匹配时的辅助条件。
+现有的 `icf_term_embedding.py` 算的是调用链级 ICF，两者量纲不同，
+**索引打分必须用符号级的，不能复用**。
+
+### 增量重建
+
+四个产物的重建触发条件不同，这决定了它们必须分开存：
+
+| 产物 | 何时重建 | 代价 |
+|---|---|---|
+| `symbols` | 代码变化 | 增量：只重解析变动文件 |
+| `postings` | `symbols` 变化 或 切分器/词表更新 | 增量：按 symbol_id 删旧插新 |
+| `terms` | `postings` 变化 | 全量重算 df/icf，但很便宜 |
+| `expansion` | LLM 提示词、向量模型、阈值变化 | 全量，但与代码无关，可离线慢慢跑 |
+
+**`expansion` 与代码解耦是关键**——调阈值、换 embedding 不需要碰索引，
+这也是第七节坚持「索引保持精确、模糊性放扩展表」的实际收益。
 
 ## 六、第一跳搭在已有的那次 LLM 调用上
 
@@ -815,6 +896,14 @@ Q4a/Q4b「权重怎么定」。
 
 8. **索引保持精确，模糊性放进预计算的扩展表。** 可解释、可审计、
    阈值按 ICF 自适应。
+
+9. **索引拆成四个产物：`symbols` / `postings` / `terms` / `expansion`。**
+   现在 posting 里存的是符号对象而非 id——1718 个符号就占 2.2 MB，
+   外推到内核量级是 **1 GB vs 11 MB**。分开还有个实际收益：
+   `expansion` 与代码解耦，调阈值、换 embedding 不必碰索引。
+   另外 posting 必须**分域**（name/signature/container/doc/annotation），
+   否则 `structural` 和 `semantic` satisfier 无处落地；
+   ICF 必须用**符号级** `log(1718/df)`，现有的调用链级 ICF 量纲不同、不能复用。
 
 依赖关系：**分词决定词表，词表决定微调能否对齐，扩展表决定召回上限。**
 三者要一起设计——而分词这一环已经有现成实现，是三者里最省事的。
