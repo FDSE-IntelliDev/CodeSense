@@ -69,8 +69,12 @@ src = [".", "tests", "scripts"]
 # 一个覆盖 70 个文件的 diff，把真正的改动淹掉。所以先把它们排除在格式化之外，
 # 让 `ruff format --check .` 从今天起是绿的，新代码才有个真门禁。
 # 改到哪个老模块，就顺手 `ruff format` 它，并从这里删掉对应路径。
+# 新代码（codesense/ql/**）**不在**豁免名单里 —— 它从第一行起就受格式化门禁约束。
 exclude = [
-    "codesense/*/**",
+    "codesense/codeql/**", "codesense/dsl/**", "codesense/embedding/**",
+    "codesense/executors/**", "codesense/expansion/**", "codesense/filters/**",
+    "codesense/indexing/**", "codesense/parsers/**", "codesense/query/**",
+    "codesense/search/**", "codesense/tokenizer/**", "codesense/utils/**",
     "codesense/__main__.py",
 ]
 
@@ -99,7 +103,8 @@ select = [
 # 现代化，`ruff check --fix --unsafe-fixes` 能一次修完，但会产生一个覆盖全仓库
 # 的 diff——建议单独开一个 PR 做，别和结构调整混在一起。
 [tool.ruff.lint.per-file-ignores]
-"codesense/*/**" = [
+# 只豁免旧子包。codesense/ql/** 刻意**不在**名单里：新代码从第一行起全量遵守规则。
+"codesense/{codeql,dsl,embedding,executors,expansion,filters,indexing,parsers,query,search,tokenizer,utils}/**" = [
     "A002",
     "B006", "B007", "B019", "B020", "B033", "B904", "B905",
     "E401", "E402", "E501",
