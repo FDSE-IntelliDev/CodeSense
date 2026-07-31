@@ -1,12 +1,21 @@
-"""CodeSense —— 把一条自然语言查询编译成一段针对代码库的查询脚本。
+"""CodeSense -- compiling a natural-language query into a query script over
+a codebase.
 
-    自然语言 query  ──编译──▶  QL 脚本（Python）  ──执行──▶  带证据的结果
+    natural-language query  --compile-->  QL script (Python)  --run-->  results with evidence
 
-实现全部在 `codesense.ql`：脚本由若干基本查询算子编排，
-所有算子都是 ``Frag -> Frag``。设计见 ``docs/design/``。
+The implementation lives entirely in `codesense.ql`: a script orchestrates a
+small set of query operators, all of them ``Frag -> Frag``. See
+``docs/design/``.
 
-重写前那套 SemCon → SemQL → 三执行器的实现已归档到仓库根目录的
-``legacy/``，不参与构建、lint 与测试。
+The pre-rewrite SemCon to SemQL to three-executor implementation is archived
+under ``legacy/`` at the repository root and takes no part in the build,
+linting or tests.
 """
 
 __version__ = "0.2.0.dev0"
+
+from codesense.index import Index, IndexMeta
+from codesense.project import Project
+from codesense.search import Hit, SearchResult, search
+
+__all__ = ["Hit", "Index", "IndexMeta", "Project", "SearchResult", "search"]
