@@ -215,23 +215,35 @@ class TestQuery4Algebra:
 
 
 class TestFindingIcfIsRelativeToTheIndex:
-    """发现：ICF 下限对索引组成敏感，临界词会翻转。
+    """发现：ICF 对索引组成敏感，同一个词在不同索引里强弱不同。
 
-    `user` 在全项目是 125/1718 → icf_ratio 0.352（刚过 0.34 的线），
-    在这个 375 符号的样本里是 65/375 → 0.296（刚不过）。
+    `user` 在全项目是 125/1718 → icf_ratio 0.352，
+    在这个 375 符号的样本里是 65/375 → 0.296。
 
-    **后果**：不能在子集索引上沿用全量索引标定的阈值，
-    也不能假设「常见领域词一定能查到」。这条要写进 09 章。
+    起初这个差异会让词被**静默丢掉**；benchmark 在 netty 上把这个设计
+    问题放大到无法忽视（`buf` 占 15.4% 被丢，而查询问的就是缓冲区），
+    于是改成：下限只管扩展词，查询词一律保留但按 ICF 降权。
     """
 
-    def test_领域高频词被挡掉(self, ctx: EvalContext) -> None:
-        assert not eval_unit(_unit("user", "user"), ctx)
+    def test_领域高频词得分远低于稀有词(self, ctx: EvalContext) -> None:
+        """它仍然能查到（下限只管扩展词），但排序上被压得很低。"""
+        common = eval_unit(_unit("user", "user"), ctx)
+        rare = eval_unit(_unit("token", "token"), ctx)
+        assert common, "明确要求的词不该被丢掉"
+        best_common = max(common.evidence_for(s).scores["user"] for s in common.nodes)
+        best_rare = max(rare.evidence_for(s).scores["token"] for s in rare.nodes)
+        assert best_common < best_rare
 
-    def test_同一个词降低阈值后就能查到(self, ctx: EvalContext) -> None:
+    def test_扩展词仍受下限约束(self, ctx: EvalContext) -> None:
+        """否则一次噪音扩展就能把泛词灌进结果。"""
         from dataclasses import replace
 
-        loose = replace(ctx, icf_floor=0.2)
-        assert eval_unit(_unit("user", "user"), loose)
+        from codesense.ql.store import Expansion, InMemoryExpansionTable
+
+        noisy = replace(
+            ctx, expansion=InMemoryExpansionTable({"人": [Expansion("user", 0.9, "prefix")]})
+        )
+        assert not eval_unit(_unit("人", "人"), noisy)
 
 
 class TestQuery6Intent:

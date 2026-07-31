@@ -125,10 +125,32 @@ class TestLexicalSatisfier:
         hits = LexicalSatisfier(terms=(Term("buffer"),)).hits("perf", ctx)
         assert "buf←buffer(prefix)" in hits[1][0].detail
 
-    def test_泛词被_icf_下限挡掉(self) -> None:
-        """`get` 在 1718 个符号里占 207 个，什么都"相似"。"""
-        ctx = make_context(postings={"get": [Posting(i, IndexField.NAME) for i in range(207)]})
-        assert LexicalSatisfier(terms=(Term("get"),)).hits("io", ctx) == {}
+    def test_明确要求的泛词是降权而不是排除(self) -> None:
+        """ICF 下限只管扩展词。
+
+        调用方明确挑出来的词不能被静默丢掉——netty 上正是这一点让
+        `buf`（15.4% 的符号都有）被丢，而查询问的就是缓冲区。
+        """
+        ctx = make_context(
+            postings={
+                "get": [Posting(i, IndexField.NAME) for i in range(207)],
+                "login": [Posting(500, IndexField.NAME)],
+            },
+            elements=[make_element(i, f"m{i}") for i in range(600)],
+        )
+        generic = LexicalSatisfier(terms=(Term("get"),)).hits("io", ctx)
+        rare = LexicalSatisfier(terms=(Term("login"),)).hits("io", ctx)
+        assert generic, "明确要求的词不该被丢掉"
+        assert generic[0][0].score < rare[500][0].score, "但它应当被 ICF 降权"
+
+    def test_扩展出来的泛词仍被挡掉(self) -> None:
+        """下限的本意是挡扩展噪音，这条要保住。"""
+        ctx = make_context(
+            postings={"get": [Posting(i, IndexField.NAME) for i in range(207)]},
+            expansion={"fetch": [Expansion("get", 0.9, "prefix")]},
+            elements=[make_element(i, f"m{i}") for i in range(300)],
+        )
+        assert LexicalSatisfier(terms=(Term("fetch"),)).hits("io", ctx) == {}
 
     def test_稀有词不被挡掉(self) -> None:
         ctx = make_context(
@@ -202,13 +224,19 @@ class TestModifierSatisfier:
         )
         assert set(ModifierSatisfier(modifiers=("native",)).hits("perf", ctx)) == {1}
 
-    def test_泛修饰符被_ICF_挡掉(self) -> None:
-        """`public` 几乎所有符号都有，区分度趋零。"""
+    def test_泛修饰符被降权而不是排除(self) -> None:
+        """`public` 几乎所有符号都有，区分度趋零——但明确要求了就该返回。"""
         ctx = make_context(
-            postings={"public": [Posting(i, IndexField.MODIFIER) for i in range(1600)]},
-            elements=[make_element(i, f"m{i}") for i in range(1600)],
+            postings={
+                "public": [Posting(i, IndexField.MODIFIER) for i in range(1600)],
+                "native": [Posting(1, IndexField.MODIFIER)],
+            },
+            elements=[make_element(i, f"m{i}") for i in range(1700)],
         )
-        assert ModifierSatisfier(modifiers=("public",)).hits("u", ctx) == {}
+        common = ModifierSatisfier(modifiers=("public",)).hits("u", ctx)
+        rare = ModifierSatisfier(modifiers=("native",)).hits("u", ctx)
+        assert common
+        assert common[0][0].score < rare[1][0].score
 
     def test_罕见修饰符保留(self) -> None:
         ctx = make_context(postings={"volatile": [Posting(1, IndexField.MODIFIER)]})

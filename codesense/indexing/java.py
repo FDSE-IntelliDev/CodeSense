@@ -32,6 +32,11 @@ _DECLARATIONS: dict[str, str] = {
 
 _ANNOTATION_NODES = frozenset({"marker_annotation", "annotation"})
 
+#: 会成为容器的声明——嵌套在它们里面的东西要带上它们的名字。
+_TYPE_KINDS = frozenset({"class", "interface", "enum", "record", "annotation_type"})
+
+_DOC_PREFIX = "/**"
+
 #: Java 的修饰符关键字。tree-sitter 把它们做成节点类型本身，
 #: 所以「不是注解的 modifiers 子节点」就是修饰符——但仍然显式列出来，
 #: 免得语法树版本变化时静默混进别的东西。
@@ -57,11 +62,15 @@ JAVA_MODIFIERS = frozenset(
 
 @dataclass(frozen=True, slots=True)
 class Declaration:
-    """一处声明，连同它的注解与修饰符。"""
+    """一处声明的全部可索引信息。"""
 
     kind: str
     name: str
     line: int
+    end_line: int = 0
+    container: str = ""
+    signature: str = ""
+    doc: str = ""
     modifiers: frozenset[str] = frozenset()
     annotations: tuple[AnnotationUse, ...] = ()
 
@@ -91,33 +100,39 @@ class JavaDeclarationScanner:
         """只要注解时的便利入口。"""
         return [use for declaration in self.scan(source) for use in declaration.annotations]
 
-    def _walk(self, node: object, data: bytes) -> Iterator[Declaration]:
+    def _walk(self, node: object, data: bytes, container: str = "") -> Iterator[Declaration]:
         kind = _DECLARATIONS.get(node.type)  # type: ignore[attr-defined]
+        inner = container
         if kind is not None:
-            yield self._declaration(node, kind, data)
+            declaration = self._declaration(node, kind, data, container)
+            yield declaration
+            if kind in _TYPE_KINDS and declaration.name:
+                # 嵌套类要带上外层：`Outer.Inner` 而不是光秃秃的 `Inner`
+                inner = f"{container}.{declaration.name}" if container else declaration.name
         for child in node.children:  # type: ignore[attr-defined]
-            yield from self._walk(child, data)
+            yield from self._walk(child, data, inner)
 
-    def _declaration(self, node: object, kind: str, data: bytes) -> Declaration:
+    def _declaration(self, node: object, kind: str, data: bytes, container: str) -> Declaration:
         name = _text(node.child_by_field_name("name"), data) or _declared_name(node, data)  # type: ignore[attr-defined]
-        line = node.start_point[0] + 1  # type: ignore[attr-defined]
-        modifier_node = _child_of_type(node, "modifiers")
-        if modifier_node is None:
-            return Declaration(kind=kind, name=name, line=line)
-
         modifiers: set[str] = set()
         uses: list[AnnotationUse] = []
-        for child in modifier_node.children:  # type: ignore[attr-defined]
-            if child.type in _ANNOTATION_NODES:
-                use = _annotation_use(child, kind, name, data)
-                if use is not None:
-                    uses.append(use)
-            elif child.type in JAVA_MODIFIERS:
-                modifiers.add(child.type)
+        modifier_node = _child_of_type(node, "modifiers")
+        if modifier_node is not None:
+            for child in modifier_node.children:  # type: ignore[attr-defined]
+                if child.type in _ANNOTATION_NODES:
+                    use = _annotation_use(child, kind, name, data)
+                    if use is not None:
+                        uses.append(use)
+                elif child.type in JAVA_MODIFIERS:
+                    modifiers.add(child.type)
         return Declaration(
             kind=kind,
             name=name,
-            line=line,
+            line=node.start_point[0] + 1,  # type: ignore[attr-defined]
+            end_line=node.end_point[0] + 1,  # type: ignore[attr-defined]
+            container=container,
+            signature=_signature(node, kind, data),
+            doc=_javadoc(node, data),
             modifiers=frozenset(modifiers),
             annotations=tuple(uses),
         )
@@ -156,6 +171,38 @@ def _declared_name(node: object, data: bytes) -> str:
     if declarator is None:
         return ""
     return _text(declarator.child_by_field_name("name"), data)  # type: ignore[attr-defined]
+
+
+def _signature(node: object, kind: str, data: bytes) -> str:
+    """方法签名 ``(参数) : 返回类型``；字段则记类型。
+
+    只取签名不取方法体——判定「这段代码在做什么」时签名和文档通常就够，
+    塞进源码只会让下游的 token 成本失控。
+    """
+    if kind in ("method", "constructor"):
+        params = _text(node.child_by_field_name("parameters"), data)  # type: ignore[attr-defined]
+        returns = _text(node.child_by_field_name("type"), data)  # type: ignore[attr-defined]
+        return f"{params} : {returns}" if returns else params
+    if kind in ("field", "parameter"):
+        return _text(node.child_by_field_name("type"), data)  # type: ignore[attr-defined]
+    return ""
+
+
+def _javadoc(node: object, data: bytes) -> str:
+    """紧邻声明之前的 javadoc。
+
+    tree-sitter 把注释放在声明的兄弟节点上，不在声明内部，所以要往前看。
+    非 javadoc 的块注释（`/* ... */`）不算——那通常是被注释掉的代码。
+    """
+    previous = node.prev_sibling  # type: ignore[attr-defined]
+    if previous is None or previous.type != "block_comment":
+        return ""
+    text = _text(previous, data)
+    if not text.startswith(_DOC_PREFIX):
+        return ""
+    body = text[len(_DOC_PREFIX) :].removesuffix("*/")
+    lines = [line.strip().lstrip("*").strip() for line in body.splitlines()]
+    return " ".join(line for line in lines if line and not line.startswith("@"))
 
 
 def _text(node: object | None, data: bytes) -> str:
