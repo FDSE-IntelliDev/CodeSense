@@ -87,14 +87,18 @@ def hop(
     dst: Frag,
     *,
     edge: str | Sequence[str] = "calls",
-    dir: str = "forward",                  # forward | backward | any
-    len: int | tuple[int, int] = (1, 3),   # 跳数，闭区间
+    direction: str = "forward",              # forward | backward | any
+    hops: int | tuple[int, int] = (1, 3),    # 跳数，闭区间
     via: Frag | None = None,               # 必须经过
     avoid: Frag | None = None,             # 不得经过
     min_confidence: float = 0.0,           # 边的置信度门槛
     max_paths: int | None = 10_000,
+    max_degree: int | None = 64,           # hub 限流
 ) -> Frag
 ```
+
+> 参数取名 `hops` / `direction` 而不是 `len` / `dir`：后者遮蔽内置名，
+> 函数体内就用不了 `len()`。
 
 **两个片段之间满足图约束的路径。整套设计的核心算子。**
 
@@ -102,19 +106,19 @@ def hop(
 返回的 Frag 含路径上的全部节点、边，以及路径见证。
 
 ```python
-f = hop(disk_io, perf, edge="calls", len=(1, 3), avoid=q.tests)
+f = hop(disk_io, perf, ctx, edge="calls", hops=(1, 3), avoid=q.tests)
 ```
 
 设计点：
 
-- **`len` 是区间不是上限。** `len=(2, 2)` 表示恰好两跳——「间接调用而非直接调用」
+- **`hops` 是区间不是上限。** `hops=(2, 2)` 表示恰好两跳——「间接调用而非直接调用」
   是真实意图。
 - **`edge` 可以给多种。** `edge=["calls", "flows_to"]` 表示「调用或数据流可达」。
-- **`dir="any"` 走无向**：「这两块有没有关系」不关心方向。
+- **`direction="any"` 走无向**：「这两块有没有关系」不关心方向。
 - **`min_confidence`** 用来排除动态分派、反射这类低置信边。
 - **`max_paths` 必须有默认值且截断要 log。** 路径数随跳数指数增长；
   静默截断会让人以为「结果就这么多」。实测修复后平均度约 4.4，
-  `len=(1,5)` 单向就是 2133 条路径/起点。
+  `hops=(1,5)` 单向就是 2133 条路径/起点。
 
 边从哪来、遍历怎么实现、路径爆炸怎么控制，见 [10 图基座](10-graph.md)。
 **当前实现的图跑不动**——调用解析率 18%、64% 的符号是孤点。
@@ -122,7 +126,7 @@ f = hop(disk_io, perf, edge="calls", len=(1, 3), avoid=q.tests)
 ### `reach`
 
 ```python
-def reach(src: Frag, *, edge="calls", dir="forward", len=(1, 3)) -> Frag
+def reach(src: Frag, ctx, *, edge="calls", direction="forward", hops=(1, 3)) -> Frag
 ```
 
 无目标的可达，回答「从这里出发能到哪」。与 `hop` 的区别是没有 `dst`
