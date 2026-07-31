@@ -1,36 +1,31 @@
-"""索引构建。
+"""Building index artifacts from source.
 
-与 `codesense.ql` 的分工：这里**建**索引产物，那里**读**。
-依赖方向单向——indexing 可以用 ql 的数据类型，ql 不认识 indexing。
+The split against its neighbours:
 
-这一层允许第三方依赖（tree-sitter 等），`codesense.ql` 不允许，
-所以解析类的东西都放这边。
+    codesense.lang        how to *read* a language   (the extension point)
+    codesense.text        how words work             (language-neutral)
+    codesense.indexing    how to *build* artifacts   (this package)
+    codesense.index       what an artifact *is*
+
+The dependency runs one way -- indexing uses lang, text and ql's data types;
+none of them knows indexing exists.
 """
 
 from codesense.indexing.expansion import build_expansion_table
-from codesense.indexing.java import (
-    JAVA_MODIFIERS,
-    Declaration,
-    JavaDeclarationScanner,
-    modifier_terms,
-)
-from codesense.indexing.annotations import AnnotationUse, arg_tokens, posting_terms
-from codesense.indexing.meta_annotations import (
-    META_ANNOTATIONS,
-    expansions_for,
-    meta_expansion_table,
-)
+from codesense.indexing.graph import GraphBuilder, TypeTable
+from codesense.indexing.grounding import GroundingConfig, ground_vocabulary
+from codesense.indexing.pipeline import BuildResult, Stats, build_index
+from codesense.indexing.postings import PostingTable, declaration_terms
 
 __all__ = [
-    "META_ANNOTATIONS",
-    "JAVA_MODIFIERS",
-    "AnnotationUse",
-    "Declaration",
-    "JavaDeclarationScanner",
-    "arg_tokens",
+    "BuildResult",
+    "GraphBuilder",
+    "GroundingConfig",
+    "PostingTable",
+    "Stats",
+    "TypeTable",
     "build_expansion_table",
-    "expansions_for",
-    "modifier_terms",
-    "posting_terms",
-    "meta_expansion_table",
+    "build_index",
+    "declaration_terms",
+    "ground_vocabulary",
 ]

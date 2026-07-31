@@ -1,17 +1,20 @@
-"""元注解：框架自己声明的同义关系。
+"""Meta-annotations: synonymy the frameworks declare themselves.
 
-这是注解相对其它信号的**独有优势**。Spring 里 `@RestController` 就是
-`@Controller` + `@ResponseBody`，`@GetMapping` 就是 `@RequestMapping(GET)`——
-**这层关系是框架在源码里声明的事实，不是估计**，所以进扩展表时分数是 1.0，
-与 `prefix` / `ctx` 那些估计值并列但更硬。
+This is annotations' **unique advantage** over every other signal. In Spring
+`@RestController` simply *is* `@Controller` + `@ResponseBody`, and
+`@GetMapping` *is* `@RequestMapping(GET)` -- **that relation is a fact the
+framework declares in source, not an estimate**, so it enters the expansion
+table at score 1.0, alongside estimates like `prefix` and `ctx` but harder.
 
-三层来源，按成本从低到高（``docs/design/09-grounding.md`` 第八节）：
+Three sources, cheapest first (``docs/design/09-grounding.md``, section 8):
 
-1. 本模块这张硬编码表——常用框架，几十条覆盖绝大多数
-2. 解析项目自己的 ``@interface`` 声明——自定义注解的元注解在源码里
-3. 落回名字切分——不认识的注解走这条
+1. the hardcoded table in this module -- common frameworks, a few dozen
+   entries covering the vast majority
+2. parsing the project's own ``@interface`` declarations -- a custom
+   annotation's meta-annotations are right there in the source
+3. falling back to name splitting -- for annotations nobody recognises
 
-本模块只做第 1 层，纯数据加一点推导，**不做 IO**。
+This module does layer 1 only: pure data plus a little derivation, **no IO**.
 """
 
 from __future__ import annotations
@@ -20,8 +23,9 @@ from collections.abc import Iterator, Mapping
 
 __all__ = ["META_ANNOTATIONS", "expansions_for", "meta_expansion_table"]
 
-#: 注解 → 它由哪些注解组合而成（``@RestController`` 含 ``@Controller``）。
-#: 方向是「具体 → 它蕴含的更一般者」。
+#: Annotation to the annotations it is composed of (``@RestController``
+#: contains ``@Controller``). The direction is specific to the more general
+#: things it implies.
 META_ANNOTATIONS: Mapping[str, tuple[str, ...]] = {
     # Spring MVC
     "@RestController": ("@Controller", "@ResponseBody", "@Component"),
@@ -37,11 +41,11 @@ META_ANNOTATIONS: Mapping[str, tuple[str, ...]] = {
     # Spring Boot
     "@SpringBootApplication": ("@Configuration", "@ComponentScan", "@EnableAutoConfiguration"),
     "@SpringBootTest": ("@ExtendWith",),
-    # 缓存 / 事务 / 调度
+    # caching / transactions / scheduling
     "@Cacheable": ("@Caching",),
     "@CacheEvict": ("@Caching",),
     "@CachePut": ("@Caching",),
-    # 校验
+    # validation
     "@NotNull": ("@Constraint",),
     "@NotBlank": ("@Constraint",),
     "@NotEmpty": ("@Constraint",),
@@ -51,23 +55,25 @@ META_ANNOTATIONS: Mapping[str, tuple[str, ...]] = {
     # JPA
     "@Entity": ("@Table",),
     "@Id": ("@Column",),
-    # 测试
+    # testing
     "@Test": ("@Testable",),
     "@ParameterizedTest": ("@Testable",),
 }
 
-#: 直接声明关系的分数。它是事实，不是估计。
+#: Score for a directly declared relation. It is a fact, not an estimate.
 DIRECT_SCORE = 1.0
 
-#: 传递关系每多一跳的衰减。`@GetMapping` → `@RequestMapping` 是直接的，
-#: `@RestController` → `@Component` 经 `@Controller` 是传递的，稍弱。
+#: Decay per extra hop for transitive relations. `@GetMapping` to
+#: `@RequestMapping` is direct; `@RestController` to `@Component` via
+#: `@Controller` is transitive, and slightly weaker.
 TRANSITIVE_DECAY = 0.8
 
 
 def expansions_for(name: str, *, max_depth: int = 3) -> dict[str, float]:
-    """一个注解蕴含的全部注解及其分数（含传递闭包）。
+    """Every annotation an annotation implies, with scores (transitively).
 
-    ``max_depth`` 防环也防过度传播——超过三跳的蕴含关系实践中没有意义。
+    ``max_depth`` guards against both cycles and over-propagation -- an
+    implication more than three hops out means nothing in practice.
     """
     found: dict[str, float] = {}
     frontier = [(name, DIRECT_SCORE, 0)]
@@ -86,11 +92,12 @@ def expansions_for(name: str, *, max_depth: int = 3) -> dict[str, float]:
 
 
 def meta_expansion_table() -> dict[str, list[tuple[str, float, str]]]:
-    """建成扩展表要的形状：**一般 → 具体**。
+    """Build the shape the expansion table needs: **general to specific**.
 
-    方向要反过来：查询问的是「所有 HTTP 入口」（一般），
-    要展开成 `@GetMapping` / `@PostMapping`（具体）。
-    而 `META_ANNOTATIONS` 记的是具体 → 一般，所以这里做一次反转。
+    The direction has to flip. A query asks about "all HTTP entry points"
+    (general) and must expand to `@GetMapping` / `@PostMapping` (specific),
+    whereas `META_ANNOTATIONS` records specific to general -- so this
+    inverts it once.
     """
     table: dict[str, list[tuple[str, float, str]]] = {}
     for specific in _all_names():

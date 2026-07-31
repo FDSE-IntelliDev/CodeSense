@@ -1,33 +1,43 @@
-"""跑语义检索 benchmark。
+"""Running the semantic retrieval benchmark.
 
     python scripts/run_benchmark.py --index-dir DIR --queries evaluation/benchmark/queries.json \\
         --base-url https://api.openai.com/v1 --model gpt-4o-mini
 
-对每条查询跑三条路径：
+Each query runs down several arms:
 
-    literal    只用查询里的字面词（下限参照）
-    generic    LLM 凭通用知识派生词，**不给它看项目词表**
-    grounded   LLM **从项目词表里挑**，外加注解信号
-    graph      在 grounded 之上用调用图/包含关系给候选重排序
-    planned    结构化流水线：LLM 提议 → 统计校验 → 规划器排序 → 执行
-    codegen    **直接生成脚本**：把算子 spec 和带 df 的词表给模型，它自己写脚本
+    literal    only the query's literal words (a lower bound)
+    generic    the LLM derives terms from general knowledge, **without being
+               shown the project vocabulary**
+    grounded   the LLM **picks from the project vocabulary**, plus annotation
+               signals
+    graph      grounded, then reranked using call and containment relations
+    planned    the structured pipeline: LLM proposes, statistics validates,
+               the planner orders, then execute
+    codegen    **generate the script directly**: hand the model the operator
+               spec and a vocabulary with df, and it writes the script itself
 
-`grounded` vs `graph` 检验的是另一件事：在 4 万符号的项目里，
-25 个词 OR 起来会让结果集涨到几千个，**弱信号叠加会盖过强信号**。
-图的作用是给候选加一个与词法无关的证据——
-与强命中结构相邻的符号更可能相关。
+`grounded` against `graph` tests something else: in a 40,000-symbol project,
+ORing 25 terms grows the result set into the thousands and **weak signals in
+aggregate drown out strong ones**. The graph contributes evidence independent
+of lexical matching -- symbols structurally near strong hits are more likely
+to be relevant.
 
-`generic` vs `grounded` 才是关键对比——它直接检验
-``docs/design/09-grounding.md`` 第六节的主张：把项目词表放进 prompt，
-输出的词就天然落在项目实际用法上，不会出现「LLM 说 buffer 而项目写 buf」。
+`generic` against `grounded` is the crucial comparison. It tests
+``docs/design/09-grounding.md`` section 6 directly: put the project
+vocabulary in the prompt and the output terms land on the project's actual
+spellings, so "the LLM says buffer while the project writes buf" cannot
+happen.
 
-指标用**召回率**而非准确率：gold 集只求确凿不求完备，
-列出的都确实是正确答案，但没列的未必是错的。
+The metric is **recall**, not precision: the gold set aims to be certain
+rather than complete, so everything listed really is a correct answer but
+what is unlisted is not necessarily wrong.
 
-**派生结果会缓存**（`--cache`）。这不是为了省钱：实测同一条查询、
-同一份词表、temperature=0，两次运行的召回率能差 20 个百分点——
-LLM 的运行间方差和要测的效应同量级。不固定住它，任何跨运行的对比都是噪音。
-`--repeat` 可以跑多次取平均来量化这个方差。
+**Derived results are cached** (`--cache`). Not to save money: measured, the
+same query with the same vocabulary at temperature=0 can differ by 20
+percentage points of recall between runs -- the LLM's run-to-run variance is
+the same size as the effect being measured. Without pinning it down, any
+cross-run comparison is noise. `--repeat` runs several times and averages, to
+quantify that variance.
 """
 
 from __future__ import annotations
@@ -43,6 +53,7 @@ from pathlib import Path
 from typing import Any
 
 from codesense.indexing import build_expansion_table
+from codesense.lang.java import JavaLanguage
 from codesense.ql import Edge, Element, Frag, IndexField
 from codesense.ql.context import EvalContext
 from codesense.ql.operators import eval_unit, reach, score_of
@@ -55,52 +66,62 @@ from codesense.ql.store import (
 )
 from codesense.ql.unit import QueryUnit, Term
 
-#: 放进 prompt 的项目词表大小。大项目的全量词表塞不下，
-#: 按 ICF 取中段——太常见的没区分度，只出现一两次的多半是噪音。
+#: How much project vocabulary goes into the prompt. A large project's full
+#: vocabulary does not fit, so a middle band by ICF is taken -- the very
+#: common words do not discriminate and the once-or-twice words are mostly
+#: noise.
 VOCAB_SAMPLE = 600
 
-#: 报告用的截断位置。
+#: Cutoffs used in the report.
 CUTOFFS = (10, 30, 100)
 
-#: 取多少个最强命中作为图的种子。太多就等于没收窄，太少则锚不住。
+#: How many of the strongest hits seed the graph. Too many is no narrowing at
+#: all; too few does not anchor.
 GRAPH_SEEDS = 20
 
-#: 落在种子邻域里的候选获得的加成。图是**独立于词法**的证据，
-#: 所以是乘性加成而不是替代——它不该把词法完全不沾边的东西捧上来。
+#: Boost for candidates in the seeds' neighbourhood. The graph is evidence
+#: **independent of lexical matching**, so it multiplies rather than replaces
+#: -- it must not lift things with no lexical basis at all.
 GRAPH_BOOST = 0.6
 
-#: 种子邻域的跳数。跳数越多「有关系」这个结论越弱。
+#: Hop range for the seed neighbourhood. The more hops, the weaker the claim
+#: that two things are related.
 GRAPH_HOPS = (1, 2)
 
 GENERIC_PROMPT = """\
-你在为一个代码检索系统扩展查询词。
+You are expanding query terms for a code retrieval system.
 
-目标代码库：{project}
-用户查询：{query}
+Target codebase: {project}
+User query: {query}
 
-请给出你认为会出现在相关代码的标识符里的英文单词，输出 JSON：
-{{"terms": ["词1", "词2", ...], "annotations": ["@注解名", ...]}}
+Give the English words you expect to appear in the identifiers of relevant
+code. Output JSON:
+{{"terms": ["word1", "word2", ...], "annotations": ["@AnnotationName", ...]}}
 
-要求：terms 最多 25 个，全部小写单词（标识符切分后的形态），
-不要 get/set/value 这类通用词。
+Requirements: at most 25 terms, all lowercase words (the form an identifier
+splits into), and no generic words like get/set/value.
 """
 
 PROMPT = """\
-你在为一个代码检索系统扩展查询词。
+You are expanding query terms for a code retrieval system.
 
-目标代码库：{project}
-用户查询：{query}
+Target codebase: {project}
+User query: {query}
 
-这个代码库里出现过的词（已按信息量排序，只能从中挑）：
+Words occurring in this codebase, ordered by informativeness (you may only
+pick from this list):
 {vocab}
 
-请从上面的词表里挑出与查询相关的词，输出 JSON：
-{{"terms": ["词1", "词2", ...], "annotations": ["@注解名", ...], "reason": "一句话"}}
+Pick the words from that list that relate to the query. Output JSON:
+{{"terms": ["word1", ...], "annotations": ["@AnnotationName", ...], "reason": "one sentence"}}
 
-要求：
-- terms 最多 25 个，**必须**全部来自上面的词表，不要自己造词
-- 挑那些真正指向查询意图的领域词，不要挑 get/set/value 这类通用词
-- annotations 里放你认为相关的框架注解（如 @PostMapping），词表里没有也可以写
+Requirements:
+- at most 25 terms, all of which **must** come from the list above; do not
+  invent words
+- pick domain words that genuinely point at the query's intent, not generic
+  ones like get/set/value
+- put relevant framework annotations (@PostMapping, say) in annotations; those
+  may be absent from the list
 """
 
 
@@ -143,7 +164,7 @@ def load_index(path: Path) -> tuple[EvalContext, dict[str, list[int]]]:
     ctx = EvalContext(
         symbols=InMemorySymbolStore(elements),
         postings=InMemoryPostingIndex(postings, total_symbols=len(elements)),
-        expansion=build_expansion_table(),
+        expansion=build_expansion_table(language=JavaLanguage()),
         edges=InMemoryEdgeStore(
             Edge(
                 source_id=e["source_id"],
@@ -162,13 +183,15 @@ def load_index(path: Path) -> tuple[EvalContext, dict[str, list[int]]]:
 
 
 def vocabulary(ctx: EvalContext, limit: int = VOCAB_SAMPLE) -> list[str]:
-    """放进 prompt 的项目词表。``limit <= 0`` 表示全给。
+    """The project vocabulary that goes into the prompt. ``limit <= 0`` gives
+    all of it.
 
-    **收窄方式很要紧。** 早期版本按 ``abs(icf_ratio - 0.55)`` 取固定
-    ICF 带，结果在 netty 上把 `buf`(0.176) / `allocator`(0.311) /
-    `pooled` / `chunk` 全排除在外——恰恰因为它们在 netty 里常见。
-    而查询问的就是缓冲区分配。**与查询无关的静态收窄会系统性地丢掉
-    领域核心词**，这是 benchmark 量出来的。
+    **How it narrows matters.** An early version took a fixed ICF band by
+    ``abs(icf_ratio - 0.55)``, which on netty excluded `buf` (0.176),
+    `allocator` (0.311), `pooled` and `chunk` entirely -- precisely because
+    they are common in netty. And the query was about buffer allocation.
+    **Query-independent static narrowing systematically drops the domain's
+    central words**, as the benchmark measured.
     """
     usable = [
         term
@@ -188,7 +211,7 @@ def vocabulary(ctx: EvalContext, limit: int = VOCAB_SAMPLE) -> list[str]:
 
 
 def literal_terms(query: str, ctx: EvalContext) -> list[str]:
-    """查询里能直接对上索引的词。baseline 用它。"""
+    """Words from the query that match the index directly. The baseline."""
     words = {w.lower() for w in re.findall(r"[A-Za-z]+", query) if len(w) > 2}
     return sorted(w for w in words if ctx.postings.term_info(w) is not None)
 
@@ -201,7 +224,8 @@ def derive(
     cache: Path | None = None,
     attempt: int = 0,
 ) -> dict[str, Any]:
-    """让 LLM 派生查询词。``vocab`` 为 None 时它只能凭通用知识。"""
+    """Have the LLM derive query terms. With ``vocab`` as None it has only
+    general knowledge to go on."""
     import hashlib
 
     import requests
@@ -243,11 +267,12 @@ def derive(
 
 
 def graph_rerank(frag: Frag, ctx: EvalContext, unit: str) -> dict[str, int]:
-    """用图邻近性给词法结果重排序。
+    """Rerank lexical results by graph proximity.
 
-    取最强的若干命中当种子，向外走 1~2 跳，落在邻域里的候选加成。
-    走 `reach` 而不是 `hop`：这里只关心「沾不沾边」，不需要路径本身，
-    而路径枚举在几千个候选上会贵得多。
+    The strongest hits seed the walk, 1-2 hops out, and candidates landing in
+    the neighbourhood get boosted. `reach` rather than `hop`: only "is it
+    connected at all" matters here, the paths themselves are not needed, and
+    enumerating paths over thousands of candidates is far more expensive.
     """
     if not frag:
         return {}
@@ -277,21 +302,24 @@ def run_planned(
     cache: Path | None = None,
     attempt: int = 0,
 ) -> tuple[dict[str, int], list[str]]:
-    """全流程：LLM 读懂查询 → 统计定结构 → 按代价排序 → 执行。
+    """The full route: the LLM interprets, statistics fixes the structure,
+    cost decides the order, then execute.
 
-    **分工**：模型只做 NLP（挑词、打分、写判定标准），
-    分几个单元、偏好什么种类、什么顺序全由统计决定。
+    **The division of labour**: the model does NLP only (pick terms, score
+    them, write a criterion); how many units, which kinds are preferred and
+    in what order are all decided statistically.
 
-    召回率这个指标下跳过 `intent`：它只会筛掉候选，
-    而我们量的是「该找到的有没有被找到」。
+    `intent` is skipped under a recall metric: it can only remove candidates,
+    and what is being measured is whether what should be found was found.
     """
     import hashlib
 
     from codesense.llm import QueryUnderstanding
     from codesense.ql.compile import Intent, build_spec, plan
 
-    # 模型输出必须缓存：不固定住它，同一条查询两次运行的召回率能差
-    # 几十个百分点，比较的就是噪音。
+    # The model output must be cached: without pinning it down, the same
+    # query can differ by tens of points of recall between runs, and the
+    # comparison measures noise.
     key = hashlib.sha256(
         f"nlp|{config.model}|{case['project']}|{case['query']}|{len(vocab)}|{attempt}".encode()
     ).hexdigest()[:16]
@@ -304,7 +332,7 @@ def run_planned(
             slot.parent.mkdir(parents=True, exist_ok=True)
             slot.write_text(json.dumps(understood, ensure_ascii=False), encoding="utf-8")
     if understood is None:
-        return {}, ["理解失败"]
+        return {}, ["interpretation failed"]
 
     try:
         spec, notes = build_spec(
@@ -317,7 +345,7 @@ def run_planned(
             relations=understood.get("relations", ()),
         )
     except ValueError as exc:
-        return {}, [f"构造规格失败: {exc}"]
+        return {}, [f"building the spec failed: {exc}"]
 
     execution = plan(spec, ctx)
     state = execution.run(ctx, skip=(Intent,))
@@ -336,10 +364,10 @@ def run_codegen(
     cache: Path | None = None,
     attempt: int = 0,
 ) -> tuple[dict[str, int], list[str]]:
-    """让模型直接写脚本，白名单检查后执行。
+    """Have the model write the script, then run it after the whitelist check.
 
-    和 `run_planned` 的对照点只有一处：**统计信息给谁**。
-    这里连 `df` 一起给模型，让它自己排顺序。
+    Exactly one thing differs from `run_planned`: **who gets the statistics**.
+    Here `df` goes to the model too, so it orders the steps itself.
     """
     import hashlib
 
@@ -367,7 +395,7 @@ def run_codegen(
             slot.parent.mkdir(parents=True, exist_ok=True)
             slot.write_text(source, encoding="utf-8")
     if not source:
-        return {}, ["生成失败"]
+        return {}, ["generation failed"]
 
     namespace = {
         "ctx": ctx,
@@ -378,7 +406,7 @@ def run_codegen(
         "only": only,
         "top": top,
         "score_of": score_of,
-        "intent": lambda frag, *a, **k: frag,  # 试跑跳过判定，与其它路径口径一致
+        "intent": lambda frag, *a, **k: frag,  # judging skipped, as on the other arms
         "QueryUnit": QueryUnit,
         "Term": Term,
         "LexicalSatisfier": LexicalSatisfier,
@@ -388,20 +416,21 @@ def run_codegen(
     try:
         answer = run_script(source, namespace)
     except ScriptError as exc:
-        return {}, [f"脚本被拒或跑挂：{exc}"]
+        return {}, [f"script rejected or crashed: {exc}"]
     if not isinstance(answer, Frag):
-        return {}, [f"脚本产出的不是 Frag：{type(answer).__name__}"]
+        return {}, [f"the script produced a {type(answer).__name__}, not a Frag"]
 
     names: dict[str, int] = {}
     for position, symbol_id in enumerate(
         sorted(answer.nodes, key=lambda s: (-score_of(answer, s), s)), 1
     ):
         names.setdefault(answer.nodes[symbol_id].name, position)
-    return names, [f"脚本 {source.count(chr(10)) + 1} 行"]
+    return names, [f"{source.count(chr(10)) + 1}-line script"]
 
 
 def vocabulary_df(ctx: EvalContext, limit: int = 0) -> list[tuple[str, int]]:
-    """带 df 的词表——`df` 是模型能不能自己排顺序的关键。"""
+    """The vocabulary with df -- `df` is what lets the model order the steps
+    itself."""
     found: list[tuple[str, int]] = []
     for term in ctx.postings.terms():
         info = ctx.postings.term_info(term)
@@ -412,7 +441,7 @@ def vocabulary_df(ctx: EvalContext, limit: int = 0) -> list[tuple[str, int]]:
 
 
 def rank(frag: Frag, unit: str) -> dict[str, int]:
-    """符号名 → 名次。同名取最好的名次。"""
+    """Symbol name to rank, keeping the best rank per name."""
     ordered = sorted(frag.nodes, key=lambda sid: (-score_of(frag, sid, unit), sid))
     ranks: dict[str, int] = {}
     for position, symbol_id in enumerate(ordered, 1):
@@ -477,8 +506,9 @@ def run(args: argparse.Namespace) -> list[Result]:
         total = len(result.terms["generic"]) or 1
         results.append(result)
         print(
-            f"  {case['id']:<22}generic {total} 词（{100 * in_vocab / total:.0f}% 在词表里）"
-            f"  grounded {len(result.terms['grounded'])} 词"
+            f"  {case['id']:<22}generic {total} terms "
+            f"({100 * in_vocab / total:.0f}% in the vocabulary)"
+            f"  grounded {len(result.terms['grounded'])} terms"
             f"  planned {len(result.ranks['planned'])}"
             f"  codegen {len(result.ranks['codegen'])} · {gen_notes[0] if gen_notes else ''}"
         )
@@ -490,8 +520,8 @@ ARMS = ("literal", "generic", "grounded", "graph", "planned", "codegen")
 
 def report(results: Sequence[Result]) -> None:
     for cutoff in CUTOFFS:
-        print(f"\n{'=' * 98}\n召回率 @{cutoff}")
-        print(f"  {'查询':<24}{'gold':>5}" + "".join(f"{a:>11}" for a in ARMS))
+        print(f"\n{'=' * 98}\nrecall @{cutoff}")
+        print(f"  {'query':<24}{'gold':>5}" + "".join(f"{a:>11}" for a in ARMS))
         print("  " + "-" * 94)
         totals: Counter[str] = Counter()
         for result in results:
@@ -503,7 +533,7 @@ def report(results: Sequence[Result]) -> None:
             print(row)
         n = len(results) or 1
         print("  " + "-" * 94)
-        print(f"  {'平均':<24}{'':>5}" + "".join(f"{totals[a] / n:>10.0%} " for a in ARMS))
+        print(f"  {'mean':<24}{'':>5}" + "".join(f"{totals[a] / n:>10.0%} " for a in ARMS))
     print()
 
 
@@ -514,11 +544,18 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--base-url", default="https://api.openai.com/v1")
     parser.add_argument("--model", default="gpt-4o-mini")
     parser.add_argument(
-        "--vocab-size", type=int, default=VOCAB_SAMPLE, help="放进 prompt 的词表大小，<=0 表示全给"
+        "--vocab-size",
+        type=int,
+        default=VOCAB_SAMPLE,
+        help="how much vocabulary goes into the prompt; <=0 for all of it",
     )
-    parser.add_argument("--cache", type=Path, help="派生结果缓存目录，让运行可复现")
-    parser.add_argument("--attempt", type=int, default=0, help="第几次采样，用来量化 LLM 方差")
-    parser.add_argument("--dump", type=Path, help="把明细写到这里")
+    parser.add_argument(
+        "--cache", type=Path, help="cache directory for derived results, making runs reproducible"
+    )
+    parser.add_argument(
+        "--attempt", type=int, default=0, help="which sample this is, for quantifying LLM variance"
+    )
+    parser.add_argument("--dump", type=Path, help="write the per-query detail here")
     args = parser.parse_args(argv)
 
     results = run(args)
@@ -542,7 +579,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             ),
             encoding="utf-8",
         )
-        print(f"明细 → {args.dump}")
+        print(f"detail -> {args.dump}")
     return 0
 
 

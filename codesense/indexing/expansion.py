@@ -1,14 +1,14 @@
-"""把索引构建产物装配成 QL 认识的扩展表。
+"""Assembling index artifacts into an expansion table QL understands.
 
-这是 indexing 与 ql 之间的桥。依赖方向单向：indexing 认识 ql 的数据类型，
-ql 不认识 indexing——所以这个函数放在这边而不是那边。
+The bridge between indexing and ql. The dependency is one-way: indexing
+knows ql's data types, ql does not know indexing -- which is why this
+function lives here rather than there.
 """
 
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 
-from codesense.indexing.meta_annotations import meta_expansion_table
 from codesense.ql.store import Expansion, InMemoryExpansionTable
 
 __all__ = ["build_expansion_table"]
@@ -17,20 +17,23 @@ __all__ = ["build_expansion_table"]
 def build_expansion_table(
     *,
     lexical: Mapping[str, Sequence[tuple[str, float, str]]] | None = None,
-    include_meta: bool = True,
+    language: object | None = None,
 ) -> InMemoryExpansionTable:
-    """建扩展表。
+    """Build the expansion table.
 
-    ``lexical`` 是词法/向量那条链的产物（规范词 → 项目实际写法），
-    ``include_meta`` 把框架声明的元注解关系并进来。
+    ``lexical`` is what the lexical/vector chain produced (canonical word to
+    the project's actual spelling); ``language`` contributes whatever
+    relations its frameworks declare as fact.
 
-    两者键空间不重叠——元注解的键都带 ``@``——所以直接合并即可，
-    不需要考虑冲突。真出现同键，以 ``lexical`` 为准并保留两边条目：
-    元注解是事实，词法是估计，让打分去区分而不是在这里丢弃。
+    Their key spaces do not overlap -- meta-annotation keys all carry ``@``
+    -- so merging needs no conflict handling. Should a key collide anyway,
+    ``lexical`` goes first and both entries are kept: meta-annotations are
+    facts and lexical entries are estimates, so let scoring separate them
+    rather than discarding either here.
     """
     table: dict[str, list[Expansion]] = {}
-    if include_meta:
-        for key, entries in meta_expansion_table().items():
+    if language is not None:
+        for key, entries in language.expansions().items():
             table[key] = [Expansion(target, score, reason) for target, score, reason in entries]
     for key, entries in (lexical or {}).items():
         table.setdefault(key, []).extend(

@@ -1,23 +1,26 @@
-"""Java 声明扫描：一次遍历同时取出注解与修饰符。
+"""Scanning Java declarations: annotations and modifiers in one traversal.
 
-两者挂在同一个 ``modifiers`` 节点上，所以走一遍 AST 就够——
-分成两个抽取器各扫一遍是浪费，而且容易在「哪些节点算声明」上走样。
+Both hang off the same ``modifiers`` node, so a single walk of the AST is
+enough -- two extractors each walking once would be wasteful and would drift
+apart on the question of which nodes count as declarations.
 
-修饰符是**语言级事实**，比任何关键词都准：查「异步的写盘函数」时，
-`async` / `synchronized` / `volatile` 是确定的，而名字里有没有 "async" 是猜的。
+Modifiers are **language-level facts**, more precise than any keyword: asked
+for "asynchronous disk-writing functions", `async` / `synchronized` /
+`volatile` are certain, whereas whether the name contains "async" is a
+guess.
 """
 
 from __future__ import annotations
 
 import re
 from collections.abc import Iterator, Sequence
-from dataclasses import dataclass
 
-from codesense.indexing.annotations import AnnotationUse
+from codesense.lang.base import AnnotationUse, Declaration, Invocation
 
 __all__ = ["Declaration", "Invocation", "JavaDeclarationScanner"]
 
-#: 带 ``modifiers`` 子节点的声明。注解与修饰符都挂在那上面。
+#: Declarations carrying a ``modifiers`` child. Annotations and modifiers
+#: both hang off it.
 _DECLARATIONS: dict[str, str] = {
     "class_declaration": "class",
     "interface_declaration": "interface",
@@ -33,19 +36,21 @@ _DECLARATIONS: dict[str, str] = {
 
 _ANNOTATION_NODES = frozenset({"marker_annotation", "annotation"})
 
-#: 会成为容器的声明——嵌套在它们里面的东西要带上它们的名字。
+#: Declarations that become containers -- things nested inside them carry
+#: their name.
 _TYPE_KINDS = frozenset({"class", "interface", "enum", "record", "annotation_type"})
 
 _DOC_PREFIX = "/**"
 
 _WORD = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 
-#: 有方法体、值得收集调用的声明。
+#: Declarations with a body, worth collecting calls from.
 _CALLABLE_KINDS = frozenset({"method", "constructor"})
 
-#: Java 的修饰符关键字。tree-sitter 把它们做成节点类型本身，
-#: 所以「不是注解的 modifiers 子节点」就是修饰符——但仍然显式列出来，
-#: 免得语法树版本变化时静默混进别的东西。
+#: Java's modifier keywords. tree-sitter makes them node types in their own
+#: right, so "a modifiers child that is not an annotation" is a modifier --
+#: but they are still listed explicitly, so a grammar version change cannot
+#: silently let something else through.
 JAVA_MODIFIERS = frozenset(
     {
         "public",
@@ -66,49 +71,11 @@ JAVA_MODIFIERS = frozenset(
 )
 
 
-@dataclass(frozen=True, slots=True)
-class Invocation:
-    """一个调用点。
-
-    ``receiver`` 是点号左边那段原文（`""` 表示没有接收者，即 `m()` 或 `this.m()`）。
-    保留原文而不是当场解析：解析需要整个项目的类型表，那是索引构建阶段的事。
-    """
-
-    name: str
-    receiver: str = ""
-
-
-@dataclass(frozen=True, slots=True)
-class Declaration:
-    """一处声明的全部可索引信息。"""
-
-    kind: str
-    name: str
-    line: int
-    end_line: int = 0
-    container: str = ""
-    signature: str = ""
-    doc: str = ""
-    modifiers: frozenset[str] = frozenset()
-    annotations: tuple[AnnotationUse, ...] = ()
-
-    #: 这个声明体内的调用点。带**接收者表达式**，让下游能按类型收窄——
-    #: Java 里绝大多数项目内调用是 `this.m()` / `field.m()` / `local.m()`，
-    #: 而字段和局部变量的声明类型就在 AST 里，不需要类型检查器。
-    calls: tuple[Invocation, ...] = ()
-
-    #: 本声明内可见的 `变量名 → 声明类型`：字段、参数、局部变量。
-    #: 用来把 `receiver.m()` 里的 receiver 解析成类型。
-    local_types: tuple[tuple[str, str], ...] = ()
-
-    #: 这个类型继承/实现了谁。查方法时要沿着它往上找。
-    supertypes: tuple[str, ...] = ()
-
-
 class JavaDeclarationScanner:
-    """基于 tree-sitter 的 Java 声明扫描。
+    """A tree-sitter based scan of Java declarations.
 
-    parser 从构造函数注入——加载语法是外部依赖，不该在这个类里发生。
+    The parser is injected through the constructor -- loading a grammar is an
+    external dependency and should not happen inside this class.
     """
 
     def __init__(self, parser: object) -> None:
@@ -116,7 +83,8 @@ class JavaDeclarationScanner:
 
     @classmethod
     def for_java(cls) -> JavaDeclarationScanner:
-        """便利构造。在这里 import 是刻意的：不用它的人不必装 tree-sitter。"""
+        """Convenience constructor. The import is deliberately local: anyone
+        not using this need not install tree-sitter."""
         from tree_sitter_languages import get_parser
 
         return cls(get_parser("java"))
@@ -127,7 +95,7 @@ class JavaDeclarationScanner:
         return list(self._walk(tree.root_node, data))
 
     def annotations(self, source: str) -> list[AnnotationUse]:
-        """只要注解时的便利入口。"""
+        """Convenience entry point when only annotations are wanted."""
         return [use for declaration in self.scan(source) for use in declaration.annotations]
 
     def _walk(self, node: object, data: bytes, container: str = "") -> Iterator[Declaration]:
@@ -137,7 +105,7 @@ class JavaDeclarationScanner:
             declaration = self._declaration(node, kind, data, container)
             yield declaration
             if kind in _TYPE_KINDS and declaration.name:
-                # 嵌套类要带上外层：`Outer.Inner` 而不是光秃秃的 `Inner`
+                # Nested classes carry the outer name: `Outer.Inner`, not a bare `Inner`
                 inner = f"{container}.{declaration.name}" if container else declaration.name
         for child in node.children:  # type: ignore[attr-defined]
             yield from self._walk(child, data, inner)
@@ -172,10 +140,11 @@ class JavaDeclarationScanner:
 
 
 def _invocations(node: object, data: bytes) -> tuple[Invocation, ...]:
-    """方法体里的调用点，保序去重。
+    """Call sites in a method body, deduplicated in order.
 
-    只在**本声明自己的体**里找：碰到嵌套的方法声明就停，
-    否则匿名类里的调用会被算到外层方法头上。
+    Searches only **this declaration's own body**, stopping at a nested
+    method declaration; otherwise calls inside an anonymous class would be
+    attributed to the enclosing method.
     """
     found: dict[Invocation, None] = {}
     for current in _own_body(node):
@@ -189,7 +158,7 @@ def _invocations(node: object, data: bytes) -> tuple[Invocation, ...]:
 
 
 def _local_types(node: object, data: bytes) -> tuple[tuple[str, str], ...]:
-    """参数与局部变量的声明类型。"""
+    """Declared types of parameters and local variables."""
     found: dict[str, str] = {}
     for current in _own_body(node):
         if current.type == "local_variable_declaration":
@@ -211,7 +180,7 @@ def _local_types(node: object, data: bytes) -> tuple[tuple[str, str], ...]:
 
 
 def _supertypes(node: object, data: bytes) -> tuple[str, ...]:
-    """`extends` / `implements` 里列的类型名。"""
+    """Type names listed in `extends` / `implements`."""
     found: list[str] = []
     for field_name in ("superclass", "interfaces"):
         child = node.child_by_field_name(field_name)  # type: ignore[attr-defined]
@@ -221,7 +190,8 @@ def _supertypes(node: object, data: bytes) -> tuple[str, ...]:
 
 
 def _own_body(node: object) -> Iterator[object]:
-    """本声明自己的体内的节点——碰到嵌套的方法声明就不再往下。"""
+    """Nodes inside this declaration's own body, stopping at a nested method
+    declaration."""
     stack = list(node.children)  # type: ignore[attr-defined]
     while stack:
         current = stack.pop()
@@ -247,10 +217,11 @@ def _annotation_use(
 
 
 def _child_of_type(node: object, wanted: str) -> object | None:
-    """只看直接子节点。
+    """Direct children only.
 
-    不能往下钻：方法体里的匿名类有自己的 ``modifiers``，
-    钻进去就会把内层的注解和修饰符算到外层声明头上。
+    It must not descend: an anonymous class in a method body has its own
+    ``modifiers``, and descending would attribute the inner annotations and
+    modifiers to the outer declaration.
     """
     for child in node.children:  # type: ignore[attr-defined]
         if child.type == wanted:
@@ -259,7 +230,8 @@ def _child_of_type(node: object, wanted: str) -> object | None:
 
 
 def _declared_name(node: object, data: bytes) -> str:
-    """字段声明的名字在 ``variable_declarator`` 里，不在 ``name`` 字段上。"""
+    """A field declaration's name lives in ``variable_declarator``, not in a
+    ``name`` field."""
     declarator = _child_of_type(node, "variable_declarator")
     if declarator is None:
         return ""
@@ -267,10 +239,11 @@ def _declared_name(node: object, data: bytes) -> str:
 
 
 def _signature(node: object, kind: str, data: bytes) -> str:
-    """方法签名 ``(参数) : 返回类型``；字段则记类型。
+    """A method's ``(params) : return type``; for a field, its type.
 
-    只取签名不取方法体——判定「这段代码在做什么」时签名和文档通常就够，
-    塞进源码只会让下游的 token 成本失控。
+    Signature only, never the body -- signature and doc are usually enough to
+    decide what a piece of code does, and including source would put
+    downstream token cost out of control.
     """
     if kind in ("method", "constructor"):
         params = _text(node.child_by_field_name("parameters"), data)  # type: ignore[attr-defined]
@@ -282,10 +255,11 @@ def _signature(node: object, kind: str, data: bytes) -> str:
 
 
 def _javadoc(node: object, data: bytes) -> str:
-    """紧邻声明之前的 javadoc。
+    """The javadoc immediately preceding a declaration.
 
-    tree-sitter 把注释放在声明的兄弟节点上，不在声明内部，所以要往前看。
-    非 javadoc 的块注释（`/* ... */`）不算——那通常是被注释掉的代码。
+    tree-sitter puts comments in a sibling node rather than inside the
+    declaration, so this looks backwards. Non-javadoc block comments
+    (`/* ... */`) do not count -- those are usually commented-out code.
     """
     previous = node.prev_sibling  # type: ignore[attr-defined]
     if previous is None or previous.type != "block_comment":
@@ -305,12 +279,16 @@ def _text(node: object | None, data: bytes) -> str:
 
 
 def modifier_terms(declaration: Declaration) -> Sequence[tuple[str, str]]:
-    """修饰符产生的 (term, field) 对。
+    """The (term, field) pairs modifiers produce.
 
-    修饰符进倒排表而不是只挂在 `Element` 上，是为了让 `modifier` satisfier
-    和词法、注解走同一条查表路径——否则它就得扫全表才能求值。
+    Modifiers go into the inverted index rather than living only on
+    `Element` so that the `modifier` satisfier takes the same lookup path as
+    lexical matching and annotations -- otherwise it would have to scan the
+    whole table to evaluate.
 
-    ICF 会自动处理强弱：`public` 几乎所有符号都有，区分度趋零会被下限挡掉；
-    `native` / `volatile` 罕见，ICF 高，正是有信息的那些。
+    ICF sorts out strong from weak automatically: nearly every symbol is
+    `public`, so its discriminative power tends to zero and the floor blocks
+    it; `native` and `volatile` are rare, score high, and are exactly the
+    informative ones.
     """
     return [(modifier, "modifier") for modifier in sorted(declaration.modifiers)]
