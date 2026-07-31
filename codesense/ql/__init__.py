@@ -8,6 +8,7 @@
 ``codesense`` 下的任何其它子包。
 """
 
+from codesense.ql.fields import DEFAULT_FIELD_WEIGHTS, FieldWeights, IndexField
 from codesense.ql.frag import (
     Edge,
     EdgeKey,
@@ -20,11 +21,14 @@ from codesense.ql.frag import (
 )
 
 __all__ = [
+    "DEFAULT_FIELD_WEIGHTS",
     "Edge",
     "EdgeKey",
     "Element",
     "Evidence",
+    "FieldWeights",
     "Frag",
+    "IndexField",
     "Path",
     "UnitHit",
     "Verdict",
