@@ -67,6 +67,17 @@ class TermInfo:
             return 0.0
         return math.log(self.total_symbols / self.df)
 
+    @property
+    def icf_ratio(self) -> float:
+        """归一化到 [0, 1] 的 ICF，即 ``icf / log(符号总数)``。
+
+        打分要用这个而不是裸 ICF，两个理由：``noisy_or`` 要求分量在 [0, 1]；
+        裸 ICF 的量纲随项目大小变（``log(N)`` 是上界），阈值没法跨项目复用。
+        """
+        if self.total_symbols <= 1:
+            return 0.0
+        return self.icf / math.log(self.total_symbols)
+
 
 @dataclass(frozen=True, slots=True)
 class Expansion:

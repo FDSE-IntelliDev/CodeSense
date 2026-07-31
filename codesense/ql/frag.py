@@ -12,7 +12,7 @@ from __future__ import annotations
 from collections.abc import Iterable, Iterator, Mapping
 from dataclasses import dataclass, field
 from types import MappingProxyType
-from typing import TypeVar
+from typing import ClassVar, TypeVar
 
 __all__ = [
     "Edge",
@@ -125,13 +125,26 @@ class Evidence:
     unit_hits: tuple[UnitHit, ...] = ()
     verdicts: tuple[Verdict, ...] = ()
 
+    #: `unit` 算子追加的汇总证据所用的 signal。它携带按单元的 `combine`
+    #: 策略合成后的总分，是该单元的**权威分数**。
+    COMBINED: ClassVar[str] = "combined"
+
     @property
     def scores(self) -> Mapping[str, float]:
-        """按单元汇总的分数。派生量，不可单独设置。"""
-        acc: dict[str, float] = {}
+        """按单元汇总的分数。派生量，不可单独设置。
+
+        有汇总证据（``signal == "combined"``）时以它为准，**不再求和**——
+        求和只是三种合成策略之一，把它写死在这里会和单元声明的
+        ``combine`` 打架，还会把汇总证据本身重复计一次。
+        """
+        combined: dict[str, float] = {}
+        raw: dict[str, float] = {}
         for hit in self.unit_hits:
-            acc[hit.unit] = acc.get(hit.unit, 0.0) + hit.score
-        return MappingProxyType(acc)
+            if hit.signal == self.COMBINED:
+                combined[hit.unit] = max(combined.get(hit.unit, 0.0), hit.score)
+            else:
+                raw[hit.unit] = raw.get(hit.unit, 0.0) + hit.score
+        return MappingProxyType({**raw, **combined})
 
     def merge(self, other: Evidence) -> Evidence:
         """合并两份证据，保序去重。
