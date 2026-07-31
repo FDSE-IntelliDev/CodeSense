@@ -1,0 +1,386 @@
+<title>CodeSense — index and query internals</title>
+<style>
+:root {
+  --ground:#F4F6F8; --panel:#FFFFFF; --ink:#12181F; --slate:#5A6672;
+  --faint:#8994A0; --rule:#DDE3E8; --track:#E8ECEF;
+  --fact:#0E7C86; --mid:#4E7C9B; --est:#B4690E; --boost:#0E7C86;
+  --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, "Liberation Mono", monospace;
+  --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --ground:#0E1418; --panel:#151D23; --ink:#DCE4E9; --slate:#8A97A3;
+    --faint:#6B7883; --rule:#222C34; --track:#1D262D;
+    --fact:#3BB3BE; --mid:#6EA3C4; --est:#D99A3C; --boost:#3BB3BE;
+  }
+}
+:root[data-theme="dark"] {
+  --ground:#0E1418; --panel:#151D23; --ink:#DCE4E9; --slate:#8A97A3;
+  --faint:#6B7883; --rule:#222C34; --track:#1D262D;
+  --fact:#3BB3BE; --mid:#6EA3C4; --est:#D99A3C; --boost:#3BB3BE;
+}
+:root[data-theme="light"] {
+  --ground:#F4F6F8; --panel:#FFFFFF; --ink:#12181F; --slate:#5A6672;
+  --faint:#8994A0; --rule:#DDE3E8; --track:#E8ECEF;
+  --fact:#0E7C86; --mid:#4E7C9B; --est:#B4690E; --boost:#0E7C86;
+}
+* { box-sizing:border-box; }
+body {
+  margin:0; background:var(--ground); color:var(--ink);
+  font-family:var(--sans); font-size:15px; line-height:1.55;
+  -webkit-font-smoothing:antialiased;
+}
+.wrap { max-width:1120px; margin:0 auto; padding:0 24px 96px; }
+code, .num, .mono { font-family:var(--mono); font-variant-numeric:tabular-nums; }
+
+/* ---- masthead ---- */
+header { padding:64px 0 40px; }
+.kicker {
+  font-family:var(--mono); font-size:11.5px; letter-spacing:.22em;
+  text-transform:uppercase; color:var(--fact); font-weight:600;
+}
+h1 {
+  font-family:var(--mono); font-weight:700; letter-spacing:-.035em;
+  font-size:clamp(30px,5.2vw,46px); line-height:1.06; margin:14px 0 0;
+  text-wrap:balance;
+}
+.lede { max-width:60ch; color:var(--slate); margin:16px 0 0; font-size:16px; }
+
+.facts {
+  display:grid; grid-template-columns:repeat(auto-fit,minmax(140px,1fr));
+  gap:1px; background:var(--rule); border:1px solid var(--rule);
+  border-radius:3px; overflow:hidden; margin-top:32px;
+}
+.fact-cell { background:var(--panel); padding:16px 18px; }
+.fact-cell b {
+  display:block; font-family:var(--mono); font-size:23px; font-weight:700;
+  letter-spacing:-.02em; font-variant-numeric:tabular-nums;
+}
+.fact-cell span {
+  display:block; font-family:var(--mono); font-size:10.5px; letter-spacing:.14em;
+  text-transform:uppercase; color:var(--faint); margin-top:5px;
+}
+
+/* ---- sections ---- */
+section { margin-top:72px; }
+.srule {
+  display:flex; align-items:center; gap:16px;
+  border-top:2px solid var(--ink); padding-top:12px; margin-bottom:8px;
+}
+.srule h2 {
+  font-family:var(--mono); font-size:13px; font-weight:700; letter-spacing:.2em;
+  text-transform:uppercase; margin:0;
+}
+.srule em {
+  font-style:normal; color:var(--faint); font-size:12.5px;
+  font-family:var(--mono); margin-left:auto;
+}
+.intro { max-width:66ch; color:var(--slate); margin:0 0 26px; }
+.intro strong { color:var(--ink); font-weight:600; }
+
+.grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(320px,1fr)); gap:18px; }
+.panel {
+  background:var(--panel); border:1px solid var(--rule); border-radius:3px;
+  padding:20px 22px 22px;
+}
+.panel h3 {
+  font-family:var(--mono); font-size:11.5px; letter-spacing:.16em;
+  text-transform:uppercase; color:var(--slate); margin:0 0 4px; font-weight:600;
+}
+.panel p { margin:0 0 16px; font-size:13.5px; color:var(--slate); }
+.panel p b { color:var(--ink); font-weight:600; }
+
+/* ---- bars ---- */
+.bar { display:grid; grid-template-columns:118px 1fr 68px; align-items:center; gap:10px; margin:6px 0; }
+.bl { font-family:var(--mono); font-size:12px; color:var(--ink); overflow:hidden; text-overflow:ellipsis; }
+.bt { background:var(--track); height:9px; border-radius:1px; overflow:hidden; }
+.bt i { display:block; height:100%; }
+.bv { font-family:var(--mono); font-size:12px; text-align:right; color:var(--slate); font-variant-numeric:tabular-nums; }
+i.fact { background:var(--fact); }
+i.mid { background:var(--mid); }
+i.est { background:var(--est); }
+
+.legend { display:flex; gap:16px; flex-wrap:wrap; margin-top:14px; font-family:var(--mono); font-size:11px; color:var(--slate); }
+.legend span::before { content:""; display:inline-block; width:9px; height:9px; margin-right:6px; border-radius:1px; vertical-align:baseline; }
+.legend .l1::before { background:var(--fact); }
+.legend .l2::before { background:var(--mid); }
+.legend .l3::before { background:var(--est); }
+
+/* ---- tables ---- */
+.scroll { overflow-x:auto; }
+table { width:100%; border-collapse:collapse; font-size:13px; }
+th {
+  font-family:var(--mono); font-size:10.5px; letter-spacing:.14em; text-transform:uppercase;
+  color:var(--faint); text-align:left; font-weight:600;
+  padding:0 10px 8px 0; border-bottom:1px solid var(--rule); white-space:nowrap;
+}
+td { padding:6px 10px 6px 0; border-bottom:1px solid var(--rule); }
+td.t { font-family:var(--mono); }
+td.num { font-family:var(--mono); text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap; }
+td.meter { width:150px; }
+td.meter i { display:block; height:8px; border-radius:1px; }
+
+/* ---- viterbi ---- */
+.lattice { margin-top:6px; }
+.lrow { display:flex; align-items:center; gap:12px; padding:8px 0; border-bottom:1px solid var(--rule); flex-wrap:wrap; }
+.lrow:last-child { border-bottom:0; }
+.lk { font-family:var(--mono); font-size:10.5px; letter-spacing:.12em; text-transform:uppercase; color:var(--faint); width:110px; flex:none; }
+.cand { font-family:var(--mono); font-size:12px; padding:2px 7px; border-radius:2px; border:1px solid var(--rule); }
+.cand.ok { color:var(--fact); border-color:var(--fact); }
+.cand.bad { color:var(--faint); text-decoration:line-through; }
+.split { color:var(--fact); font-weight:600; }
+.note { font-size:12px; color:var(--faint); font-family:var(--mono); }
+.seg { display:flex; align-items:center; gap:10px; padding:4px 0; font-size:12.5px; }
+.seg code { font-size:12.5px; }
+.arrow { color:var(--faint); }
+
+/* ---- query ---- */
+.q {
+  font-family:var(--mono); font-size:19px; font-weight:600; letter-spacing:-.01em;
+  border-left:3px solid var(--fact); padding:6px 0 6px 16px; margin:0 0 22px;
+}
+.chips { display:flex; flex-wrap:wrap; gap:6px; }
+.chip {
+  font-family:var(--mono); font-size:12px; border:1px solid var(--rule);
+  border-radius:2px; padding:3px 8px; background:var(--panel);
+}
+.chip i { font-style:normal; color:var(--faint); margin-left:7px; font-variant-numeric:tabular-nums; }
+
+.stage {
+  display:grid; grid-template-columns:26px 190px 1fr 82px; gap:12px;
+  align-items:center; padding:11px 0; border-bottom:1px solid var(--rule);
+}
+.sn { font-family:var(--mono); font-size:11px; color:var(--faint); }
+.sl { font-family:var(--mono); font-size:13px; }
+.sbar { background:var(--track); height:11px; border-radius:1px; overflow:hidden; }
+.sbar i { display:block; height:100%; background:var(--fact); }
+.sr { font-family:var(--mono); font-size:14px; text-align:right; font-variant-numeric:tabular-nums; font-weight:600; }
+.sm { grid-column:2 / -1; font-family:var(--mono); font-size:11px; color:var(--faint); margin-top:-4px; }
+
+.hit {
+  display:grid; grid-template-columns:26px minmax(180px,1.1fr) 58px minmax(150px,1fr);
+  gap:12px; align-items:baseline; padding:11px 0; border-bottom:1px solid var(--rule);
+}
+.hr { font-family:var(--mono); font-size:11px; color:var(--faint); }
+.hn code { font-size:13px; font-weight:600; }
+.hk { font-family:var(--mono); font-size:10px; letter-spacing:.1em; text-transform:uppercase; color:var(--faint); margin-left:8px; }
+.boost {
+  font-family:var(--mono); font-size:9.5px; letter-spacing:.1em; text-transform:uppercase;
+  color:var(--boost); border:1px solid var(--boost); border-radius:2px; padding:0 5px; margin-left:7px;
+}
+.hs { font-family:var(--mono); font-size:13px; text-align:right; font-variant-numeric:tabular-nums; }
+.hf { font-family:var(--mono); font-size:11px; color:var(--faint); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.hw { grid-column:2 / -1; display:flex; flex-wrap:wrap; gap:5px; margin-top:2px; }
+.ev {
+  font-family:var(--mono); font-size:10.5px; color:var(--slate);
+  background:var(--track); border-radius:2px; padding:2px 6px;
+}
+.ev i { font-style:normal; color:var(--faint); margin-left:5px; }
+
+pre {
+  background:var(--panel); border:1px solid var(--rule); border-radius:3px;
+  padding:18px 20px; overflow-x:auto; font-family:var(--mono);
+  font-size:12px; line-height:1.6; margin:0;
+}
+.caveat {
+  border-left:3px solid var(--est); padding:12px 0 12px 16px; margin:22px 0 0;
+  color:var(--slate); font-size:13.5px; max-width:70ch;
+}
+.caveat b { color:var(--ink); font-weight:600; }
+footer { margin-top:80px; padding-top:20px; border-top:1px solid var(--rule); font-family:var(--mono); font-size:11.5px; color:var(--faint); }
+@media (max-width:640px) {
+  .stage { grid-template-columns:22px 1fr 62px; }
+  .stage .sbar { grid-column:1 / -1; }
+  .hit { grid-template-columns:22px 1fr 54px; }
+  .hit .hf { grid-column:2 / -1; }
+}
+</style>
+
+<div class="wrap">
+<header>
+  <div class="kicker">CodeSense · build artifact</div>
+  <h1>What the index holds,<br>and what a query does to it</h1>
+  <p class="lede">Every number on this page was measured on <code>netty</code>, indexed 2026-07-31.
+  Nothing here is illustrative: the counts, the timings, the evidence strings and the generated
+  script are the real ones.</p>
+  <div class="facts">
+    <div class="fact-cell"><b>42,221</b><span>symbols</span></div>
+    <div class="fact-cell"><b>603,733</b><span>postings</span></div>
+    <div class="fact-cell"><b>120,322</b><span>edges</span></div>
+    <div class="fact-cell"><b>7,148</b><span>vocabulary</span></div>
+    <div class="fact-cell"><b>3,615</b><span>grounded words</span></div>
+  </div>
+</header>
+
+<section>
+  <div class="srule"><h2>I · The index</h2><em>one pass, 21 s</em></div>
+  <p class="intro">Four artifacts come out of a single scan. The split between them is about
+  <strong>cost</strong>, not tidiness: re-running the grounding should not rewrite a 58 MB symbol
+  table, and re-scanning source should not discard grounding that took minutes of vector work.</p>
+
+  <div class="grid">
+    <div class="panel">
+      <h3>Symbols by kind</h3>
+      <p>Parameters are excluded deliberately — enormously numerous, almost never queried alone,
+      and indexing them would roughly double the postings for nothing.</p>
+      <div class="bar"><span class="bl">method</span><span class="bt"><i class="fact" style="width:100.0%"></i></span><span class="bv">25,868</span></div><div class="bar"><span class="bl">field</span><span class="bt"><i class="fact" style="width:38.4%"></i></span><span class="bv">9,928</span></div><div class="bar"><span class="bl">constructor</span><span class="bt"><i class="fact" style="width:13.1%"></i></span><span class="bv">3,395</span></div><div class="bar"><span class="bl">class</span><span class="bt"><i class="fact" style="width:9.3%"></i></span><span class="bv">2,416</span></div><div class="bar"><span class="bl">interface</span><span class="bt"><i class="fact" style="width:1.6%"></i></span><span class="bv">412</span></div><div class="bar"><span class="bl">enum</span><span class="bt"><i class="fact" style="width:0.7%"></i></span><span class="bv">187</span></div><div class="bar"><span class="bl">annotation_type</span><span class="bt"><i class="fact" style="width:0.1%"></i></span><span class="bv">15</span></div>
+    </div>
+    <div class="panel">
+      <h3>Postings by field</h3>
+      <p><b>Fields stay separate.</b> <code>buffer</code> in a symbol's name and <code>buffer</code>
+      in its javadoc are evidence of very different strength; collapsing them loses the only signal
+      that distinguishes a class <em>about</em> buffers from one that mentions them.</p>
+      <div class="bar"><span class="bl">container</span><span class="bt"><i class="fact" style="width:100.0%"></i></span><span class="bv">148,975</span></div><div class="bar"><span class="bl">doc</span><span class="bt"><i class="fact" style="width:98.0%"></i></span><span class="bv">145,954</span></div><div class="bar"><span class="bl">signature</span><span class="bt"><i class="fact" style="width:75.1%"></i></span><span class="bv">111,917</span></div><div class="bar"><span class="bl">name</span><span class="bt"><i class="fact" style="width:71.2%"></i></span><span class="bv">106,017</span></div><div class="bar"><span class="bl">modifier</span><span class="bt"><i class="fact" style="width:36.6%"></i></span><span class="bv">54,546</span></div><div class="bar"><span class="bl">annotation</span><span class="bt"><i class="fact" style="width:23.0%"></i></span><span class="bv">34,228</span></div><div class="bar"><span class="bl">annotation_arg</span><span class="bt"><i class="fact" style="width:1.4%"></i></span><span class="bv">2,096</span></div>
+    </div>
+    <div class="panel">
+      <h3>Edges &amp; provenance</h3>
+      <p>Containment is a fact at confidence 1.0. Calls are <b>never</b> 1.0 — this is not a real
+      call graph, and pretending otherwise would let <code>hop</code> return paths that do not exist.</p>
+      <div class="bar"><span class="bl">calls</span><span class="bt"><i class="est" style="width:100.0%"></i></span><span class="bv">80,257</span></div><div class="bar"><span class="bl">contains</span><span class="bt"><i class="fact" style="width:49.9%"></i></span><span class="bv">40,065</span></div>
+      <div style="height:14px"></div>
+      <div class="bar"><span class="bl">typed_receiver</span><span class="bt"><i class="mid" style="width:100.0%"></i></span><span class="bv">48,379</span></div><div class="bar"><span class="bl">derived_container</span><span class="bt"><i class="fact" style="width:82.8%"></i></span><span class="bv">40,065</span></div><div class="bar"><span class="bl">name_match</span><span class="bt"><i class="est" style="width:65.9%"></i></span><span class="bv">31,878</span></div>
+      <div class="legend">
+        <span class="l1">fact (1.0)</span><span class="l2">typed receiver (0.9)</span><span class="l3">name match (≤0.6)</span>
+      </div>
+    </div>
+    <div class="panel">
+      <h3>Vocabulary by document frequency</h3>
+      <p>A long tail and a very short head. Six words reach more than ten thousand symbols apiece;
+      4 850 reach fewer than ten.</p>
+      <div class="bar"><span class="bl">1-9</span><span class="bt"><i class="mid" style="width:100.0%"></i></span><span class="bv">4,850</span></div><div class="bar"><span class="bl">10-99</span><span class="bt"><i class="mid" style="width:34.1%"></i></span><span class="bv">1,656</span></div><div class="bar"><span class="bl">100-999</span><span class="bt"><i class="mid" style="width:11.4%"></i></span><span class="bv">552</span></div><div class="bar"><span class="bl">1k-9k</span><span class="bt"><i class="mid" style="width:1.7%"></i></span><span class="bv">84</span></div><div class="bar"><span class="bl">10k+</span><span class="bt"><i class="mid" style="width:0.1%"></i></span><span class="bv">6</span></div>
+    </div>
+  </div>
+
+  <div class="grid" style="margin-top:18px">
+    <div class="panel">
+      <h3>Why df is the whole game</h3>
+      <p>ICF is <code>log(N/df) / log(N)</code>. Below <b>0.34</b> a term stops discriminating, and an
+      expansion onto it is discarded at query time — which is why the grounding stage refuses to
+      generate one. <b>4,924</b> of 7,148 terms clear the bar.</p>
+      <div class="scroll"><table>
+        <tr><th>term</th><th style="text-align:right">df</th><th style="text-align:right">icf</th><th>discriminates</th></tr>
+        <tr><td class="t">buf</td><td class="num">6,511</td><td class="num">0.176</td><td class="meter"><i style="width:18%" class="est"></i></td></tr><tr><td class="t">buffer</td><td class="num">2,369</td><td class="num">0.270</td><td class="meter"><i style="width:27%" class="est"></i></td></tr><tr><td class="t">pool</td><td class="num">671</td><td class="num">0.389</td><td class="meter"><i style="width:39%" class="fact"></i></td></tr><tr><td class="t">alloc</td><td class="num">157</td><td class="num">0.525</td><td class="meter"><i style="width:52%" class="fact"></i></td></tr><tr><td class="t">allocator</td><td class="num">1,537</td><td class="num">0.311</td><td class="meter"><i style="width:31%" class="est"></i></td></tr><tr><td class="t">channel</td><td class="num">8,922</td><td class="num">0.146</td><td class="meter"><i style="width:15%" class="est"></i></td></tr><tr><td class="t">handler</td><td class="num">4,504</td><td class="num">0.210</td><td class="meter"><i style="width:21%" class="est"></i></td></tr><tr><td class="t">http</td><td class="num">6,521</td><td class="num">0.175</td><td class="meter"><i style="width:18%" class="est"></i></td></tr><tr><td class="t">watermark</td><td class="num">2</td><td class="num">0.935</td><td class="meter"><i style="width:94%" class="fact"></i></td></tr><tr><td class="t">writability</td><td class="num">110</td><td class="num">0.559</td><td class="meter"><i style="width:56%" class="fact"></i></td></tr><tr><td class="t">congestion</td><td class="num">9</td><td class="num">0.794</td><td class="meter"><i style="width:79%" class="fact"></i></td></tr><tr><td class="t">codec</td><td class="num">1,121</td><td class="num">0.341</td><td class="meter"><i style="width:34%" class="fact"></i></td></tr><tr><td class="t">promise</td><td class="num">1,345</td><td class="num">0.324</td><td class="meter"><i style="width:32%" class="est"></i></td></tr><tr><td class="t">void</td><td class="num">6,851</td><td class="num">0.171</td><td class="meter"><i style="width:17%" class="est"></i></td></tr><tr><td class="t">public</td><td class="num">20,695</td><td class="num">0.067</td><td class="meter"><i style="width:7%" class="est"></i></td></tr><tr><td class="t">get</td><td class="num">2,508</td><td class="num">0.265</td><td class="meter"><i style="width:26%" class="est"></i></td></tr>
+      </table></div>
+    </div>
+    <div class="panel">
+      <h3>Grounding: query word → project spelling</h3>
+      <p>Three rules, scored by how much they can be trusted. A prefix match is close to certain;
+      a subsequence match is a guess.</p>
+      <div class="bar"><span class="bl">subseq</span><span class="bt"><i class="est" style="width:100.0%"></i></span><span class="bv">4,113</span></div><div class="bar"><span class="bl">prefix</span><span class="bt"><i class="fact" style="width:93.6%"></i></span><span class="bv">3,848</span></div><div class="bar"><span class="bl">abbrev</span><span class="bt"><i class="mid" style="width:8.8%"></i></span><span class="bv">360</span></div>
+      <div class="legend"><span class="l1">prefix 0.75</span><span class="l2">abbrev 0.75</span><span class="l3">subseq 0.50</span></div>
+      <div class="caveat"><b>Subsequence is the largest and the worst.</b> It produces
+      <code>abandoned → add</code> and <code>ability → alt</code>. Those score 0.50 and mostly die at
+      the ICF floor anyway, but the rule is carrying more noise than signal and deserves tightening.</div>
+    </div>
+  </div>
+
+  <div class="panel" style="margin-top:18px">
+    <h3>Compound segmentation — 78 terms on this repository</h3>
+    <p>Ronin returns <code>iostat</code>, <code>nfsd</code> and <code>printk</code> whole, so a query
+    for "io statistics" cannot reach a symbol indexed only as <code>iostat</code>. Viterbi over a
+    unigram lattice fixes that, and it needs <b>no training</b>: the costs come from the words the
+    delimiter already split out, counted. The whole word is always kept beside its pieces.</p>
+    
+<div class="lattice">
+  <div class="lrow"><span class="lk">token</span><code>i o s t a t</code></div>
+  <div class="lrow"><span class="lk">candidates</span>
+    <span class="cand bad">ios</span><span class="cand bad">iost</span>
+    <span class="cand ok">io</span><span class="cand ok">stat</span>
+    <span class="cand bad">tat</span></div>
+  <div class="lrow"><span class="lk">cheapest path</span>
+    <code class="split">io &middot; stat</code>
+    <span class="note">cost 4.02 &lt; whole 6.67 &minus; margin</span></div>
+</div>
+    <div style="margin-top:18px" class="grid">
+      <div><div class="seg"><code>abstractchannel</code><span class="arrow">&rarr;</span><code class="split">abstract &middot; channel</code></div><div class="seg"><code>abstracthttp</code><span class="arrow">&rarr;</span><code class="split">abstract &middot; http</code></div><div class="seg"><code>abstractlist</code><span class="arrow">&rarr;</span><code class="split">abstract &middot; list</code></div><div class="seg"><code>abstractunsafe</code><span class="arrow">&rarr;</span><code class="split">abstract &middot; unsafe</code></div><div class="seg"><code>addresstype</code><span class="arrow">&rarr;</span><code class="split">address &middot; type</code></div><div class="seg"><code>belong</code><span class="arrow">&rarr;</span><code class="split">be &middot; long</code></div><div class="seg"><code>byteinput</code><span class="arrow">&rarr;</span><code class="split">byte &middot; input</code></div><div class="seg"><code>byteoutput</code><span class="arrow">&rarr;</span><code class="split">byte &middot; output</code></div><div class="seg"><code>bytesdecoder</code><span class="arrow">&rarr;</span><code class="split">bytes &middot; decoder</code></div><div class="seg"><code>bytestring</code><span class="arrow">&rarr;</span><code class="split">byte &middot; string</code></div><div class="seg"><code>channelbuffer</code><span class="arrow">&rarr;</span><code class="split">channel &middot; buffer</code></div><div class="seg"><code>channelread</code><span class="arrow">&rarr;</span><code class="split">channel &middot; read</code></div><div class="seg"><code>channeludt</code><span class="arrow">&rarr;</span><code class="split">channel &middot; udt</code></div><div class="seg"><code>channelunsafe</code><span class="arrow">&rarr;</span><code class="split">channel &middot; unsafe</code></div><div class="seg"><code>compositebuffer</code><span class="arrow">&rarr;</span><code class="split">composite &middot; buffer</code></div><div class="seg"><code>createstream</code><span class="arrow">&rarr;</span><code class="split">create &middot; stream</code></div><div class="seg"><code>defaulthandle</code><span class="arrow">&rarr;</span><code class="split">default &middot; handle</code></div><div class="seg"><code>defaultheaders</code><span class="arrow">&rarr;</span><code class="split">default &middot; headers</code></div></div>
+    </div>
+    <div class="caveat">Two of the 78 are wrong — <code>belong → be long</code> and
+    <code>intend → int end</code>. Both <b>add</b> a posting rather than removing one, so the cost is
+    noise, not a lost answer.</div>
+  </div>
+</section>
+
+<section>
+  <div class="srule"><h2>II · A query, step by step</h2><em>lexical route, no model</em></div>
+  <p class="q">pooled buffer allocation and recycling</p>
+  <p class="intro">The route below uses <strong>no LLM at all</strong>. It is the floor everything
+  else is measured against, and what runs when there is no API key.</p>
+
+  <div class="panel">
+    <h3>Terms, with the df the planner sees</h3>
+    <p>Ordering decisions are impossible without these numbers: <code>buf</code> and
+    <code>arena</code> are not remotely the same kind of term.</p>
+    <div class="chips"><span class="chip"><b>pool</b><i>671</i></span><span class="chip"><b>pooled</b><i>607</i></span><span class="chip"><b>buf</b><i>6,511</i></span><span class="chip"><b>buffer</b><i>2,369</i></span><span class="chip"><b>alloc</b><i>157</i></span><span class="chip"><b>allocator</b><i>1,537</i></span><span class="chip"><b>chunk</b><i>628</i></span><span class="chip"><b>arena</b><i>155</i></span><span class="chip"><b>recycler</b><i>191</i></span><span class="chip"><b>recycle</b><i>52</i></span><span class="chip"><b>capacity</b><i>251</i></span><span class="chip"><b>release</b><i>323</i></span><span class="chip"><b>refcnt</b><i>23</i></span></div>
+  </div>
+
+  <div class="panel" style="margin-top:18px">
+    <h3>The funnel</h3>
+    <p>Bars are log-scaled — the drop from ten thousand to sixty is the point.
+    <b>Graph proximity weights, it does not filter</b>: <code>reach</code> produces no scores, so
+    replacing the fragment with its neighbourhood would throw away every lexical score.</p>
+    <div class="stage"><span class="sn">1</span><span class="sl">eval_unit</span><span class="sbar"><i style="width:100.0%"></i></span><span class="sr">10,790</span><span class="sm">244 ms</span></div><div class="stage"><span class="sn">2</span><span class="sl">reach (cohere seeds)</span><span class="sbar"><i style="width:72.4%"></i></span><span class="sr">832</span><span class="sm">17 ms &middot; 477 in neighbourhood</span></div><div class="stage"><span class="sn">3</span><span class="sl">narrow (weighted)</span><span class="sbar"><i style="width:44.3%"></i></span><span class="sr">60</span><span class="sm">&lt;1 ms</span></div>
+  </div>
+
+  <div class="panel" style="margin-top:18px">
+    <h3>Results, and why each one is here</h3>
+    <p>Every hit carries the evidence that put it there — which term matched, in which field.
+    A result you cannot doubt is a result you cannot check.</p>
+    <div class="hit"><span class="hr">1</span><span class="hn"><code>releaseAndRecycle</code><span class="hk">method</span><span class="boost">graph</span></span><span class="hs">0.573</span><span class="hf">transport-classes-epoll/src/main/java/io/netty/channel/epoll/EpollDatagramChannel.java:696</span><span class="hw"><span class="ev">recycle<i>name</i></span><span class="ev">recycle←recycler(prefix)<i>name</i></span><span class="ev">release<i>name</i></span><span class="ev">buf<i>signature</i></span></span></div><div class="hit"><span class="hr">2</span><span class="hn"><code>codecOutListAllocRecycle</code><span class="hk">method</span><span class="boost">graph</span></span><span class="hs">0.569</span><span class="hf">microbench/src/main/java/io/netty/handler/codec/AdvancedCodecOutputListBenchmark.java:34</span><span class="hw"><span class="ev">recycle<i>name</i></span><span class="ev">alloc<i>name</i></span><span class="ev">recycle←recycler(prefix)<i>name</i></span></span></div><div class="hit"><span class="hr">3</span><span class="hn"><code>newSubpagePoolHead</code><span class="hk">method</span><span class="boost">graph</span></span><span class="hs">0.556</span><span class="hf">buffer/src/main/java/io/netty/buffer/PoolArena.java:115</span><span class="hw"><span class="ev">pool<i>name</i></span><span class="ev">pool←pooled(prefix)<i>name</i></span><span class="ev">arena<i>container</i></span><span class="ev">pool<i>signature</i></span></span></div><div class="hit"><span class="hr">4</span><span class="hn"><code>newSubpagePoolArray</code><span class="hk">method</span><span class="boost">graph</span></span><span class="hs">0.556</span><span class="hf">buffer/src/main/java/io/netty/buffer/PoolArena.java:122</span><span class="hw"><span class="ev">pool<i>name</i></span><span class="ev">pool←pooled(prefix)<i>name</i></span><span class="ev">arena<i>container</i></span><span class="ev">pool<i>signature</i></span></span></div><div class="hit"><span class="hr">5</span><span class="hn"><code>appendPoolSubPages</code><span class="hk">method</span><span class="boost">graph</span></span><span class="hs">0.556</span><span class="hf">buffer/src/main/java/io/netty/buffer/PoolArena.java:619</span><span class="hw"><span class="ev">pool<i>name</i></span><span class="ev">pool←pooled(prefix)<i>name</i></span><span class="ev">arena<i>container</i></span><span class="ev">pool<i>signature</i></span></span></div><div class="hit"><span class="hr">6</span><span class="hn"><code>destroyPoolSubPages</code><span class="hk">method</span><span class="boost">graph</span></span><span class="hs">0.556</span><span class="hf">buffer/src/main/java/io/netty/buffer/PoolArena.java:650</span><span class="hw"><span class="ev">pool<i>name</i></span><span class="ev">pool←pooled(prefix)<i>name</i></span><span class="ev">arena<i>container</i></span><span class="ev">pool<i>signature</i></span></span></div><div class="hit"><span class="hr">7</span><span class="hn"><code>valueOf</code><span class="hk">method</span><span class="boost">graph</span></span><span class="hs">0.553</span><span class="hf">codec-mqtt/src/main/java/io/netty/handler/codec/mqtt/MqttReasonCodes.java:239</span><span class="hw"><span class="ev">rec←recycler(prefix)<i>signature</i></span><span class="ev">rec←recycle(prefix)<i>signature</i></span><span class="ev">rec←recycler(prefix)<i>container</i></span><span class="ev">rec←recycle(prefix)<i>container</i></span></span></div><div class="hit"><span class="hr">8</span><span class="hn"><code>chunkListMetrics</code><span class="hk">field</span><span class="boost">graph</span></span><span class="hs">0.545</span><span class="hf">buffer/src/main/java/io/netty/buffer/PoolArena.java:54</span><span class="hw"><span class="ev">chunk<i>name</i></span><span class="ev">arena<i>container</i></span><span class="ev">chunk<i>signature</i></span><span class="ev">pool<i>signature</i></span></span></div>
+  </div>
+</section>
+
+<section>
+  <div class="srule"><h2>III · The same query, compiled</h2><em>codegen route · 8.42 s · 40-line generated script</em></div>
+  <p class="intro">Hand the model the operator spec and the vocabulary <strong>with df</strong>, and it
+  writes the script itself. This is the artifact: edit one line, re-run it, see what changed.</p>
+  <pre># Start with a narrow query focused on pooled buffer allocation and recycling
+q = QueryUnit(&quot;buffer_allocation&quot;, satisfiers=(
+    LexicalSatisfier(terms=(
+        Term(&quot;pooled&quot;, weight=0.9), Term(&quot;buffer&quot;, weight=0.9), Term(&quot;allocation&quot;, weight=0.8),
+        Term(&quot;recycling&quot;, weight=0.8), Term(&quot;recycler&quot;, weight=0.7), Term(&quot;alloc&quot;, weight=0.6),
+        Term(&quot;memory&quot;, weight=0.5), Term(&quot;free&quot;, weight=0.5), Term(&quot;deallocate&quot;, weight=0.5),
+        Term(&quot;chunk&quot;, weight=0.5), Term(&quot;arena&quot;, weight=0.5), Term(&quot;reuse&quot;, weight=0.5),
+        Term(&quot;cache&quot;, weight=0.5), Term(&quot;manage&quot;, weight=0.4), Term(&quot;size&quot;, weight=0.4),
+        Term(&quot;control&quot;, weight=0.4), Term(&quot;handle&quot;, weight=0.4)
+    ), weight=0.5),
+))
+
+# Evaluate the query to get initial candidates
+frag = eval_unit(q, ctx)
+
+# If the initial results are too few, widen the search with additional terms
+if len(frag) &lt; 30:
+    # Add broader terms to capture more relevant results
+    wide = QueryUnit(&quot;buffer_allocation_wide&quot;, satisfiers=(
+        LexicalSatisfier(terms=(
+            Term(&quot;pool&quot;, weight=0.6), Term(&quot;recycle&quot;, weight=0.6), Term(&quot;allocator&quot;, weight=0.5),
+            Term(&quot;buffered&quot;, weight=0.5), Term(&quot;management&quot;, weight=0.5), Term(&quot;usage&quot;, weight=0.5),
+            Term(&quot;performance&quot;, weight=0.4), Term(&quot;strategy&quot;, weight=0.4), Term(&quot;implementation&quot;, weight=0.4),
+            Term(&quot;configuration&quot;, weight=0.4), Term(&quot;system&quot;, weight=0.4)
+        ), weight=0.4),
+    ))
+    frag = frag | eval_unit(wide, ctx)
+
+# Use graph proximity to find related symbols that may enhance the results
+near = reach(top(frag, 20), ctx, edge=[&quot;calls&quot;, &quot;contains&quot;], direction=&quot;any&quot;, hops=(1, 2))
+
+# Boost the scores of the original candidates with nearby relevant nodes
+boosted = set(near.nodes) &amp; set(frag.nodes)
+frag = frag.induced(sorted(
+    frag.nodes,
+    key=lambda s: (-score_of(frag, s) * (1 + 0.6 * (s in boosted)), s),
+)[:60])
+
+# Final intent evaluation to determine the best candidates based on the specific criterion
+answer = intent(frag, &quot;Elements that effectively manage pooled buffer allocation and recycling in the Netty codebase.&quot;, ctx, max_items=60)</pre>
+  <div class="panel" style="margin-top:18px">
+    <h3>What it returned</h3>
+    <div class="hit"><span class="hr">1</span><span class="hn"><code>PoolThreadCache</code><span class="hk">constructor</span></span><span class="hs">0.573</span><span class="hf">buffer/src/main/java/io/netty/buffer/PoolThreadCache.java:68</span><span class="hw"><span class="ev">pool←pooled(prefix)@name</span><span class="ev">allocation@signature</span><span class="ev">cache@name</span></span></div><div class="hit"><span class="hr">2</span><span class="hn"><code>chunkPooled</code><span class="hk">field</span></span><span class="hs">0.558</span><span class="hf">buffer/src/main/java/io/netty/buffer/AllocateBufferEvent.java:37</span><span class="hw"><span class="ev">pooled@name</span><span class="ev">allocation@annotation_arg</span><span class="ev">pooled@annotation_arg</span></span></div><div class="hit"><span class="hr">3</span><span class="hn"><code>pooled</code><span class="hk">field</span></span><span class="hs">0.536</span><span class="hf">buffer/src/main/java/io/netty/buffer/FreeChunkEvent.java:37</span><span class="hw"><span class="ev">pooled@name</span><span class="ev">allocation@annotation_arg</span><span class="ev">pooled@annotation_arg</span></span></div><div class="hit"><span class="hr">4</span><span class="hn"><code>PoolArena</code><span class="hk">constructor</span></span><span class="hs">0.435</span><span class="hf">buffer/src/main/java/io/netty/buffer/PoolArena.java:82</span><span class="hw"><span class="ev">arena@name</span><span class="ev">pool←pooled(prefix)@name</span><span class="ev">pooled@signature</span></span></div><div class="hit"><span class="hr">5</span><span class="hn"><code>PooledByteBufAllocator</code><span class="hk">constructor</span></span><span class="hs">0.416</span><span class="hf">buffer/src/main/java/io/netty/buffer/PooledByteBufAllocator.java:271</span><span class="hw"><span class="ev">pooled@name</span><span class="ev">pooled@container</span><span class="ev">all←allocation(prefix)@signature</span></span></div><div class="hit"><span class="hr">6</span><span class="hn"><code>directAllocation</code><span class="hk">method</span></span><span class="hs">0.411</span><span class="hf">microbench/src/main/java/io/netty/microbench/buffer/ByteBufAllocatorAllocPatternBenchmark.java:219</span><span class="hw"><span class="ev">allocation@name</span><span class="ev">allocation@signature</span><span class="ev">alloc←allocation(prefix)@container</span></span></div><div class="hit"><span class="hr">7</span><span class="hn"><code>heapAllocation</code><span class="hk">method</span></span><span class="hs">0.411</span><span class="hf">microbench/src/main/java/io/netty/microbench/buffer/ByteBufAllocatorAllocPatternBenchmark.java:224</span><span class="hw"><span class="ev">allocation@name</span><span class="ev">allocation@signature</span><span class="ev">alloc←allocation(prefix)@container</span></span></div><div class="hit"><span class="hr">8</span><span class="hn"><code>destroyPoolChunkLists</code><span class="hk">method</span></span><span class="hs">0.408</span><span class="hf">buffer/src/main/java/io/netty/buffer/PoolArena.java:656</span><span class="hw"><span class="ev">pool←pooled(prefix)@name</span><span class="ev">chunk@name</span><span class="ev">pool←pooled(prefix)@signature</span></span></div>
+  </div>
+</section>
+
+<footer>
+  Measured on netty · index built 2026-07-31 · recall @100 across three samples:
+  lexical 0% · generic 39% · grounded 47% · graph 56% · planned 52% · codegen 55%
+</footer>
+</div>
