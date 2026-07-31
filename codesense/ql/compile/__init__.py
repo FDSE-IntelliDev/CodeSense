@@ -8,7 +8,9 @@
 不在这（QL 层按契约只用标准库）。
 """
 
+from codesense.ql.compile.build import ScoredTerm, build_spec, infer_fields, infer_kinds
 from codesense.ql.compile.cost import Estimate, estimate_hop, estimate_intent, estimate_unit
+from codesense.ql.compile.partition import Cluster, partition
 from codesense.ql.compile.plan import (
     Boost,
     EvalUnit,
@@ -24,6 +26,7 @@ from codesense.ql.compile.spec import GraphConstraint, QuerySpec
 
 __all__ = [
     "Boost",
+    "Cluster",
     "Estimate",
     "EvalUnit",
     "GraphConstraint",
@@ -31,11 +34,16 @@ __all__ = [
     "Narrow",
     "Plan",
     "QuerySpec",
+    "ScoredTerm",
     "State",
     "Step",
     "Trace",
+    "build_spec",
     "estimate_hop",
     "estimate_intent",
     "estimate_unit",
+    "infer_fields",
+    "infer_kinds",
+    "partition",
     "plan",
 ]

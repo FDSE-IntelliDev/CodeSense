@@ -21,10 +21,15 @@ from codesense.ql.unit import QueryUnit
 
 __all__ = ["USELESS_RATIO", "plan"]
 
-#: 一个单元命中超过这个比例的符号，就基本不起筛选作用了。
-#: 与其花一次全量倒排扫描去交一次，不如直接不要它——
-#: 它带来的分数贡献远抵不上代价。
-USELESS_RATIO = 0.5
+#: 单元覆盖率超过这个比例才丢弃。
+#:
+#: 定得很高是**吃过亏的**：原先设 0.5，在 142 个符号的 petclinic 上
+#: 把唯一含答案的单元丢掉了（10 个词的并集轻易过半），只剩一个 2 词的
+#: 无关单元。这和当初 ICF 下限犯的是同一个错——**把调用方明确要的东西
+#: 排除，而不是降权**。丢一个单元省的是一遍倒排扫描，代价却是答案没了。
+#:
+#: 现在只丢「几乎命中全部符号」的单元，宽窄之分交给 `_specificity` 加权。
+USELESS_RATIO = 0.9
 
 #: 交给 `intent` 的候选上限。它比查表贵几千倍，输入必须先压住。
 INTENT_INPUT_CAP = 60
@@ -102,7 +107,7 @@ def plan(spec: QuerySpec, ctx: EvalContext) -> Plan:
     for item in dropped:
         why.append(
             f"丢掉单元 {item.unit.name!r}：预计命中 {item.rows} 个"
-            f"（占 {100 * item.rows / total:.0f}%），筛不掉什么却要扫一遍倒排"
+            f"（占 {100 * item.rows / total:.0f}%），几乎等于全表"
         )
     if not useful:
         # 全都太宽泛也不能什么都不做——留最窄的那个，至少有个结果

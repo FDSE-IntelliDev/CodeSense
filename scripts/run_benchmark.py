@@ -276,53 +276,53 @@ def run_planned(
     cache: Path | None = None,
     attempt: int = 0,
 ) -> tuple[dict[str, int], list[str]]:
-    """全流程：编译成规格 → 规划 → 执行（试跑，跳过 intent）。
+    """全流程：LLM 读懂查询 → 统计定结构 → 按代价排序 → 执行。
 
-    召回率这个指标下要跳过 `intent`：它只会筛掉候选，
-    而我们量的是「该找到的有没有被找到」。它的作用另外看。
+    **分工**：模型只做 NLP（挑词、打分、写判定标准），
+    分几个单元、偏好什么种类、什么顺序全由统计决定。
+
+    召回率这个指标下跳过 `intent`：它只会筛掉候选，
+    而我们量的是「该找到的有没有被找到」。
     """
-    from codesense.llm import SpecCompiler
-    from codesense.ql.compile import Intent, plan
+    import hashlib
 
-    spec = SpecCompiler(config).compile(case["query"], case["project"], vocab)
-    if spec is None:
-        return {}, ["编译失败"]
+    from codesense.llm import QueryUnderstanding
+    from codesense.ql.compile import Intent, build_spec, plan
+
+    # 模型输出必须缓存：不固定住它，同一条查询两次运行的召回率能差
+    # 几十个百分点，比较的就是噪音。
+    key = hashlib.sha256(
+        f"nlp|{config.model}|{case['project']}|{case['query']}|{len(vocab)}|{attempt}".encode()
+    ).hexdigest()[:16]
+    slot = cache / f"{key}.json" if cache else None
+    if slot is not None and slot.is_file():
+        understood = json.loads(slot.read_text(encoding="utf-8"))
+    else:
+        understood = QueryUnderstanding(config).understand(case["query"], case["project"], vocab)
+        if understood is not None and slot is not None:
+            slot.parent.mkdir(parents=True, exist_ok=True)
+            slot.write_text(json.dumps(understood, ensure_ascii=False), encoding="utf-8")
+    if understood is None:
+        return {}, ["理解失败"]
+
+    try:
+        spec = build_spec(
+            case["query"],
+            understood["terms"],
+            ctx,
+            concept=understood["concept"],
+            annotations=understood["annotations"],
+        )
+    except ValueError as exc:
+        return {}, [f"构造规格失败: {exc}"]
+
     execution = plan(spec, ctx)
     state = execution.run(ctx, skip=(Intent,))
     names: dict[str, int] = {}
-    ordered = sorted(
-        state.current.nodes, key=lambda sid: (-score_of(state.current, sid, None), sid)
-    )
+    ordered = sorted(state.current.nodes, key=lambda sid: (-score_of(state.current, sid), sid))
     for position, symbol_id in enumerate(ordered, 1):
         names.setdefault(state.current.nodes[symbol_id].name, position)
     return names, list(execution.reasoning)
-
-
-def _spec_json(spec: Any) -> dict[str, Any]:
-    """把规格转回 JSON，供缓存复原。"""
-    from codesense.ql.satisfiers import AnnotationSatisfier, LexicalSatisfier, ModifierSatisfier
-
-    units = []
-    for unit in spec.units:
-        item: dict[str, Any] = {"name": unit.name, "concept": unit.concept}
-        for satisfier in unit.satisfiers:
-            if isinstance(satisfier, LexicalSatisfier):
-                item["terms"] = [t.value for t in satisfier.terms]
-            elif isinstance(satisfier, AnnotationSatisfier):
-                item["annotations"] = list(satisfier.names)
-            elif isinstance(satisfier, ModifierSatisfier):
-                item["modifiers"] = list(satisfier.modifiers)
-        units.append(item)
-    return {
-        "query": spec.query,
-        "units": units,
-        "graph": [
-            {"src": g.src, "dst": g.dst, "edge": list(g.edge), "hops": list(g.hops)}
-            for g in spec.graph
-        ],
-        "concept": spec.concept,
-        "kinds": list(spec.kinds),
-    }
 
 
 def rank(frag: Frag, unit: str) -> dict[str, int]:

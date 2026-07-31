@@ -1,8 +1,14 @@
-"""自然语言 → 查询规格。
+"""自然语言 → 相关词 + 判定标准。
 
-编译器唯一需要 LLM 的一步。产出的是 `QuerySpec`（结构化中间表示），
-**不是可执行代码**——顺序由 `codesense.ql.compile.planner` 按预估代价决定，
-不由模型决定。模型不知道 `buffer` 在这个项目里命中 2365 个符号，规划器知道。
+**分工**：模型做 NLP，统计做优化。
+
+模型这一步做的是它擅长的：读懂查询，从项目词表里挑出相关的词，
+写出一句可判真假的意图。它**不决定**分几个单元、偏好什么种类、
+什么执行顺序——那些是统计问题，答案在索引里（`df`、posting 分布），
+不在模型脑子里。实测模型在这几件事上判得很差：查询问「实体字段上的
+校验约束」，它给的 kinds 里偏偏没有 `field`，把答案全筛没了。
+
+这和 MySQL 优化器同一个道理：优化器不问用户怎么 join，它查统计信息。
 
 放在 `codesense.llm` 而不是 `codesense.ql`，因为 QL 层按契约只用标准库。
 """
@@ -14,51 +20,55 @@ import logging
 from collections.abc import Sequence
 
 from codesense.llm.config import LlmConfig
-from codesense.ql.compile.spec import QuerySpec
 
-__all__ = ["PROMPT", "SpecCompiler"]
+__all__ = ["PROMPT", "QueryUnderstanding"]
 
 _log = logging.getLogger(__name__)
 
 PROMPT = """\
-你在把一条代码检索需求拆成结构化的查询规格。
+你在为一个代码检索系统理解查询。
 
 代码库：{project}
 查询：{query}
 
-这个代码库里出现过的词（**只能从中挑 terms**）：
+这个代码库里出现过的词（**terms 只能从中挑**）：
 {vocab}
 
 输出 JSON：
 {{
-  "units": [
-    {{"name": "简短英文名", "concept": "这个槽位在找什么，一句中文",
-      "terms": ["词1", ...], "annotations": ["@注解名", ...], "modifiers": ["static", ...]}}
-  ],
-  "graph": [{{"src": "单元名", "dst": "单元名", "hops": [1, 2]}}],
-  "concept": "整条查询的语义判定标准，一句中文",
-  "kinds": ["method", "class"]
+  "terms": {{"词": 相关度0到1, ...}},
+  "annotations": ["@注解名", ...],
+  "concept": "一句话的判定标准，用来逐个判断某段代码算不算答案"
 }}
 
 要求：
-- **拆成 2~4 个单元**，每个单元是一个独立的语义槽位（如「缓冲区」「磁盘」「性能」），
-  不要把所有词堆进一个单元——单元之间的关系要靠 graph 表达
-- terms 必须来自上面的词表，每个单元 5~15 个
-- 只在「A 相关的代码调用/包含 B 相关的代码」这种意思成立时才写 graph
-- annotations 可以写词表里没有的框架注解
-- concept 是最后交给模型逐个判定用的，要具体、可判真假
+- terms 挑 15~30 个，全部来自上面的词表，按相关度打分
+  （直接指向查询意图的给 0.8~1.0，间接相关的给 0.3~0.6）
+- 不要挑 get/set/value 这类通用词
+- annotations 可以写词表里没有的框架注解，没有就给空列表
+- concept 要具体、可判真假，不要复述查询
 """
 
 
-class SpecCompiler:
-    """把自然语言编译成查询规格。"""
+def _score(raw: object) -> float:
+    try:
+        return min(max(float(raw), 0.0), 1.0)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return 1.0
+
+
+class QueryUnderstanding:
+    """读懂查询。结构与优化交给 `codesense.ql.compile`。"""
 
     def __init__(self, config: LlmConfig, session: object | None = None) -> None:
         self._config = config
         self._session = session
 
-    def compile(self, query: str, project: str, vocabulary: Sequence[str]) -> QuerySpec | None:
-        """编译。失败返回 None——调用方决定是降级还是放弃。"""
+    def understand(self, query: str, project: str, vocabulary: Sequence[str]) -> dict | None:
+        """读懂查询：挑词、给分、写判定标准。**不决定任何结构。**
+
+        失败返回 None——调用方决定是降级还是放弃。
+        """
         content = self._ask(
             PROMPT.format(project=project, query=query, vocab=", ".join(vocabulary))
         )
@@ -73,12 +83,17 @@ class SpecCompiler:
         except json.JSONDecodeError:
             _log.warning("编译输出不是合法 JSON")
             return None
-        payload.setdefault("query", query)
-        try:
-            return QuerySpec.from_dict(payload)
-        except (ValueError, KeyError, TypeError) as exc:
-            _log.warning("编译产出的规格不合法: %s", exc)
+        terms = payload.get("terms")
+        if isinstance(terms, list):  # 模型偶尔给列表而不是打分字典
+            terms = {str(t): 1.0 for t in terms if isinstance(t, str)}
+        if not isinstance(terms, dict) or not terms:
+            _log.warning("模型没给出可用的词")
             return None
+        return {
+            "terms": {str(k).lower(): _score(v) for k, v in terms.items()},
+            "annotations": [a for a in payload.get("annotations", ()) if isinstance(a, str)],
+            "concept": str(payload.get("concept") or ""),
+        }
 
     def _ask(self, prompt: str) -> str | None:
         session = self._session

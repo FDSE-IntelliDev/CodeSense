@@ -4,7 +4,7 @@
 反过来会破坏 QL「只用标准库」的契约。
 """
 
-from codesense.llm.compiler import SpecCompiler
+from codesense.llm.compiler import QueryUnderstanding
 from codesense.llm.config import DEFAULT_BASE_URL, DEFAULT_MODEL, LlmConfig, find_api_key
 from codesense.llm.judge import OpenAICompatibleJudge
 
@@ -13,6 +13,6 @@ __all__ = [
     "DEFAULT_MODEL",
     "LlmConfig",
     "OpenAICompatibleJudge",
-    "SpecCompiler",
+    "QueryUnderstanding",
     "find_api_key",
 ]

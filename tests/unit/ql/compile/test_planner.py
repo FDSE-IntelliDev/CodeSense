@@ -82,12 +82,18 @@ class TestOrdering:
         assert steps[0].unit.name == "narrow"
         assert steps[0].seed
 
-    def test_太宽泛的单元被丢掉(self) -> None:
-        """命中一半以上的符号，筛不掉什么却要扫一遍倒排。"""
-        ctx = make_context({"common": 900, "rare": 10})
+    def test_几乎命中全表的单元才丢掉(self) -> None:
+        """门槛定得高是吃过亏的：0.5 会把唯一含答案的单元丢掉。"""
+        ctx = make_context({"common": 980, "rare": 10})
         planned = plan(spec(), ctx)
         assert [s.unit.name for s in planned.steps if isinstance(s, EvalUnit)] == ["narrow"]
         assert any("丢掉单元" in why for why in planned.reasoning)
+
+    def test_只是偏宽的单元保留但降权(self) -> None:
+        """覆盖一半不算无用——降权就够了，丢掉的代价是答案没了。"""
+        ctx = make_context({"common": 500, "rare": 10})
+        names = [s.unit.name for s in plan(spec(), ctx).steps if isinstance(s, EvalUnit)]
+        assert set(names) == {"narrow", "wide"}
 
     def test_全都太宽泛时保留最窄的(self) -> None:
         """不能因为都宽就产出空计划。"""
@@ -128,7 +134,7 @@ class TestGraphDirection:
         assert boosts[0].src_name == "wide"
 
     def test_单元被丢掉时跳过对应的图约束(self) -> None:
-        ctx = make_context({"common": 900, "rare": 10}, (Edge(1, 2, "calls"),))
+        ctx = make_context({"common": 980, "rare": 10}, (Edge(1, 2, "calls"),))
         planned = plan(spec(graph=[{"src": "wide", "dst": "narrow"}]), ctx)
         assert not any(isinstance(s, Boost) for s in planned.steps)
         assert any("跳过图约束" in why for why in planned.reasoning)
