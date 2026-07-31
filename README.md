@@ -17,7 +17,7 @@ conda activate codesearch
 pip install -e ".[dev]"
 
 cp .env.example .env && $EDITOR .env     # 填 CODESENSE_API_KEY
-$EDITOR configs/default.yaml             # 把 target.project_path 指向你的目标代码库
+# 参数通过命令行传给 scripts/ 下的脚本，不需要改配置文件
 
 pytest                                   # 70 个测试，应该全绿
 python -m codesense --help
@@ -115,7 +115,7 @@ python -m codesense --query "Find the entry function that handles user login aut
 │   ├── integration/         端到端，标 slow
 │   └── fixtures/mini_project/   测试用的最小目标代码库
 │
-├── configs/default.yaml     默认配置
+├── legacy/                 重写前的实现（只读归档）
 ├── data/                    查询集、标注、prompt（大文件不进版本库）
 ├── scripts/                 入口脚本（只做参数解析和调用）
 ├── docs/                    专题文档与设计决策记录
@@ -184,7 +184,7 @@ brew install jdtls                     # macOS
 ```
 
 其他系统参考 [eclipse.jdt.ls](https://github.com/eclipse/eclipse.jdt.ls)，
-装好后把路径写进 `configs/default.yaml` 的 `tools.jdtls_path`。
+装好后把路径作为命令行参数传给对应脚本。
 
 CodeQL 对照路线默认生成独立的 `codegraph.codeql.sqlite`，不会覆盖 LSP 版本。
 安装方式与完整命令见 [`codesense/codeql/README.md`](codesense/codeql/README.md)。

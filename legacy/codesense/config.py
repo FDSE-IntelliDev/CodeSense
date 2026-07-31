@@ -31,7 +31,8 @@ import yaml
 
 PACKAGE_DIR = Path(__file__).resolve().parent
 REPO_ROOT = PACKAGE_DIR.parent
-DEFAULT_CONFIG_PATH = REPO_ROOT / "configs" / "default.yaml"
+# 归档后 configs/ 一并搬进 legacy/，保持这份快照自洽。
+DEFAULT_CONFIG_PATH = Path(__file__).resolve().parent.parent / "configs" / "default.yaml"
 
 # 随包一起分发的资源目录。这些是包的一部分，不是可配置项，所以不进 YAML。
 TOKENIZER_DIR = str(PACKAGE_DIR / "tokenizer")

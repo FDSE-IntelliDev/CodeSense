@@ -66,7 +66,7 @@ pytest                  # 测试（默认跳过 slow）
 
 **边界**
 - [ ] Executor 读的是 `*_semql.json` 计划，没有回头去解析 SemCon 原始字段
-- [ ] 新增的可调参数进了 `configs/`，没写死在代码里
+- [ ] 新增的可调参数走构造函数注入，没写死在代码里、也没塞进配置文件
 - [ ] 模块顶层没有执行逻辑（只有定义），`import` 它不会读盘、不会 print
 - [ ] 没有 `/Users/...`、`/home/xxx/...` 这类只在你机器上成立的绝对路径
 - [ ] `codesense/` 没有反向 import `evaluation/`

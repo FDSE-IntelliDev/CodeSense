@@ -25,7 +25,7 @@ import pytest
 
 from codesense.ql import Edge, Element, Frag, IndexField
 from codesense.ql.context import EvalContext
-from codesense.ql.operators import degree, eval_unit, hop, only, reach, top
+from codesense.ql.operators import degree, eval_unit, hop, intent, only, reach, top
 from codesense.ql.satisfiers import AnnotationSatisfier, LexicalSatisfier
 from codesense.ql.store import (
     InMemoryEdgeStore,
@@ -234,6 +234,35 @@ class TestFindingIcfIsRelativeToTheIndex:
         assert eval_unit(_unit("user", "user"), loose)
 
 
+class TestQuery6Intent:
+    """`和 token 有关、且真的在管理令牌的方法` —— 最贵的算子放最后。
+
+    这里用默认的空判定器，所以走的是**降级路径**：它验证的是编排本身
+    ——`intent` 拿到的候选已经被前面的便宜约束收窄过。
+    真实判定的验证在 `tests/integration/test_llm_judge.py`。
+    """
+
+    def _narrowed(self, ctx: EvalContext) -> Frag:
+        return top(only(eval_unit(_unit("token", "token"), ctx), kind="method"), 5, by="token")
+
+    def test_收窄之后才轮到_intent(self, ctx: EvalContext) -> None:
+        narrowed = self._narrowed(ctx)
+        assert len(narrowed) <= 5
+        assert len(intent(narrowed, "管理令牌生命周期", ctx, max_items=10)) <= 5
+
+    def test_候选没收窄时直接报错(self, ctx: EvalContext) -> None:
+        """把没收窄的片段丢给 intent 是编排错误，不该由钱来兜底。"""
+        wide = eval_unit(_unit("token", "token"), ctx)
+        with pytest.raises(ValueError, match="max_items"):
+            intent(wide, "管理令牌生命周期", ctx, max_items=3)
+
+    def test_没配_LLM_时降级而不是失败(self, ctx: EvalContext) -> None:
+        narrowed = self._narrowed(ctx)
+        result = intent(narrowed, "管理令牌生命周期", ctx, max_items=10)
+        assert len(result) == len(narrowed)
+        assert all(result.evidence_for(s).verdicts[0].source == "fallback" for s in result.nodes)
+
+
 class TestQuery5Narrowing:
     """`和 token 有关的方法里最相关的 5 个` —— 收窄算子。
 
@@ -301,13 +330,16 @@ class TestGaps:
             "修饰符已经有了，请删掉这条缺口断言"
         )
 
-    def test_缺口4_没有_intent_算子(self) -> None:
-        """`真正在做鉴权的那个入口` 写不出来——`intent` 还没实现。
+    def test_缺口4_真实索引里还没有数据流边(self, ctx: EvalContext) -> None:
+        """`这个参数的值从哪来` 写不出来——没有 flows_to 边。
 
-        它是唯一需要 LLM 的算子，刻意放在最后、候选最少时。
+        它是唯一需要**新建分析能力**的一项（10 章第六节），
+        其余都是重组已有数据。
         """
-        with pytest.raises(ImportError):
-            from codesense.ql.operators import intent  # noqa: F401
+        field = _any_of_kind(ctx, "variable")
+        assert not reach(field, ctx, edge="flows_to", direction="backward"), (
+            "flows_to 边已经有了，请删掉这条缺口断言"
+        )
 
 
 def _any_of_kind(ctx: EvalContext, kind: str) -> Frag:

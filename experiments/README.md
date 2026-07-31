@@ -5,7 +5,7 @@
 ```
 experiments/
 └── EXP-0001-<短横线描述>/
-    ├── config.yaml      跑什么（configs/default.yaml 复制一份改）
+    ├── config.yaml      跑什么（把这次实验的全部参数写死在里面）
     └── README.md        为什么跑、结果如何、结论是什么
 ```
 
@@ -18,7 +18,8 @@ experiments/
 
 ## 配置要复制不要引用
 
-`config.yaml` 必须是一份**独立的快照**，不要写「用 configs/default.yaml」。
+`config.yaml` 必须是一份**独立的快照**：把参数的实际取值抄进来，
+不要写「用默认值」——默认值会变，快照就不再能复现。
 那个文件下周就会被改，到时候你没法知道当时到底跑的什么参数。
 
 ## 记录写在跑之前

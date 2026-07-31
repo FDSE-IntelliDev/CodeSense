@@ -196,22 +196,34 @@ def has_modifier(f: Frag, *mods: str) -> Frag     # async / static / abstract ..
 ### `intent`
 
 ```python
-def intent(f: Frag, concept: str, *, mode="judge", threshold=0.5,
-           batch_size=5, fallback="similar") -> Frag
+def intent(f: Frag, concept: str, ctx, *, threshold=0.5, batch_size=5,
+           fallback="keep", max_items=200) -> Frag
 ```
 
 **返回片段中满足某个意图的部分。** 执行期唯一调 LLM 的算子，也是最贵的。
 
 ```python
-answer = intent(f.roots(), "这段代码影响磁盘 IO 的性能表现")
+answer = intent(f.roots(), "这段代码影响磁盘 IO 的性能表现", ctx)
 ```
 
 三条纪律：
 
 1. **放最后，作用在最小片段上。** 如果它前面还有没用上的便宜约束，是编排错了。
+   实现上 `max_items` 超限**直接报错**而不是照跑——编排错误不该由钱来兜底。
 2. **判定必须进证据**（verdict + reason），否则用户无从判断该不该信。
-3. **必须能降级**（`fallback`）。LLM 不可用时退化成 `similar` 或放行，
-   而不是让整条查询失败。
+3. **必须能降级**（`fallback`）。LLM 不可用时按 `keep`（召回优先）/ `drop`
+   （精度优先）/ `error`（不接受静默降级）处理，而不是让整条查询失败。
+   降级本身也要留证据（`source="fallback"`）并 log，否则用户不知道结果是判出来的
+   还是漏过来的。
+
+   > 初稿写的降级选项是 `similar`，但 `similar` 算子尚未实现，
+   > 而且「判不出就退化成向量相似」会把两种性质不同的证据混在一起。
+   > 现在的三个选项都是**明确的策略**而不是另一种判定。
+
+**判定器是注入的**（`EvalContext.judge`），QL 层只定义 `Judge` 这个端口，
+真正调模型的适配器在 `codesense.llm`——否则 QL 就没法保持「只用标准库」。
+默认注入的是「什么都判不出」的空实现而不是 `None`，
+这样降级路径在没配 LLM 的环境里**也会被真正走到**。
 
 ### `similar`
 

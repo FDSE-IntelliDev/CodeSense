@@ -19,6 +19,7 @@ from codesense.ql.frag import (
     UnitHit,
     Verdict,
 )
+from codesense.ql.judge import Judge, JudgeItem, NullJudge
 
 __all__ = [
     "DEFAULT_FIELD_WEIGHTS",
@@ -29,6 +30,9 @@ __all__ = [
     "FieldWeights",
     "Frag",
     "IndexField",
+    "Judge",
+    "JudgeItem",
+    "NullJudge",
     "Path",
     "UnitHit",
     "Verdict",

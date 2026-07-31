@@ -9,6 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from codesense.ql.fields import DEFAULT_FIELD_WEIGHTS, FieldWeights
+from codesense.ql.judge import Judge, NullJudge
 from codesense.ql.store.base import EdgeStore, ExpansionTable, PostingIndex, SymbolStore
 
 __all__ = ["EvalContext"]
@@ -23,6 +24,11 @@ class EvalContext:
     expansion: ExpansionTable
     edges: EdgeStore
     field_weights: FieldWeights = field(default=DEFAULT_FIELD_WEIGHTS)
+
+    #: 意图判定器。默认是"什么都判不出"的空实现而不是 `None`——
+    #: 这样 `intent` 的降级路径在没配 LLM 的环境里**也会被真正走到**，
+    #: 降级逻辑有 bug 时测试就能发现，而不是等到线上。
+    judge: Judge = field(default_factory=NullJudge)
 
     #: 归一化 ICF 的下限。低于它的词不参与打分——`get`（1718 个符号里占 207 个）
     #: 这类词什么都"相似"，扩展它只会制造噪音。
