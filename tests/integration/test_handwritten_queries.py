@@ -274,11 +274,11 @@ class TestQuery5Narrowing:
 class TestGaps:
     """写不出来的地方。**每条都是一个待补的能力。**"""
 
-    def test_缺口1_注解没有被索引(self, ctx: EvalContext) -> None:
-        """`所有 @Transactional 的方法` 写不出来。
+    def test_缺口1_真实索引里还没有注解(self, ctx: EvalContext) -> None:
+        """抽取已经实现（`codesense.indexing.annotations`），但**还没灌进真实索引**。
 
-        解析器不抽注解（10 章记录的欠账），所以 annotation 域是空的。
-        实测项目里有 77 种注解，这是信噪比最高的一类信号却完全用不上。
+        卡在两处：样例项目的 Java 源码不在本机，以及索引构建流程还没调抽取器。
+        注解查询本身能跑，见 `tests/integration/test_annotation_queries.py`。
         """
         unit = QueryUnit(
             "transactional", satisfiers=(AnnotationSatisfier(names=("@Transactional",)),)
