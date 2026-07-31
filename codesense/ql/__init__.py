@@ -20,6 +20,7 @@ from codesense.ql.frag import (
     Verdict,
 )
 from codesense.ql.judge import Judge, JudgeItem, NullJudge
+from codesense.ql.script import ScriptError, ScriptPolicy, run_script
 
 __all__ = [
     "DEFAULT_FIELD_WEIGHTS",
@@ -33,7 +34,10 @@ __all__ = [
     "Judge",
     "JudgeItem",
     "NullJudge",
+    "ScriptError",
+    "ScriptPolicy",
     "Path",
     "UnitHit",
     "Verdict",
+    "run_script",
 ]

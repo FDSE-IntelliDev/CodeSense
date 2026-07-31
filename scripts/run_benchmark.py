@@ -9,7 +9,8 @@
     generic    LLM 凭通用知识派生词，**不给它看项目词表**
     grounded   LLM **从项目词表里挑**，外加注解信号
     graph      在 grounded 之上用调用图/包含关系给候选重排序
-    planned    **全流程**：自然语言 → 查询规格（LLM）→ 按预估代价排序 → 执行
+    planned    结构化流水线：LLM 提议 → 统计校验 → 规划器排序 → 执行
+    codegen    **直接生成脚本**：把算子 spec 和带 df 的词表给模型，它自己写脚本
 
 `grounded` vs `graph` 检验的是另一件事：在 4 万符号的项目里，
 25 个词 OR 起来会让结果集涨到几千个，**弱信号叠加会盖过强信号**。
@@ -327,6 +328,89 @@ def run_planned(
     return names, notes + list(execution.reasoning)
 
 
+def run_codegen(
+    case: dict[str, Any],
+    ctx: EvalContext,
+    vocab_df: Sequence[tuple[str, int]],
+    config: Any,
+    cache: Path | None = None,
+    attempt: int = 0,
+) -> tuple[dict[str, int], list[str]]:
+    """让模型直接写脚本，白名单检查后执行。
+
+    和 `run_planned` 的对照点只有一处：**统计信息给谁**。
+    这里连 `df` 一起给模型，让它自己排顺序。
+    """
+    import hashlib
+
+    from codesense.llm import ScriptGenerator
+    from codesense.ql import ScriptError, run_script
+    from codesense.ql.operators import degree, eval_unit, hop, only, reach, top
+    from codesense.ql.satisfiers import AnnotationSatisfier, LexicalSatisfier, ModifierSatisfier
+
+    edges = sum(ctx.edges.degree(i) for i in range(1, min(ctx.symbols.count(), 300) + 1))
+    key = hashlib.sha256(
+        f"gen|{config.model}|{case['project']}|{case['query']}|{len(vocab_df)}|{attempt}".encode()
+    ).hexdigest()[:16]
+    slot = cache / f"{key}.py" if cache else None
+    if slot is not None and slot.is_file():
+        source = slot.read_text(encoding="utf-8")
+    else:
+        source = ScriptGenerator(config).generate(
+            case["query"],
+            case["project"],
+            vocab_df,
+            symbols=ctx.symbols.count(),
+            edges=edges,
+        )
+        if source and slot is not None:
+            slot.parent.mkdir(parents=True, exist_ok=True)
+            slot.write_text(source, encoding="utf-8")
+    if not source:
+        return {}, ["生成失败"]
+
+    namespace = {
+        "ctx": ctx,
+        "eval_unit": eval_unit,
+        "hop": hop,
+        "reach": reach,
+        "degree": degree,
+        "only": only,
+        "top": top,
+        "score_of": score_of,
+        "intent": lambda frag, *a, **k: frag,  # 试跑跳过判定，与其它路径口径一致
+        "QueryUnit": QueryUnit,
+        "Term": Term,
+        "LexicalSatisfier": LexicalSatisfier,
+        "AnnotationSatisfier": AnnotationSatisfier,
+        "ModifierSatisfier": ModifierSatisfier,
+    }
+    try:
+        answer = run_script(source, namespace)
+    except ScriptError as exc:
+        return {}, [f"脚本被拒或跑挂：{exc}"]
+    if not isinstance(answer, Frag):
+        return {}, [f"脚本产出的不是 Frag：{type(answer).__name__}"]
+
+    names: dict[str, int] = {}
+    for position, symbol_id in enumerate(
+        sorted(answer.nodes, key=lambda s: (-score_of(answer, s), s)), 1
+    ):
+        names.setdefault(answer.nodes[symbol_id].name, position)
+    return names, [f"脚本 {source.count(chr(10)) + 1} 行"]
+
+
+def vocabulary_df(ctx: EvalContext, limit: int = 0) -> list[tuple[str, int]]:
+    """带 df 的词表——`df` 是模型能不能自己排顺序的关键。"""
+    found: list[tuple[str, int]] = []
+    for term in ctx.postings.terms():
+        info = ctx.postings.term_info(term)
+        if info is not None and info.df >= 2 and term.isalpha() and len(term) >= 3:
+            found.append((term, info.df))
+    found.sort()
+    return found if limit <= 0 else found[:limit]
+
+
 def rank(frag: Frag, unit: str) -> dict[str, int]:
     """符号名 → 名次。同名取最好的名次。"""
     ordered = sorted(frag.nodes, key=lambda sid: (-score_of(frag, sid, unit), sid))
@@ -383,6 +467,10 @@ def run(args: argparse.Namespace) -> list[Result]:
         result.ranks["planned"], reasoning = run_planned(
             case, ctx, vocab, config, args.cache, args.attempt
         )
+        result.ranks["codegen"], gen_notes = run_codegen(
+            case, ctx, vocabulary_df(ctx), config, args.cache, args.attempt
+        )
+        result.terms["codegen_notes"] = gen_notes
         result.terms["plan_reasoning"] = reasoning
 
         in_vocab = sum(1 for t in result.terms["generic"] if ctx.postings.term_info(t) is not None)
@@ -391,19 +479,20 @@ def run(args: argparse.Namespace) -> list[Result]:
         print(
             f"  {case['id']:<22}generic {total} 词（{100 * in_vocab / total:.0f}% 在词表里）"
             f"  grounded {len(result.terms['grounded'])} 词"
-            f"  planned {len(result.ranks['planned'])} 个结果"
+            f"  planned {len(result.ranks['planned'])}"
+            f"  codegen {len(result.ranks['codegen'])} · {gen_notes[0] if gen_notes else ''}"
         )
     return results
 
 
-ARMS = ("literal", "generic", "grounded", "graph", "planned")
+ARMS = ("literal", "generic", "grounded", "graph", "planned", "codegen")
 
 
 def report(results: Sequence[Result]) -> None:
     for cutoff in CUTOFFS:
-        print(f"\n{'=' * 86}\n召回率 @{cutoff}")
+        print(f"\n{'=' * 98}\n召回率 @{cutoff}")
         print(f"  {'查询':<24}{'gold':>5}" + "".join(f"{a:>11}" for a in ARMS))
-        print("  " + "-" * 82)
+        print("  " + "-" * 94)
         totals: Counter[str] = Counter()
         for result in results:
             row = f"  {result.query_id:<24}{len(result.gold):>5}"
@@ -413,7 +502,7 @@ def report(results: Sequence[Result]) -> None:
                 row += f"{value:>10.0%} "
             print(row)
         n = len(results) or 1
-        print("  " + "-" * 82)
+        print("  " + "-" * 94)
         print(f"  {'平均':<24}{'':>5}" + "".join(f"{totals[a] / n:>10.0%} " for a in ARMS))
     print()
 
