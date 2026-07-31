@@ -1,8 +1,9 @@
-"""内存实现。
+"""In-memory implementations.
 
-用途有两个：单元测试的替身，以及小规模项目直接跑。
-**不做任何 IO**——从磁盘加载由 ``codesense.ql.store.sqlite`` 或
-``scripts/`` 下的加载器负责，构造好之后注入进来。
+Two uses: stand-ins for unit tests, and running small projects directly.
+They do **no IO** -- loading from disk belongs to
+``codesense.ql.store.sqlite`` or a loader under ``scripts/``, which
+constructs these and injects them.
 """
 
 from __future__ import annotations
@@ -44,7 +45,8 @@ class InMemorySymbolStore(SymbolStore):
 
 
 class InMemoryPostingIndex(PostingIndex):
-    """``df`` 由 postings 直接数出来，不单独存——存两份就会不一致。"""
+    """``df`` is counted from the postings rather than stored separately;
+    two copies would drift apart."""
 
     def __init__(
         self,

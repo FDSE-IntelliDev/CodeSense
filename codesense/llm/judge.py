@@ -1,10 +1,12 @@
-"""基于 OpenAI 兼容接口的意图判定器。
+"""An intent judge over an OpenAI-compatible endpoint.
 
-实现 `codesense.ql.judge.Judge` 这个端口。QL 层不认识它——
-依赖方向是 llm → ql，反过来会破坏 QL「只用标准库」的契约。
+Implements the `codesense.ql.judge.Judge` port. The QL layer does not know
+it exists -- the dependency runs llm to ql, and the reverse would break QL's
+standard-library-only contract.
 
-用 `requests` 直接打 ``/chat/completions``，不引入 openai SDK：
-dashscope、vLLM、Ollama 都兼容这个接口，少一个依赖少一处版本纠纷。
+It hits ``/chat/completions`` with `requests` rather than pulling in the
+openai SDK: dashscope, vLLM and Ollama all speak this interface, and one
+fewer dependency is one fewer version conflict.
 """
 
 from __future__ import annotations
@@ -23,30 +25,32 @@ __all__ = ["PROMPT", "OpenAICompatibleJudge"]
 _log = logging.getLogger(__name__)
 
 PROMPT = """\
-你在判断代码元素是否满足一个意图。
+You are judging whether code elements satisfy an intent.
 
-意图：{concept}
+Intent: {concept}
 
-候选元素：
+Candidate elements:
 {items}
 
-对每个候选给出判断，只输出 JSON 数组，不要任何其它文字：
-[{{"id": <候选的 id>, "label": "yes|no|unsure", "score": <0到1的置信度>, "reason": "<一句话理由>"}}]
+Judge each candidate. Output a JSON array and nothing else:
+[{{"id": <the candidate's id>, "label": "yes|no|unsure",
+  "score": <confidence from 0 to 1>, "reason": "<one sentence>"}}]
 
-要求：
-- 判不出来就给 "unsure"，**不要**为了给答案而猜
-- reason 要指出具体依据（名字、签名、所在类），不要复述意图
-- 每个候选恰好一条，id 必须用上面给的
+Requirements:
+- give "unsure" when you cannot tell; **do not** guess just to have an answer
+- reason must cite specific evidence (name, signature, enclosing class), not
+  restate the intent
+- exactly one row per candidate, using the ids given above
 """
 
-#: 模型常把 JSON 包在 ```json fence 里，即便要求了不要。
+#: Models often wrap JSON in a ```json fence even when told not to.
 _FENCE = re.compile(r"```(?:json)?\s*(.*?)```", re.S)
 
 
 class OpenAICompatibleJudge(Judge):
-    """打 OpenAI 兼容的 chat/completions 接口。
+    """Calls an OpenAI-compatible chat/completions endpoint.
 
-    ``session`` 可注入，测试时塞个假的就不需要网络。
+    ``session`` is injectable, so tests can pass a fake and need no network.
     """
 
     def __init__(self, config: LlmConfig, session: object | None = None) -> None:
@@ -76,9 +80,10 @@ class OpenAICompatibleJudge(Judge):
             )
             response.raise_for_status()
             return str(response.json()["choices"][0]["message"]["content"])
-        except Exception:  # noqa: BLE001 —— 判定失败必须降级，由 intent 决定怎么处理
-            # 不要把异常内容写进日志正文：请求头里带着密钥，某些库会把它塞进异常。
-            _log.exception("调用判定接口失败")
+        except Exception:  # noqa: BLE001 -- judging must degrade; intent decides how
+            # Do not put the exception text in the log body: the headers carry
+            # the key and some libraries copy them into the exception.
+            _log.exception("judge request failed")
             return None
 
 
@@ -93,31 +98,32 @@ def _render(items: Sequence[JudgeItem]) -> str:
     for item in items:
         parts = [f"id={item.symbol_id}", f"{item.kind} {item.name}"]
         if item.container:
-            parts.append(f"位于 {item.container}")
+            parts.append(f"in {item.container}")
         if item.signature:
-            parts.append(f"签名 {item.signature}")
+            parts.append(f"signature {item.signature}")
         if item.doc:
-            parts.append(f"文档 {item.doc[:200]}")
-        lines.append("- " + "；".join(parts))
+            parts.append(f"doc {item.doc[:200]}")
+        lines.append("- " + "; ".join(parts))
     return "\n".join(lines)
 
 
 def _parse(content: str, known: set[int]) -> dict[int, Verdict]:
-    """从模型输出里抠出判定。
+    """Dig the verdicts out of the model's output.
 
-    容忍 ```json fence 与前后的废话——模型经常不听「只输出 JSON」。
-    解析失败返回空，交给 `intent` 走降级，而不是抛异常炸掉整条查询。
+    Tolerates ```json fences and surrounding chatter -- models routinely
+    ignore "output JSON only". A parse failure returns nothing and lets
+    `intent` degrade, rather than raising and killing the whole query.
     """
     payload = _FENCE.search(content)
     text = payload.group(1) if payload else content
     start, end = text.find("["), text.rfind("]")
     if start < 0 or end <= start:
-        _log.warning("判定输出里找不到 JSON 数组")
+        _log.warning("no JSON array found in the judge output")
         return {}
     try:
         rows = json.loads(text[start : end + 1])
     except json.JSONDecodeError:
-        _log.warning("判定输出不是合法 JSON")
+        _log.warning("judge output is not valid JSON")
         return {}
 
     found: dict[int, Verdict] = {}
@@ -129,7 +135,7 @@ def _parse(content: str, known: set[int]) -> dict[int, Verdict]:
         except (KeyError, TypeError, ValueError):
             continue
         if symbol_id not in known:
-            continue  # 模型编号错乱时不能让它往结果里塞东西
+            continue  # when the model garbles ids, keep it out of the result
         found[symbol_id] = Verdict(
             source="llm",
             label=str(row.get("label") or UNSURE).strip().lower(),

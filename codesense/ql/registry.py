@@ -1,7 +1,8 @@
-"""按名字注册可替换实现的注册表。
+"""A registry mapping names to swappable implementations.
 
-用途是消掉 ``if kind == "a": ... elif kind == "b": ...`` 这类分发链——
-加一种实现只该动一处（注册），不该改分发代码。
+It exists to remove ``if kind == "a": ... elif kind == "b": ...`` dispatch
+chains: adding an implementation should touch one place (the registration),
+not the dispatch code.
 """
 
 from __future__ import annotations
@@ -15,10 +16,11 @@ _T = TypeVar("_T")
 
 
 class Registry(Generic[_T]):
-    """名字 → 实现。
+    """Name to implementation.
 
-    重复注册直接报错而不是静默覆盖：同名两份实现几乎总是 bug，
-    静默覆盖会让「为什么用的不是我写的那个」变成一个很难查的问题。
+    A duplicate registration raises rather than silently overwriting. Two
+    implementations under one name is nearly always a bug, and overwriting
+    quietly turns "why is mine not being used" into a hard thing to trace.
     """
 
     def __init__(self, what: str) -> None:
@@ -27,12 +29,12 @@ class Registry(Generic[_T]):
 
     def register(self, name: str, item: _T) -> _T:
         if name in self._items:
-            raise ValueError(f"{self._what} 已注册过同名实现: {name!r}")
+            raise ValueError(f"{self._what} already has an implementation named {name!r}")
         self._items[name] = item
         return item
 
     def decorator(self, name: str) -> Callable[[_T], _T]:
-        """当装饰器用：``@REGISTRY.decorator("noisy_or")``。"""
+        """Use as a decorator: ``@REGISTRY.decorator("noisy_or")``."""
 
         def wrap(item: _T) -> _T:
             self.register(name, item)
@@ -44,8 +46,8 @@ class Registry(Generic[_T]):
         try:
             return self._items[name]
         except KeyError:
-            known = ", ".join(sorted(self._items)) or "（空）"
-            raise KeyError(f"未知的{self._what}: {name!r}。已注册: {known}") from None
+            known = ", ".join(sorted(self._items)) or "(none)"
+            raise KeyError(f"unknown {self._what}: {name!r}; registered: {known}") from None
 
     def names(self) -> Mapping[str, _T]:
         return dict(self._items)

@@ -1,4 +1,4 @@
-"""registry / combine / satisfiers / `eval_unit` 的单元测试。"""
+"""Unit tests for registry / combine / satisfiers / `eval_unit`."""
 
 from __future__ import annotations
 
@@ -47,20 +47,20 @@ def make_context(
 
 
 class TestRegistry:
-    def test_重复注册直接报错而不是静默覆盖(self) -> None:
-        reg: Registry[int] = Registry("测试项")
+    def test_a_duplicate_registration_raises_rather_than_silently_overwriting(self) -> None:
+        reg: Registry[int] = Registry("test entry")
         reg.register("a", 1)
-        with pytest.raises(ValueError, match="已注册过同名实现"):
+        with pytest.raises(ValueError, match="already has an implementation named"):
             reg.register("a", 2)
 
-    def test_未知名字的报错里列出已注册的(self) -> None:
-        reg: Registry[int] = Registry("测试项")
+    def test_an_unknown_name_lists_what_is_registered(self) -> None:
+        reg: Registry[int] = Registry("test entry")
         reg.register("alpha", 1)
         with pytest.raises(KeyError, match="alpha"):
             reg.get("beta")
 
-    def test_装饰器形式(self) -> None:
-        reg: Registry[object] = Registry("测试项")
+    def test_the_decorator_form(self) -> None:
+        reg: Registry[object] = Registry("test entry")
 
         @reg.decorator("thing")
         class Thing:
@@ -70,7 +70,7 @@ class TestRegistry:
 
 
 class TestCombine:
-    def test_三种策略都已注册(self) -> None:
+    def test_all_three_strategies_are_registered(self) -> None:
         assert {"max", "sum", "noisy_or"} <= set(COMBINERS)
 
     def test_max(self) -> None:
@@ -79,45 +79,46 @@ class TestCombine:
     def test_sum(self) -> None:
         assert combine("sum", [0.2, 0.3]) == pytest.approx(0.5)
 
-    def test_noisy_or_多个弱信号可累积(self) -> None:
+    def test_noisy_or_accumulates_several_weak_signals(self) -> None:
         assert combine("noisy_or", [0.5, 0.5]) == pytest.approx(0.75)
 
-    def test_noisy_or_有上界1(self) -> None:
+    def test_noisy_or_is_bounded_above_by_1(self) -> None:
         assert combine("noisy_or", [0.9] * 20) <= 1.0
 
-    def test_noisy_or_夹紧越界分量(self) -> None:
-        """分量超出 [0,1] 会让结果失去意义，所以夹紧而不是放任。"""
+    def test_noisy_or_clamps_out_of_range_components(self) -> None:
+        """A component outside [0,1] makes the result meaningless, so clamp
+        rather than let it through."""
         assert combine("noisy_or", [1.5]) == pytest.approx(1.0)
         assert combine("noisy_or", [-3.0]) == pytest.approx(0.0)
 
-    def test_空输入(self) -> None:
+    def test_empty_input(self) -> None:
         assert combine("max", []) == 0.0
         assert combine("noisy_or", []) == 0.0
 
-    def test_未知策略立刻报错(self) -> None:
-        with pytest.raises(KeyError, match="平均"):
-            combine("平均", [0.5])
+    def test_an_unknown_strategy_raises_immediately(self) -> None:
+        with pytest.raises(KeyError, match="mean"):
+            combine("mean", [0.5])
 
 
 class TestTermAndUnit:
-    def test_空词报错(self) -> None:
-        with pytest.raises(ValueError, match="不能为空"):
+    def test_an_empty_term_raises(self) -> None:
+        with pytest.raises(ValueError, match="must not be empty"):
             Term("")
 
-    def test_空单元名报错(self) -> None:
-        with pytest.raises(ValueError, match="不能为空"):
+    def test_an_empty_unit_name_raises(self) -> None:
+        with pytest.raises(ValueError, match="must not be empty"):
             QueryUnit("")
 
-    def test_默认合成策略是_noisy_or(self) -> None:
+    def test_the_default_combine_strategy_is_noisy_or(self) -> None:
         assert QueryUnit("io").combine == "noisy_or"
 
 
 class TestLexicalSatisfier:
-    def test_精确命中(self) -> None:
+    def test_an_exact_hit(self) -> None:
         ctx = make_context(postings={"buf": [Posting(1, IndexField.NAME)]})
         assert 1 in LexicalSatisfier(terms=(Term("buf"),)).hits("io", ctx)
 
-    def test_经扩展表命中项目里的写法(self) -> None:
+    def test_matches_the_projects_spelling_through_the_expansion_table(self) -> None:
         ctx = make_context(
             postings={"buf": [Posting(1, IndexField.NAME)]},
             expansion={"buffer": [Expansion("buf", 0.91, "prefix")]},
@@ -125,11 +126,12 @@ class TestLexicalSatisfier:
         hits = LexicalSatisfier(terms=(Term("buffer"),)).hits("perf", ctx)
         assert "buf←buffer(prefix)" in hits[1][0].detail
 
-    def test_明确要求的泛词是降权而不是排除(self) -> None:
-        """ICF 下限只管扩展词。
+    def test_an_explicitly_requested_generic_word_is_down_weighted_not_excluded(self) -> None:
+        """The ICF floor governs expansions only.
 
-        调用方明确挑出来的词不能被静默丢掉——netty 上正是这一点让
-        `buf`（15.4% 的符号都有）被丢，而查询问的就是缓冲区。
+        A word the caller picked explicitly must not be silently dropped -- on
+        netty exactly that discarded `buf` (on 15.4% of symbols) when the
+        query was about buffers.
         """
         ctx = make_context(
             postings={
@@ -140,11 +142,11 @@ class TestLexicalSatisfier:
         )
         generic = LexicalSatisfier(terms=(Term("get"),)).hits("io", ctx)
         rare = LexicalSatisfier(terms=(Term("login"),)).hits("io", ctx)
-        assert generic, "明确要求的词不该被丢掉"
-        assert generic[0][0].score < rare[500][0].score, "但它应当被 ICF 降权"
+        assert generic, "an explicitly requested word must not be dropped"
+        assert generic[0][0].score < rare[500][0].score, "but ICF should down-weight it"
 
-    def test_扩展出来的泛词仍被挡掉(self) -> None:
-        """下限的本意是挡扩展噪音，这条要保住。"""
+    def test_a_generic_word_from_an_expansion_is_still_blocked(self) -> None:
+        """The floor exists to block expansion noise; that must survive."""
         ctx = make_context(
             postings={"get": [Posting(i, IndexField.NAME) for i in range(207)]},
             expansion={"fetch": [Expansion("get", 0.9, "prefix")]},
@@ -152,13 +154,13 @@ class TestLexicalSatisfier:
         )
         assert LexicalSatisfier(terms=(Term("fetch"),)).hits("io", ctx) == {}
 
-    def test_稀有词不被挡掉(self) -> None:
+    def test_a_rare_word_is_not_blocked(self) -> None:
         ctx = make_context(
             postings={"login": [Posting(1, IndexField.NAME)]},
         )
         assert LexicalSatisfier(terms=(Term("login"),)).hits("auth", ctx) != {}
 
-    def test_可以限定只查某些域(self) -> None:
+    def test_the_search_can_be_restricted_to_certain_fields(self) -> None:
         ctx = make_context(
             postings={"buf": [Posting(1, IndexField.NAME), Posting(2, IndexField.DOC)]},
             elements=[make_element(1, "a"), make_element(2, "b")],
@@ -166,7 +168,7 @@ class TestLexicalSatisfier:
         hits = LexicalSatisfier(terms=(Term("buf"),), fields=(IndexField.NAME,)).hits("io", ctx)
         assert set(hits) == {1}
 
-    def test_命中名字比命中文档得分高(self) -> None:
+    def test_a_name_hit_scores_higher_than_a_doc_hit(self) -> None:
         ctx = make_context(
             postings={"buf": [Posting(1, IndexField.NAME), Posting(2, IndexField.DOC)]},
             elements=[make_element(1, "a"), make_element(2, "b")],
@@ -174,7 +176,7 @@ class TestLexicalSatisfier:
         hits = LexicalSatisfier(terms=(Term("buf"),)).hits("io", ctx)
         assert hits[1][0].score > hits[2][0].score
 
-    def test_打分是连乘_每跳都打折(self) -> None:
+    def test_scoring_multiplies_so_every_hop_discounts(self) -> None:
         ctx = make_context(
             postings={"buf": [Posting(1, IndexField.DOC)]},
             expansion={"buffer": [Expansion("buf", 0.5, "prefix")]},
@@ -187,24 +189,25 @@ class TestLexicalSatisfier:
         expected = 0.5 * 0.5 * 0.5 * ctx.field_weights.weight(IndexField.DOC) * info.icf_ratio
         assert hit.score == pytest.approx(expected)
 
-    def test_查不到的词不产生证据(self) -> None:
+    def test_a_word_with_no_hits_produces_no_evidence(self) -> None:
         assert LexicalSatisfier(terms=(Term("nope"),)).hits("io", make_context()) == {}
 
 
 class TestAnnotationSatisfier:
-    def test_只查注解相关的域(self) -> None:
+    def test_searches_only_the_annotation_fields(self) -> None:
         ctx = make_context(
             postings={"cache": [Posting(1, IndexField.NAME), Posting(2, IndexField.ANNOTATION)]},
             elements=[make_element(1, "a"), make_element(2, "b")],
         )
         assert set(AnnotationSatisfier(units=(Term("cache"),)).hits("perf", ctx)) == {2}
 
-    def test_也查注解参数(self) -> None:
-        """`@PreAuthorize` 里的权限串、`@Schema` 里的描述都在参数里。"""
+    def test_searches_annotation_arguments_too(self) -> None:
+        """The permission string in `@PreAuthorize` and the description in
+        `@Schema` both live in the arguments."""
         ctx = make_context(postings={"query": [Posting(1, IndexField.ANNOTATION_ARG)]})
         assert set(AnnotationSatisfier(units=(Term("query"),)).hits("q", ctx)) == {1}
 
-    def test_元注解展开_可信度是事实而非估计(self) -> None:
+    def test_meta_annotation_expansion_is_fact_not_estimate(self) -> None:
         ctx = make_context(
             postings={"@GetMapping": [Posting(1, IndexField.ANNOTATION)]},
             expansion={"@RequestMapping": [Expansion("@GetMapping", 1.0, "meta")]},
@@ -212,20 +215,21 @@ class TestAnnotationSatisfier:
         hits = AnnotationSatisfier(names=("@RequestMapping",)).hits("http", ctx)
         assert "meta" in hits[1][0].detail
 
-    def test_默认权重高于词法(self) -> None:
+    def test_the_default_weight_exceeds_the_lexical_one(self) -> None:
         assert AnnotationSatisfier().weight > LexicalSatisfier(terms=()).weight
 
 
 class TestModifierSatisfier:
-    def test_只查_modifier_域(self) -> None:
+    def test_searches_only_the_modifier_field(self) -> None:
         ctx = make_context(
             postings={"native": [Posting(1, IndexField.MODIFIER), Posting(2, IndexField.NAME)]},
             elements=[make_element(1, "a"), make_element(2, "nativeHelper")],
         )
         assert set(ModifierSatisfier(modifiers=("native",)).hits("perf", ctx)) == {1}
 
-    def test_泛修饰符被降权而不是排除(self) -> None:
-        """`public` 几乎所有符号都有，区分度趋零——但明确要求了就该返回。"""
+    def test_a_generic_modifier_is_down_weighted_not_excluded(self) -> None:
+        """Nearly every symbol is `public`, so it barely discriminates -- but
+        if it was asked for explicitly it should still come back."""
         ctx = make_context(
             postings={
                 "public": [Posting(i, IndexField.MODIFIER) for i in range(1600)],
@@ -238,12 +242,13 @@ class TestModifierSatisfier:
         assert common
         assert common[0][0].score < rare[1][0].score
 
-    def test_罕见修饰符保留(self) -> None:
+    def test_a_rare_modifier_is_kept(self) -> None:
         ctx = make_context(postings={"volatile": [Posting(1, IndexField.MODIFIER)]})
         assert ModifierSatisfier(modifiers=("volatile",)).hits("u", ctx) != {}
 
-    def test_权重介于词法与注解之间(self) -> None:
-        """修饰符是语言级事实，比词法准；但注解携带的语义更具体。"""
+    def test_the_weight_sits_between_lexical_and_annotation(self) -> None:
+        """A modifier is a language-level fact and beats lexical matching,
+        but an annotation carries more specific meaning."""
         assert (
             LexicalSatisfier(terms=()).weight
             < ModifierSatisfier().weight
@@ -261,15 +266,15 @@ class TestEvalUnit:
             expansion={"buffer": [Expansion("buf", 0.91, "prefix")]},
         )
 
-    def test_产出的片段没有边(self) -> None:
+    def test_the_resulting_fragment_has_no_edges(self) -> None:
         unit = QueryUnit("perf", satisfiers=(LexicalSatisfier(terms=(Term("buf"),)),))
         assert eval_unit(unit, self._ctx()).edges == {}
 
-    def test_节点本体来自_symbol_store(self) -> None:
+    def test_the_nodes_themselves_come_from_the_symbol_store(self) -> None:
         unit = QueryUnit("perf", satisfiers=(LexicalSatisfier(terms=(Term("buf"),)),))
         assert eval_unit(unit, self._ctx()).nodes[1].name == "flushBuf"
 
-    def test_原始证据一条不删_只追加汇总(self) -> None:
+    def test_no_raw_evidence_is_removed_only_a_summary_appended(self) -> None:
         unit = QueryUnit(
             "perf",
             satisfiers=(
@@ -282,14 +287,15 @@ class TestEvalUnit:
         assert signals.count("annotation") == 1
         assert signals.count(Evidence.COMBINED) == 1
 
-    def test_汇总证据不被重复计入总分(self) -> None:
-        """回归：`scores` 曾把汇总证据也加进求和，分数翻倍。"""
+    def test_the_summary_is_not_double_counted_in_the_total(self) -> None:
+        """Regression: `scores` once added the summary into the sum too,
+        doubling the score."""
         unit = QueryUnit("perf", satisfiers=(AnnotationSatisfier(units=(Term("cache"),)),))
         evidence = eval_unit(unit, self._ctx()).evidence_for(1)
         annotation_hit = next(h for h in evidence.unit_hits if h.signal == "annotation")
         assert evidence.scores["perf"] == pytest.approx(annotation_hit.score)
 
-    def test_多信号合成高于单信号(self) -> None:
+    def test_several_signals_combine_above_a_single_one(self) -> None:
         lexical_only = QueryUnit("perf", satisfiers=(LexicalSatisfier(terms=(Term("buf"),)),))
         both = QueryUnit(
             "perf",
@@ -303,7 +309,7 @@ class TestEvalUnit:
         two = eval_unit(both, ctx).evidence_for(1).scores["perf"]
         assert two > one
 
-    def test_合成策略可选(self) -> None:
+    def test_the_combine_strategy_is_selectable(self) -> None:
         satisfiers = (
             LexicalSatisfier(terms=(Term("buf"),)),
             AnnotationSatisfier(units=(Term("cache"),)),
@@ -313,11 +319,11 @@ class TestEvalUnit:
         by_or = eval_unit(QueryUnit("p", satisfiers=satisfiers, combine="noisy_or"), ctx)
         assert by_or.evidence_for(1).scores["p"] > by_max.evidence_for(1).scores["p"]
 
-    def test_没有命中时返回空片段(self) -> None:
+    def test_no_hits_returns_an_empty_fragment(self) -> None:
         unit = QueryUnit("perf", satisfiers=(LexicalSatisfier(terms=(Term("nope"),)),))
         assert not eval_unit(unit, self._ctx())
 
-    def test_symbol_store_里没有的_id_不进片段(self) -> None:
+    def test_an_id_absent_from_the_symbol_store_stays_out(self) -> None:
         ctx = make_context(
             postings={"buf": [Posting(999, IndexField.NAME)]},
             elements=[make_element(1, "flushBuf")],
@@ -325,13 +331,13 @@ class TestEvalUnit:
         unit = QueryUnit("perf", satisfiers=(LexicalSatisfier(terms=(Term("buf"),)),))
         assert not eval_unit(unit, ctx)
 
-    def test_satisfier_类型不对时报错(self) -> None:
-        unit = QueryUnit("perf", satisfiers=("不是 satisfier",))
-        with pytest.raises(TypeError, match="satisfier 类型不对"):
+    def test_a_satisfier_of_the_wrong_type_raises(self) -> None:
+        unit = QueryUnit("perf", satisfiers=("not a satisfier",))
+        with pytest.raises(TypeError, match="satisfier of the wrong type"):
             eval_unit(unit, self._ctx())
 
-    def test_产出的片段可以参与代数运算(self) -> None:
-        """单元求值后直接是 Frag，不需要额外转换。"""
+    def test_the_resulting_fragment_takes_part_in_the_algebra(self) -> None:
+        """Evaluating a unit gives a Frag directly, with no conversion."""
         left = eval_unit(
             QueryUnit("a", satisfiers=(LexicalSatisfier(terms=(Term("buf"),)),)), self._ctx()
         )
@@ -344,21 +350,25 @@ class TestEvalUnit:
 
 
 class TestEvidenceSerialisable:
-    """设计文档要求证据「必须可序列化」——它要落盘供人事后查。"""
+    """The design doc requires evidence to be serialisable -- it is written
+    to disk for people to inspect afterwards."""
 
-    def test_证据能_json_往返(self) -> None:
+    def test_evidence_round_trips_through_json(self) -> None:
         hit = UnitHit(unit="io", signal="lexical", detail="buf", field="name", score=0.5)
         restored = UnitHit(**json.loads(json.dumps(asdict(hit))))
         assert restored == hit
 
-    def test_带位置的证据也能往返(self) -> None:
+    def test_evidence_with_locations_round_trips_too(self) -> None:
         hit = UnitHit(unit="io", signal="lexical", detail="buf", span=(3, 9))
         payload = json.loads(json.dumps(asdict(hit)))
         assert UnitHit(**{**payload, "span": tuple(payload["span"])}) == hit
 
-    def test_整份证据能序列化(self) -> None:
+    def test_a_whole_evidence_record_serialises(self) -> None:
         ev = Evidence(
             unit_hits=(UnitHit("io", "lexical", "buf"),),
-            verdicts=(Verdict("llm", "yes", "它是登录入口"),),
+            verdicts=(Verdict("llm", "yes", "it is the login entry point"),),
         )
-        assert json.loads(json.dumps(asdict(ev)))["verdicts"][0]["reason"] == "它是登录入口"
+        assert (
+            json.loads(json.dumps(asdict(ev)))["verdicts"][0]["reason"]
+            == "it is the login entry point"
+        )

@@ -1,12 +1,13 @@
-"""同一个单元被多个信号命中时，分数怎么合成。
+"""How several signals hitting one unit combine into a single score.
 
-三种策略的实际后果不同（``docs/design/04-query-unit.md``）：
+The three strategies behave differently in practice
+(``docs/design/04-query-unit.md``):
 
-    max        任一强信号即可，召回优先
-    sum        多个弱信号可累积，但容易被一堆噪音词刷高
-    noisy_or   多个独立弱信号可累积但有上界，**默认**
+    max        any one strong signal suffices; favours recall
+    sum        weak signals accumulate, but noise terms inflate it easily
+    noisy_or   weak signals accumulate with an upper bound; the default
 
-`noisy_or` 要求各分量在 [0, 1]，所以打分环节必须把 ICF 归一化。
+`noisy_or` needs components in [0, 1], which is why scoring normalises ICF.
 """
 
 from __future__ import annotations
@@ -19,8 +20,8 @@ __all__ = ["COMBINERS", "combine"]
 
 Combiner = Callable[[Sequence[float]], float]
 
-#: 合成策略注册表。加一种策略只需在这里注册，不必改分发代码。
-COMBINERS: Registry[Combiner] = Registry("合成策略")
+#: Registry of strategies. Adding one means registering it here, nothing else.
+COMBINERS: Registry[Combiner] = Registry("combiner")
 
 
 @COMBINERS.decorator("max")
@@ -35,10 +36,11 @@ def _combine_sum(scores: Sequence[float]) -> float:
 
 @COMBINERS.decorator("noisy_or")
 def _combine_noisy_or(scores: Sequence[float]) -> float:
-    """``1 - Π(1 - sᵢ)``。
+    """``1 - Prod(1 - s_i)``.
 
-    分量超出 [0, 1] 会让结果失去意义（负分量能把总分推过 1，
-    大于 1 的分量能让乘积变号），所以这里直接夹紧而不是放任。
+    Components outside [0, 1] make the result meaningless -- a negative one
+    pushes the total past 1, one above 1 flips the sign of the product --
+    so they are clamped rather than trusted.
     """
     residual = 1.0
     for score in scores:
@@ -47,5 +49,6 @@ def _combine_noisy_or(scores: Sequence[float]) -> float:
 
 
 def combine(strategy: str, scores: Sequence[float]) -> float:
-    """按名字合成。未知策略立刻报错，不静默退化成某个默认值。"""
+    """Combine by name. An unknown strategy raises rather than quietly
+    falling back to some default."""
     return COMBINERS.get(strategy)(scores)

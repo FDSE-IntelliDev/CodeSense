@@ -1,10 +1,11 @@
-"""Satisfier：一个查询单元被满足的一种方式。
+"""Satisfiers: the ways a query unit can be satisfied.
 
-判断一段代码是不是「和性能有关」，词法只是**最弱的一种**证据。
-注解、结构位置、修饰符、语义相似度都能满足同一个单元，
-所以单元与词法解绑，`Satisfier` 是这个解绑的落点。
+Deciding whether code is "about performance" is only weakly served by
+lexical matching. Annotations, structural position, modifiers and semantic
+similarity can satisfy the same unit, so units are decoupled from lexical
+matching and `Satisfier` is where that decoupling lands.
 
-设计依据见 ``docs/design/04-query-unit.md``。
+Design: ``docs/design/04-query-unit.md``.
 """
 
 from __future__ import annotations
@@ -25,25 +26,25 @@ __all__ = ["SATISFIERS", "Satisfier", "collect_term_hits"]
 
 HitsBySymbol = Mapping[int, tuple[UnitHit, ...]]
 
-#: 「这个词就是调用方给的，不是扩展出来的」。
+#: Marks a surface form that the caller supplied rather than one expanded to.
 _EXACT = "exact"
 
-#: satisfier 类型注册表，供编译产物按名字构造。
+#: Satisfier types by name, so compiled output can construct them.
 SATISFIERS: Registry[type[Satisfier]] = Registry("satisfier")
 
 
 class Satisfier(ABC):
-    """把一个单元的判定条件求值成「哪些符号命中、各命中多少分」。
+    """Evaluate a unit's condition into which symbols hit, and how strongly.
 
-    实现类必须声明 ``signal``——它会写进证据，让结果能说清
-    「这个元素是被词法命中的还是被注解命中的」。
+    Implementations must declare ``signal``; it goes into the evidence so a
+    result can say whether an element was matched lexically or by annotation.
     """
 
     signal: ClassVar[str]
 
     @abstractmethod
     def hits(self, unit: str, ctx: EvalContext) -> HitsBySymbol:
-        """求值。返回 symbol_id → 该 satisfier 给出的全部证据。"""
+        """Evaluate. Returns symbol_id to all evidence this satisfier produced."""
 
 
 def collect_term_hits(
@@ -55,15 +56,18 @@ def collect_term_hits(
     weight: float,
     fields: Sequence[IndexField] | None,
 ) -> HitsBySymbol:
-    """词 → 扩展 → 倒排 → 证据。词法类 satisfier 共用这一段。
+    """Term to expansion to postings to evidence. Shared by lexical-style
+    satisfiers.
 
-    只做**第二跳**（规范词 → 项目里的实际写法）。第一跳（`performance`
-    → `cache`/`buffer`）在编译期由 LLM 随「查询拆单元」那一次调用一起给出，
-    所以运行时拿到的 `terms` 已经是规范词，见
-    ``docs/design/09-grounding.md`` 第六节。
+    Only the **second hop** happens here (canonical term to the project's
+    actual spelling). The first hop (`performance` to `cache`/`buffer`) is
+    produced at compile time by the same LLM call that splits the query, so
+    the `terms` arriving at runtime are already canonical. See
+    ``docs/design/09-grounding.md``, section 6.
 
-    打分是**连乘**：每一跳都是一次打折。经过语义联想、缩写映射、
-    再命中在 doc 而不是 name 之后，这条证据本就该远低于直接命中名字的那条。
+    Scoring **multiplies**, so each hop attenuates. After an association, an
+    abbreviation mapping, and landing in doc rather than name, a piece of
+    evidence should rank far below a direct hit on the name.
     """
     allowed = None if fields is None else frozenset(fields)
     found: dict[int, list[UnitHit]] = defaultdict(list)
@@ -98,17 +102,19 @@ def collect_term_hits(
 
 
 def _too_generic(surface: Expansion, info: TermInfo, ctx: EvalContext) -> bool:
-    """ICF 下限**只管扩展出来的词，不管查询自己带的词**。
+    """The ICF floor governs **expanded terms only, never the query's own**.
 
-    这是 benchmark 逼出来的修正。原先对所有词一视同仁地卡下限，
-    结果在大项目上灾难性地反噬：netty 有 42221 个符号，`buf` 出现在
-    15.4% 的符号里、`allocator` 3.6%，双双低于下限被丢掉——
-    而查询问的正是缓冲区分配。`PooledByteBufAllocator` 因此完全召回不到。
+    A correction the benchmark forced. Applying the floor uniformly backfired
+    badly at scale: netty has 42221 symbols, `buf` appears in 15.4% of them
+    and `allocator` in 3.6%, so both fell below the floor and were discarded
+    -- on a query about buffer allocation. `PooledByteBufAllocator` became
+    unreachable as a result.
 
-    下限的本意是挡住扩展带来的噪音（[09](docs/design/09-grounding.md) 第七节
-    「低 ICF 的词直接不进扩展表」），**从来不是丢掉调用方明确要求的词**。
-    低 ICF 的查询词该被**降权**（`icf_ratio` 本来就在打分里连乘），
-    而不是被**排除**。
+    The floor exists to stop noise from expansion (``docs/design/
+    09-grounding.md``, section 7: low-ICF terms do not enter the expansion
+    table). It was **never** meant to discard terms the caller asked for.
+    A low-ICF query term should be **downweighted** -- `icf_ratio` already
+    multiplies into the score -- not **excluded**.
     """
     if surface.reason == _EXACT:
         return False
@@ -116,15 +122,17 @@ def _too_generic(surface: Expansion, info: TermInfo, ctx: EvalContext) -> bool:
 
 
 def _surfaces(term: Term, ctx: EvalContext) -> list[Expansion]:
-    """词本身 + 扩展表里的项目实际写法。
+    """The term itself, followed by the project spellings in the expansion
+    table.
 
-    词本身永远排第一且不打折——项目里就这么写的时候，没有理由降权。
+    The term itself always comes first and is never discounted -- when the
+    project spells it that way, there is nothing to discount.
     """
     return [Expansion(term.value, 1.0, _EXACT), *ctx.expansion.expand(term.value)]
 
 
 def _detail(term: Term, surface: Expansion) -> str:
-    """证据里的可读说明：命中了什么、为什么算命中。"""
+    """Readable evidence: what was hit, and why it counts as a hit."""
     if surface.reason == _EXACT:
         return term.value
     return f"{surface.target}←{term.value}({surface.reason})"

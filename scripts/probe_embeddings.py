@@ -1,7 +1,8 @@
-"""在项目词表上探测一个预训练词向量模型好不好用。
+"""Probing how usable a pretrained word-vector model is on a project's
+vocabulary.
 
-设计文档第 09 章的几个判断都是这个脚本量出来的。换模型、或者微调完之后，
-重跑它就能知道结论还成不成立。
+Several of chapter 09's conclusions were measured with this script. Swap the
+model, or finish fine-tuning, and rerunning it says whether they still hold.
 
     python scripts/probe_embeddings.py coverage   --model M --index D
     python scripts/probe_embeddings.py senses     --model M
@@ -9,16 +10,22 @@
     python scripts/probe_embeddings.py mismatch   --model M --index D
     python scripts/probe_embeddings.py gates      --model M --index D
 
-四个子命令对应四个问题：
+The subcommands answer one question each:
 
-    coverage   项目词表有多少在模型词表里，排名靠不靠前
-    senses     系统词汇的近邻是软件义还是自然语言义
-    abbrev     缩写↔全称的对应是真语义还是只是拼写像（**带正字法对照**）
-    mismatch   哪些词的通用向量和项目里的实际用法对不上（微调优先级）
-    gates      微调的两个门禁分别覆盖哪些词，是否真的冲突
+    coverage   how much of the project vocabulary is in the model, and how
+               well ranked
+    senses     are a systems word's neighbours software senses or natural
+               language ones
+    abbrev     is an abbreviation-to-expansion correspondence real semantics
+               or just spelling (**with an orthographic control**)
+    mismatch   which words' generic vectors disagree with their actual use in
+               the project (fine-tuning priority)
+    gates      which words each of the two fine-tuning gates covers, and
+               whether they really conflict
 
-依赖 ``gensim``，以及一份 fastText ``.bin``（如 ``cc.en.300.bin``）。
-这是**研究脚本**：读盘、算数、打印，不进查询路径。
+Requires ``gensim`` and a fastText ``.bin`` (``cc.en.300.bin``, say).
+This is a **research script**: read, compute, print; it is not on the query
+path.
 """
 
 from __future__ import annotations
@@ -34,9 +41,11 @@ from typing import Any
 
 import numpy as np
 
-#: 缩写 → (正确全称, 同前缀但语义无关的干扰词)。
-#: 干扰词是关键：fastText 有子词，`dept` 和 `department` 共享 n-gram，
-#: 余弦会被正字法重叠本身抬高，不设对照就分不清语义还是拼写。
+#: abbreviation -> (the correct expansion, a same-prefix but semantically
+#: unrelated distractor). The distractor is the point: fastText has subwords,
+#: `dept` and `department` share n-grams, and the cosine is lifted by the
+#: orthographic overlap alone -- without a control there is no telling
+#: semantics from spelling.
 ABBREVIATIONS: dict[str, tuple[str, tuple[str, ...]]] = {
     "dept": ("department", ("depth", "deposit", "depict", "depot")),
     "cfg": ("configuration", ("cog", "cliff", "coffee")),
@@ -52,8 +61,9 @@ ABBREVIATIONS: dict[str, tuple[str, tuple[str, ...]]] = {
     "perms": ("permission", ("perm", "perky", "persimmon")),
 }
 
-#: 系统层词汇。它们在自然语言里的主义项和在代码里的完全不同，
-#: 是通用语料训出来的向量最可能出错的地方。
+#: Systems vocabulary. Their dominant natural-language sense differs sharply
+#: from their sense in code, which is where vectors trained on general text
+#: are most likely to be wrong.
 SYSTEMS_TERMS = (
     "pool",
     "thread",
@@ -69,7 +79,8 @@ SYSTEMS_TERMS = (
     "queue",
 )
 
-#: 判定「已匹配 / 错配」的分界。低于它的词在微调时应放开，高于的应冻结。
+#: The line between "already aligned" and "mismatched". Words below it should
+#: be unfrozen during fine-tuning, words above it frozen.
 MISMATCH_FLOOR = 0.15
 
 
@@ -91,7 +102,7 @@ def split_identifier(name: str) -> list[str]:
 
 
 class Space:
-    """一个词向量空间上的几个常用量。"""
+    """A few common measurements over one word-vector space."""
 
     def __init__(self, vectors: Any) -> None:
         self._kv = vectors
@@ -117,7 +128,7 @@ class Space:
 
 
 def context_profile(corpus: list[list[str]]) -> tuple[Counter[str], dict[str, Counter[str]]]:
-    """词频与共现。"""
+    """Word frequencies and co-occurrence."""
     freq: Counter[str] = Counter(term for entry in corpus for term in entry)
     co: dict[str, Counter[str]] = defaultdict(Counter)
     for entry in corpus:
@@ -138,9 +149,11 @@ def inverse_chain_frequency(corpus: list[list[str]]) -> dict[str, float]:
 def mismatch_score(
     space: Space, term: str, partners: list[tuple[str, int]], icf: dict[str, float]
 ) -> float | None:
-    """通用向量的位置与项目里实际用法的吻合度。
+    """How well a generic vector's position agrees with actual use in the
+    project.
 
-    用 ICF 加权，否则 `get`（出现 12 万次）会主导所有上下文向量。
+    Weighted by ICF, or `get` -- 120,000 occurrences -- would dominate every
+    context vector.
     """
     usable = [(word, count) for word, count in partners if word in space]
     if len(usable) < 3:
@@ -159,43 +172,43 @@ def cmd_coverage(space: Space, corpus: list[list[str]], index_dir: Path) -> None
     for record in symbols:
         units.update(split_identifier(record.get("name") or ""))
 
-    print(f"模型词表 {space.size():,}\n")
-    for label, vocabulary in (("调用链语料", freq), ("符号切分单元", units)):
+    print(f"model vocabulary {space.size():,}\n")
+    for label, vocabulary in (("call-chain corpus", freq), ("symbol split units", units)):
         missing = sorted((t for t in vocabulary if t not in space), key=lambda t: -vocabulary[t])
         inside = len(vocabulary) - len(missing)
         pct = 100 * inside / len(vocabulary)
-        print(f"{label}: {len(vocabulary)} 个，在模型里 {inside} ({pct:.0f}%)")
+        print(f"{label}: {len(vocabulary)} words, {inside} in the model ({pct:.0f}%)")
         print(f"  OOV: {missing[:8]}")
 
-    print("\n「在词表里」不等于「向量能用」——按排名分档：")
+    print("\n'in the vocabulary' is not 'the vector is usable' -- by rank band:")
     buckets = (
-        (0, 50_000, "top 50k  训得充分"),
-        (50_000, 200_000, "50k-200k 尚可"),
-        (200_000, 800_000, "200k-800k 偏弱"),
-        (800_000, 10**9, ">800k    基本是噪音"),
+        (0, 50_000, "top 50k    well trained"),
+        (50_000, 200_000, "50k-200k   adequate"),
+        (200_000, 800_000, "200k-800k  weak"),
+        (800_000, 10**9, ">800k      essentially noise"),
     )
     for low, high, label in buckets:
         hit = [t for t in freq if low <= space.rank(t) < high]
-        print(f"  {label:<22}{len(hit):>4} 个")
+        print(f"  {label:<24}{len(hit):>4}")
         if low >= 200_000 and hit:
             print(f"      {sorted(hit, key=lambda t: -freq[t])[:10]}")
 
 
 def cmd_senses(space: Space) -> None:
-    print("系统词汇的近邻 —— 软件义还是自然语言义？\n")
+    print("neighbours of systems vocabulary -- software sense or natural language?\n")
     for term in SYSTEMS_TERMS:
         if term in space:
             print(f"  {term:<10}{', '.join(space.neighbours(term))}")
 
 
 def cmd_abbrev(space: Space) -> None:
-    print("缩写 ↔ 全称：真语义对应，还是只是拼写像？")
-    print(f"  {'缩写':<8}{'全称':<16}{'cos':>7}   {'干扰词':>12}{'cos':>7}   判定")
+    print("abbreviation vs expansion: real correspondence, or just spelling?")
+    print(f"  {'abbrev':<10}{'expansion':<16}{'cos':>7}   {'distractor':>14}{'cos':>7}   verdict")
     print("  " + "-" * 66)
     wins = tested = 0
     for short, (full, distractors) in ABBREVIATIONS.items():
         if short not in space or full not in space:
-            print(f"  {short:<8}{full:<16}  —— 不在词表")
+            print(f"  {short:<10}{full:<16}  -- not in the vocabulary")
             continue
         available = [(d, space.cosine(short, d)) for d in distractors if d in space]
         if not available:
@@ -207,9 +220,9 @@ def cmd_abbrev(space: Space) -> None:
         wins += won
         print(
             f"  {short:<8}{full:<16}{true_score:>7.3f}   {worst:>12}{worst_score:>7.3f}   "
-            f"{'✓ 语义赢' if won else '✗ 拼写赢'}"
+            f"{'semantics wins' if won else 'spelling wins'}"
         )
-    print(f"\n  {wins}/{tested} 对里全称击败了同前缀干扰词")
+    print(f"\n  the expansion beat the same-prefix distractor in {wins}/{tested} pairs")
     print(f"  {_baseline(space)}")
 
 
@@ -218,7 +231,10 @@ def _baseline(space: Space) -> str:
     words = [w for w in list(space._kv.key_to_index)[:20_000] if w.isalpha() and len(w) > 3]
     pairs = generator.choice(len(words), 4_000).reshape(2_000, 2)
     scores = [space.cosine(words[i], words[j]) for i, j in pairs if words[i] != words[j]]
-    return f"随机词对基线: 均值 {np.mean(scores):.3f}  95 分位 {np.percentile(scores, 95):.3f}"
+    return (
+        f"random word-pair baseline: mean {np.mean(scores):.3f}  "
+        f"95th pct {np.percentile(scores, 95):.3f}"
+    )
 
 
 def cmd_mismatch(space: Space, corpus: list[list[str]]) -> None:
@@ -233,25 +249,30 @@ def cmd_mismatch(space: Space, corpus: list[list[str]]) -> None:
             rows.append((score, term, freq[term], [w for w, _ in partners.most_common(5)]))
     rows.sort()
 
-    print("最该微调的 20 个词（通用向量与项目用法最不匹配）")
-    print(f"  {'词':<14}{'项目频次':>9}{'错配分':>9}   项目里的共现词")
+    print("the 20 words most worth fine-tuning (generic vector least like project use)")
+    print(f"  {'word':<14}{'project freq':>13}{'agreement':>11}   co-occurring in project")
     for score, term, count, context in rows[:20]:
         print(f"  {term:<14}{count:>9}{score:>9.3f}   {', '.join(context)}")
 
     bad = [row for row in rows if row[0] < MISMATCH_FLOOR]
     mass = sum(row[2] for row in bad) / sum(freq.values())
     share = f"{100 * mass:.1f}%"
-    print(f"\n  错配分 <{MISMATCH_FLOOR} 的词 {len(bad)}/{len(rows)} 个，占 token 总量 {share}")
-    print("  注意：该指标把「真错配」和「共现词全是无信息动词」混在一起，")
-    print("  榜单前部可信，占比应作上界看。")
+    print(f"\n  {len(bad)}/{len(rows)} words score below {MISMATCH_FLOOR}, {share} of all tokens")
+    print("  note: this metric conflates genuine mismatch with 'every co-occurring")
+    print("  word is an uninformative verb'. Trust the head of the list; read the")
+    print("  proportion as an upper bound.")
 
 
 def cmd_gates(space: Space, corpus: list[list[str]]) -> None:
-    """微调的两个门禁分别覆盖哪些词——它们是否真的冲突。"""
+    """Which words each fine-tuning gate covers, and whether they really
+    conflict."""
     freq, co = context_profile(corpus)
     icf = inverse_chain_frequency(corpus)
-    print("门禁1（缩写映射不许退化）的词，各自的错配分：")
-    print(f"  {'缩写':<8}{'全称':<16}{'cos':>7}{'项目频次':>9}{'错配分':>9}   微调怎么处理")
+    print("words under gate 1 (abbreviation mappings must not regress), with scores:")
+    print(
+        f"  {'abbrev':<10}{'expansion':<16}{'cos':>7}{'freq':>8}{'agreement':>11}"
+        "   what fine-tuning does"
+    )
     print("  " + "-" * 74)
     for short, (full, _) in ABBREVIATIONS.items():
         if short not in space or full not in space:
@@ -260,11 +281,11 @@ def cmd_gates(space: Space, corpus: list[list[str]]) -> None:
             mismatch_score(space, short, co[short].most_common(25), icf) if short in co else None
         )
         if score is None:
-            note = "项目里没有/太少 → 拿不到梯度，天然安全"
+            note = "absent or too rare -- no gradient, safe by construction"
         elif score >= MISMATCH_FLOOR:
-            note = "✅ 已匹配 → 冻结，门禁1 自动满足"
+            note = "aligned -- frozen, so gate 1 holds automatically"
         else:
-            note = "⚠️ 错配 → 放开，微调应**改善** cos"
+            note = "mismatched -- unfrozen; fine-tuning should *improve* cos"
         shown = f"{score:.3f}" if score is not None else "—"
         head = f"  {short:<8}{full:<16}{space.cosine(short, full):>7.3f}"
         print(f"{head}{freq.get(short, 0):>9}{shown:>9}   {note}")
@@ -274,13 +295,15 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("command", choices=("coverage", "senses", "abbrev", "mismatch", "gates"))
     parser.add_argument("--model", type=Path, required=True, help="fastText .bin")
-    parser.add_argument("--index", type=Path, help="索引产物目录，coverage/mismatch/gates 需要")
+    parser.add_argument(
+        "--index", type=Path, help="index artifact directory; needed by coverage/mismatch/gates"
+    )
     args = parser.parse_args(argv)
 
     if args.command in ("coverage", "mismatch", "gates") and args.index is None:
-        parser.error(f"{args.command} 需要 --index")
+        parser.error(f"{args.command} needs --index")
 
-    print(f"加载 {args.model} ...", flush=True)
+    print(f"loading {args.model} ...", flush=True)
     space = Space(load_vectors(args.model))
 
     if args.command == "senses":

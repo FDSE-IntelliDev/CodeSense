@@ -1,7 +1,8 @@
-"""索引访问层。
+"""The index access layer.
 
-ABC 在 `base`，内存实现在 `memory`。算子只依赖 ABC——
-换存储不改算子，测试也不需要数据库。
+ABCs in `base`, in-memory implementations in `memory`. Operators depend on
+the ABCs only, so storage can change without touching them and tests need no
+database.
 """
 
 from codesense.ql.store.base import (

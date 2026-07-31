@@ -1,4 +1,4 @@
-"""单元的判定条件。"""
+"""Conditions that satisfy a unit."""
 
 from codesense.ql.satisfiers.base import SATISFIERS, Satisfier
 from codesense.ql.satisfiers.lexical import (

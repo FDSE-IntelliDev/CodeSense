@@ -1,7 +1,8 @@
-"""词法与注解 satisfier。
+"""Lexical, annotation and modifier satisfiers.
 
-两者共用同一条「词 → 扩展 → 倒排」的通路，区别只在查哪些域、
-以及注解名要先过元注解展开。
+They share one term-to-expansion-to-postings path and differ only in which
+fields they probe, and in annotations first passing through meta-annotation
+expansion.
 """
 
 from __future__ import annotations
@@ -17,19 +18,22 @@ from codesense.ql.unit import Term
 
 __all__ = ["AnnotationSatisfier", "LexicalSatisfier", "ModifierSatisfier"]
 
-#: 注解相关的域。注解名和注解参数都要查——`@PreAuthorize("@ss.hasPerm('sys:user:query')")`
-#: 的权限串、`@Schema(description=…)` 的自然语言描述都在参数里，
-#: 只索引名字就把它们全丢了。
+#: Annotation-related fields. Both the name and the arguments matter --
+#: the permission string in `@PreAuthorize("@ss.hasPerm('sys:user:query')")`
+#: and the prose in `@Schema(description=...)` live in the arguments, and
+#: indexing only names would discard them.
 _ANNOTATION_FIELDS = (IndexField.ANNOTATION, IndexField.ANNOTATION_ARG)
 
 
 @SATISFIERS.decorator("lexical")
 @dataclass(frozen=True, slots=True)
 class LexicalSatisfier(Satisfier):
-    """标识符 / 签名 / 文档里的词法匹配。
+    """Lexical matching in identifiers, signatures and documentation.
 
-    默认权重低（0.5）：词法是**最弱的一种**证据。一个叫 `cacheKey` 的字段
-    命中了 `cache` 却和性能无关，只有和别的信号合成后才压得下去。
+    The default weight is low (0.5) because lexical is the **weakest** kind
+    of evidence. A field named `cacheKey` matches `cache` while having
+    nothing to do with performance, and only combining with other signals
+    pushes it back down.
     """
 
     signal: ClassVar[str] = "lexical"
@@ -52,18 +56,22 @@ class LexicalSatisfier(Satisfier):
 @SATISFIERS.decorator("annotation")
 @dataclass(frozen=True, slots=True)
 class AnnotationSatisfier(Satisfier):
-    """注解匹配。
+    """Annotation matching.
 
-    匹配的是**切分后的注解名单元**，不是字面正则——所以项目自定义的
-    `@AppCache`、`@CacheAside` 会和 `@Cacheable` 一起命中 `cache` 单元，
-    不需要 LLM 现场生成正则。
+    Matches the **segmented units of an annotation name**, not a literal
+    regex, so a project's own `@AppCache` and `@CacheAside` match a `cache`
+    unit alongside `@Cacheable` without an LLM generating regexes.
 
-    ``names`` 里可以直接点名注解（如 ``"@Transactional"``），它们会先过
-    扩展表做**元注解展开**：`@RequestMapping` → `@GetMapping` / `@PostMapping`。
-    这层关系是框架在源码里声明的事实，不是估计，所以分数是 1.0。
+    ``names`` may name annotations directly (``"@Transactional"``); they
+    first pass through the expansion table for **meta-annotation expansion**,
+    turning `@RequestMapping` into `@GetMapping` and `@PostMapping`. That
+    relation is a fact the framework declares in source, not an estimate, so
+    it scores 1.0.
 
-    默认权重高（0.9）：在 Java/Spring 项目里注解几乎是最强的语义信号——
-    `@RestController` 直接说明这是 HTTP 入口，比任何关键词都准。
+    The default weight is high (0.9): in Java and Spring projects annotations
+    are close to the strongest semantic signal there is -- `@RestController`
+    says outright that something is an HTTP entry point, more reliably than
+    any keyword.
     """
 
     signal: ClassVar[str] = "annotation"
@@ -84,24 +92,30 @@ class AnnotationSatisfier(Satisfier):
 
 
 def _as_terms(names: Sequence[str]) -> tuple[Term, ...]:
-    """点名的注解按 literal 词处理；元注解展开由扩展表负责。"""
+    """Named annotations are treated as literal terms; the expansion table
+    handles meta-annotations."""
     return tuple(Term(value=name, source="literal") for name in names)
 
 
 @SATISFIERS.decorator("modifier")
 @dataclass(frozen=True, slots=True)
 class ModifierSatisfier(Satisfier):
-    """语言级修饰符匹配：`static` / `abstract` / `synchronized` / `native`……
+    """Language-level modifiers: `static`, `abstract`, `synchronized`,
+    `native` and so on.
 
-    修饰符是**事实**不是猜测——查「异步的写盘函数」时 `synchronized`、
-    `volatile` 是确定的，而名字里有没有 "async" 是猜的。所以默认权重（0.6）
-    高于词法（0.5），但低于注解（0.9）：注解携带的语义比修饰符更具体。
+    Modifiers are **facts**, not guesses -- asking for asynchronous write
+    paths, `synchronized` and `volatile` are certain while whether a name
+    contains "async" is inference. Hence a default weight of 0.6, above
+    lexical at 0.5 and below annotation at 0.9, since an annotation carries
+    more specific meaning than a modifier.
 
-    不需要扩展——`static` 就是 `static`，没有 `buf`/`buffer` 那种表层差异。
-    扩展表里本来也不会有这些键，所以复用同一条通路是安全的。
+    No expansion is needed: `static` is `static`, with none of the surface
+    variation of `buf` against `buffer`. The expansion table has no such keys
+    anyway, so reusing the same path is safe.
 
-    强弱由 ICF 自动区分：`public` 几乎所有符号都有，会被 ICF 下限挡掉；
-    `native` / `volatile` 罕见，正是有信息的那些。
+    ICF separates strong from weak by itself: `public` is on nearly every
+    symbol and falls below the floor, while `native` and `volatile` are rare
+    and are exactly the informative ones.
     """
 
     signal: ClassVar[str] = "modifier"

@@ -1,13 +1,16 @@
-"""把执行计划渲染成一段可读、可改、可跑的 Python 脚本。
+"""Rendering an execution plan as a readable, editable, runnable script.
 
-06 章的判断是**产物应当是脚本而不是 JSON 计划**：研究场景里「改一下再试」
-发生得极其频繁，而脚本可以打断点、注释一行看差异、手工改完再跑。
+Chapter 06 argues the **artifact should be a script rather than a JSON
+plan**: in research work "change one line and retry" happens constantly, and
+a script can be breakpointed, have a line commented out to see the
+difference, and be edited by hand before rerunning.
 
-所以 `Plan` 是内部表示，脚本才是交付物。两者必须等价——
-`tests/unit/ql/compile/test_emit.py` 会实际跑一遍生成的脚本，
-断言它和直接执行 `Plan` 得到同一个结果。
+So `Plan` is the internal representation and the script is what ships. The
+two must be equivalent -- `tests/unit/ql/compile/test_emit.py` actually runs
+the emitted script and asserts it returns what executing the `Plan` returns.
 
-注释只解释**编排理由**，不解释算子语义——算子语义在 05 章里。
+Comments explain **why the steps are ordered this way**, never what the
+operators mean; that belongs to chapter 05.
 """
 
 from __future__ import annotations
@@ -24,8 +27,8 @@ __all__ = ["to_script"]
 
 _HEADER = '''"""{title}
 
-编译自：{query}
-索引：{index}
+compiled from: {query}
+index: {index}
 """
 from codesense.ql.compile import Intent
 from codesense.ql.operators import eval_unit, intent, reach, score_of, top
@@ -34,24 +37,25 @@ from codesense.ql.unit import QueryUnit, Term
 '''
 
 
-def to_script(plan: Plan, spec: QuerySpec, *, index: str = "<未记录>") -> str:
-    """渲染成脚本。
+def to_script(plan: Plan, spec: QuerySpec, *, index: str = "<unrecorded>") -> str:
+    """Render to a script.
 
-    ``index`` 要记进头部：同一段脚本在不同索引上结果不同，不记就没法复现。
+    ``index`` goes in the header: the same script gives different results on
+    a different index, and without it nothing is reproducible.
     """
     lines = [
         _HEADER.format(
-            title=spec.query or "查询",
-            query=spec.query or "（未记录）",
+            title=spec.query or "query",
+            query=spec.query or "(unrecorded)",
             index=index,
         )
     ]
-    lines.append("\n# ── 查询单元 " + "─" * 46)
+    lines.append("\n# -- query units " + "-" * 46)
     for step in plan.steps:
         if isinstance(step, EvalUnit):
             lines.append(_unit_source(step.unit))
 
-    lines.append("\n# ── 编排 " + "─" * 50)
+    lines.append("\n# -- orchestration " + "-" * 44)
     for why in plan.reasoning:
         lines.append(_comment(why))
     lines.append("")
@@ -64,7 +68,8 @@ def to_script(plan: Plan, spec: QuerySpec, *, index: str = "<未记录>") -> str
     lines.append("\n".join(body))
     lines.append("\nanswer = frag")
     lines.append(
-        "\n# 与 `Plan` 等价——tests/unit/ql/compile/test_emit.py 会跑这段脚本并断言两者结果相同"
+        "\n# Equivalent to the `Plan` -- tests/unit/ql/compile/test_emit.py runs\n"
+        "# this script and asserts both return the same result."
     )
     return "\n".join(lines).rstrip() + "\n"
 
@@ -125,14 +130,16 @@ def _step_source(step: Step) -> str:
         name = _ident(step.unit.name)
         if step.seed:
             return f"frag = eval_unit({name}, ctx)"
-        # 并集不是交集——单元本来就落在不同元素上
+        # Union, not intersection -- units land on different elements
         return f"frag = frag | eval_unit({name}, ctx)"
     if isinstance(step, Cohere):
-        # 只标记邻域，不在这里重排——排序统一在 `Narrow` 里做，
-        # 与 `Plan` 的语义保持一致（`Cohere` 填 state.boosted，`Narrow` 消费它）
+        # Only mark the neighbourhood; ranking happens once, in `Narrow`,
+        # matching `Plan` semantics (`Cohere` fills state.boosted, `Narrow`
+        # consumes it)
         return "\n".join(
             [
-                f"# 结构凝聚：最强的 {step.seeds} 个当种子，向外 {step.hops[0]}~{step.hops[1]} 跳",
+                f"# structural coherence: top {step.seeds} as seeds, "
+                f"{step.hops[0]}-{step.hops[1]} hops out",
                 f"near = reach(top(frag, {step.seeds}), ctx,",
                 f'             edge={list(step.edge)!r}, direction="any", hops={step.hops!r})',
                 "boosted = set(near.nodes) & set(frag.nodes)",
@@ -141,7 +148,7 @@ def _step_source(step: Step) -> str:
 
     if isinstance(step, Boost):
         return (
-            f"# 图约束：{step.src_name} ↔ {step.dst_name}（统计校验过）\n"
+            f"# graph constraint: {step.src_name} <-> {step.dst_name} (statistically validated)\n"
             f"near = reach(eval_unit({_ident(step.src_name)}, ctx), ctx,\n"
             f'             edge={list(step.edge)!r}, direction="any", hops={step.hops!r})'
         )
@@ -152,7 +159,8 @@ def _step_source(step: Step) -> str:
         multiplier = "(1 + 0.6 * (s in boosted))"
         if step.kind:
             lines.append(
-                f"# 种类是**偏好不是过滤**：模型给的种类不可靠，硬过滤会把答案删光\n"
+                f"# kind is a preference, not a filter: the model's kinds are\n"
+                f"# unreliable and hard filtering would delete the answers\n"
                 f"preferred = {{s for s, e in frag.nodes.items() if e.kind in {list(step.kind)!r}}}"
             )
             multiplier += " * (1 + 0.3 * (s in preferred))"
@@ -168,7 +176,7 @@ def _step_source(step: Step) -> str:
             f'frag = intent(frag, "{_escape(step.concept)}", ctx,\n'
             f"              threshold={step.threshold:g}, max_items={step.max_items})"
         )
-    return f"# 未知步骤: {step.label}"
+    return f"# unknown step: {step.label}"
 
 
 def _ident(name: str) -> str:
@@ -180,6 +188,6 @@ def _escape(text: str) -> str:
     return text.replace("\\", "\\\\").replace('"', '\\"')
 
 
-def script_of(plan: Plan, spec: QuerySpec, index: str = "<未记录>") -> Sequence[str]:
-    """按行返回，方便测试逐行断言。"""
+def script_of(plan: Plan, spec: QuerySpec, index: str = "<unrecorded>") -> Sequence[str]:
+    """Return lines, so tests can assert on them individually."""
     return to_script(plan, spec, index=index).splitlines()

@@ -1,11 +1,12 @@
-"""`codesense.ql.frag` 的单元测试。
+"""Unit tests for `codesense.ql.frag`.
 
-重点覆盖 ``docs/design/03-data-model.md`` 明确点名的几条不变式，
-它们都是「实现时最容易漏」的：
+The focus is the invariants ``docs/design/03-data-model.md`` names
+explicitly, all of which are the ones easiest to miss when implementing:
 
-- 证据不参与相等判断，否则 ``a | a != a``
-- 交集必须合并证据，否则结果里会有说不出理由的元素
-- 片段的边不得悬空
+- evidence takes no part in equality, or ``a | a != a``
+- intersection must merge evidence, or the result holds elements with no
+  stateable reason
+- a fragment's edges must not dangle
 """
 
 from __future__ import annotations
@@ -37,20 +38,20 @@ def hit(unit: str, detail: str = "x", score: float = 1.0) -> UnitHit:
 
 
 class TestFragInvariants:
-    def test_边不得指向片段外的节点(self) -> None:
-        with pytest.raises(ValueError, match="不在片段里"):
+    def test_edges_must_not_point_outside_the_fragment(self) -> None:
+        with pytest.raises(ValueError, match="outside the fragment"):
             Frag(nodes={1: make_element(1)}, edges={(1, 2, "calls"): Edge(1, 2, "calls")})
 
-    def test_映射是只读的_frozen挡不住原地改内容(self) -> None:
+    def test_the_mappings_are_read_only_frozen_alone_would_not_stop_mutation(self) -> None:
         frag = make_frag(1)
         with pytest.raises(TypeError):
             frag.nodes[2] = make_element(2)  # type: ignore[index]
 
-    def test_片段不可哈希(self) -> None:
+    def test_a_fragment_is_unhashable(self) -> None:
         with pytest.raises(TypeError):
             hash(make_frag(1))
 
-    def test_构造时传入的字典之后被改不影响片段(self) -> None:
+    def test_mutating_the_dict_passed_at_construction_does_not_affect_the_fragment(self) -> None:
         nodes = {1: make_element(1)}
         frag = Frag(nodes=nodes)
         nodes[2] = make_element(2)
@@ -58,53 +59,53 @@ class TestFragInvariants:
 
 
 class TestEquality:
-    def test_相等只看节点与边_不看证据(self) -> None:
+    def test_equality_looks_at_nodes_and_edges_not_evidence(self) -> None:
         left = Frag(nodes={1: make_element(1)}, evidence={1: Evidence((hit("io"),))})
         right = Frag(nodes={1: make_element(1)}, evidence={1: Evidence((hit("disk"),))})
         assert left == right
 
-    def test_幂等_并上自己等于自己(self) -> None:
+    def test_idempotent_union_with_itself_is_itself(self) -> None:
         frag = make_frag(1, 2)
         assert frag | frag == frag
 
-    def test_证据不同的片段并起来仍等于原片段(self) -> None:
+    def test_union_with_differing_evidence_still_equals_the_original(self) -> None:
         left = Frag(nodes={1: make_element(1)}, evidence={1: Evidence((hit("io"),))})
         right = Frag(nodes={1: make_element(1)}, evidence={1: Evidence((hit("disk"),))})
         assert left | right == left
 
-    def test_和非片段比较返回_NotImplemented(self) -> None:
-        assert make_frag(1) != "不是片段"
+    def test_comparing_against_a_non_fragment_returns_NotImplemented(self) -> None:
+        assert make_frag(1) != "not a fragment"
 
 
 class TestAlgebra:
-    def test_并(self) -> None:
+    def test_union(self) -> None:
         assert set((make_frag(1, 2) | make_frag(2, 3)).nodes) == {1, 2, 3}
 
-    def test_交(self) -> None:
+    def test_intersection(self) -> None:
         assert set((make_frag(1, 2) & make_frag(2, 3)).nodes) == {2}
 
-    def test_差(self) -> None:
+    def test_difference(self) -> None:
         assert set((make_frag(1, 2) - make_frag(2)).nodes) == {1}
 
-    def test_交集合并两边的证据(self) -> None:
-        """设计文档点名「最容易漏」的一条。"""
+    def test_intersection_merges_evidence_from_both_sides(self) -> None:
+        """The one the design doc names as easiest to miss."""
         left = Frag(nodes={1: make_element(1)}, evidence={1: Evidence((hit("io"),))})
         right = Frag(nodes={1: make_element(1)}, evidence={1: Evidence((hit("perf"),))})
         units = {h.unit for h in (left & right).evidence_for(1).unit_hits}
         assert units == {"io", "perf"}
 
-    def test_并集合并两边的证据(self) -> None:
+    def test_union_merges_evidence_from_both_sides(self) -> None:
         left = Frag(nodes={1: make_element(1)}, evidence={1: Evidence((hit("io"),))})
         right = Frag(nodes={1: make_element(1)}, evidence={1: Evidence((hit("perf"),))})
         units = {h.unit for h in (left | right).evidence_for(1).unit_hits}
         assert units == {"io", "perf"}
 
-    def test_证据合并保序去重(self) -> None:
+    def test_evidence_merging_deduplicates_in_order(self) -> None:
         same = Evidence((hit("io", "buf"), hit("perf", "cache")))
         merged = same.merge(Evidence((hit("io", "buf"),)))
         assert [h.detail for h in merged.unit_hits] == ["buf", "cache"]
 
-    def test_差集保留自己的证据(self) -> None:
+    def test_difference_keeps_its_own_evidence(self) -> None:
         left = Frag(
             nodes={1: make_element(1), 2: make_element(2)},
             evidence={1: Evidence((hit("io"),)), 2: Evidence((hit("perf"),))},
@@ -113,34 +114,34 @@ class TestAlgebra:
         assert [h.unit for h in result.evidence_for(1).unit_hits] == ["io"]
         assert result.evidence_for(2).unit_hits == ()
 
-    def test_差集丢掉悬空的边(self) -> None:
+    def test_difference_drops_dangling_edges(self) -> None:
         frag = make_frag(1, 2, edges=(Edge(1, 2, "calls"),))
         assert (frag - make_frag(2)).edges == {}
 
-    def test_交集保留两端都在的边(self) -> None:
+    def test_intersection_keeps_edges_with_both_ends_present(self) -> None:
         left = make_frag(1, 2, edges=(Edge(1, 2, "calls"),))
         both = left & make_frag(1, 2)
         assert (1, 2, "calls") in both.edges
 
-    def test_交集丢掉只有一端在的边(self) -> None:
+    def test_intersection_drops_edges_with_only_one_end_present(self) -> None:
         left = make_frag(1, 2, edges=(Edge(1, 2, "calls"),))
         assert (left & make_frag(1)).edges == {}
 
 
 class TestProjection:
-    def test_roots_是入度为0的节点(self) -> None:
+    def test_roots_are_the_nodes_with_in_degree_0(self) -> None:
         frag = make_frag(1, 2, 3, edges=(Edge(1, 2, "calls"), Edge(2, 3, "calls")))
         assert set(frag.roots().nodes) == {1}
 
-    def test_leaves_是出度为0的节点(self) -> None:
+    def test_leaves_are_the_nodes_with_out_degree_0(self) -> None:
         frag = make_frag(1, 2, 3, edges=(Edge(1, 2, "calls"), Edge(2, 3, "calls")))
         assert set(frag.leaves().nodes) == {3}
 
-    def test_没有边时_roots_和_leaves_都是全体(self) -> None:
+    def test_without_edges_roots_and_leaves_are_everything(self) -> None:
         frag = make_frag(1, 2)
         assert set(frag.roots().nodes) == set(frag.leaves().nodes) == {1, 2}
 
-    def test_only_nodes_丢掉边和路径见证(self) -> None:
+    def test_only_nodes_drops_edges_and_path_witnesses(self) -> None:
         frag = Frag(
             nodes={1: make_element(1), 2: make_element(2)},
             edges={(1, 2, "calls"): Edge(1, 2, "calls")},
@@ -151,11 +152,11 @@ class TestProjection:
         assert bare.witnesses == ()
         assert set(bare.nodes) == {1, 2}
 
-    def test_only_nodes_保留证据(self) -> None:
+    def test_only_nodes_keeps_evidence(self) -> None:
         frag = Frag(nodes={1: make_element(1)}, evidence={1: Evidence((hit("io"),))})
         assert frag.only_nodes().evidence_for(1).unit_hits != ()
 
-    def test_induced_丢掉不完整的路径见证(self) -> None:
+    def test_induced_drops_incomplete_path_witnesses(self) -> None:
         frag = Frag(
             nodes={sid: make_element(sid) for sid in (1, 2, 3)},
             edges={(1, 2, "calls"): Edge(1, 2, "calls")},
@@ -163,41 +164,41 @@ class TestProjection:
         )
         assert frag.induced([1, 3]).witnesses == ()
 
-    def test_induced_忽略片段里没有的_id(self) -> None:
+    def test_induced_ignores_ids_absent_from_the_fragment(self) -> None:
         assert set(make_frag(1, 2).induced([2, 999]).nodes) == {2}
 
 
 class TestEvidence:
-    def test_scores_按单元汇总(self) -> None:
+    def test_scores_aggregate_per_unit(self) -> None:
         ev = Evidence((hit("io", "a", 0.5), hit("io", "b", 0.25), hit("perf", "c", 1.0)))
         assert ev.scores == {"io": 0.75, "perf": 1.0}
 
-    def test_scores_是只读的派生量(self) -> None:
+    def test_scores_is_a_read_only_derived_value(self) -> None:
         with pytest.raises(TypeError):
             Evidence((hit("io"),)).scores["io"] = 9.0  # type: ignore[index]
 
-    def test_判定带理由(self) -> None:
-        ev = Evidence(verdicts=(Verdict("llm", "yes", "它是登录入口"),))
-        assert ev.verdicts[0].reason == "它是登录入口"
+    def test_a_verdict_carries_a_reason(self) -> None:
+        ev = Evidence(verdicts=(Verdict("llm", "yes", "it is the login entry point"),))
+        assert ev.verdicts[0].reason == "it is the login entry point"
 
-    def test_取不存在节点的证据返回空而不抛(self) -> None:
+    def test_evidence_for_a_missing_node_is_empty_rather_than_raising(self) -> None:
         assert make_frag(1).evidence_for(999) == Evidence()
 
 
 class TestContainerProtocol:
-    def test_len_是节点数(self) -> None:
+    def test_len_is_the_node_count(self) -> None:
         assert len(make_frag(1, 2, 3)) == 3
 
-    def test_迭代产出元素(self) -> None:
+    def test_iteration_yields_elements(self) -> None:
         assert {e.symbol_id for e in make_frag(1, 2)} == {1, 2}
 
-    def test_in_按_symbol_id(self) -> None:
+    def test_in_works_on_symbol_id(self) -> None:
         assert 1 in make_frag(1)
         assert 2 not in make_frag(1)
 
-    def test_空片段为假(self) -> None:
+    def test_an_empty_fragment_is_falsy(self) -> None:
         assert not Frag()
         assert make_frag(1)
 
-    def test_path_长度是边数(self) -> None:
+    def test_a_paths_length_is_its_edge_count(self) -> None:
         assert len(Path((1, 2, 3), (Edge(1, 2, "calls"), Edge(2, 3, "calls")))) == 2

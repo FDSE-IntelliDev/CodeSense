@@ -1,7 +1,7 @@
-"""LLM 适配器。
+"""LLM adapters.
 
-实现 `codesense.ql.judge.Judge` 这个端口。依赖方向是 llm → ql——
-反过来会破坏 QL「只用标准库」的契约。
+Implements the `codesense.ql.judge.Judge` port. The dependency runs llm to
+ql -- the reverse would break QL's standard-library-only contract.
 """
 
 from codesense.llm.codegen import OPERATOR_SPEC, ScriptGenerator

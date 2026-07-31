@@ -1,7 +1,9 @@
-"""pytest 全局夹具。
+"""Global pytest fixtures.
 
-约定：``unit/`` 不碰 IO 和网络，``integration/`` 才允许落盘或调外部服务；
-要花钱或要重型依赖的标 ``slow``，默认不跑。
+The convention: ``unit/`` touches neither IO nor the network; only
+``integration/`` may write to disk or call external services. Anything that
+costs money or needs a heavy dependency is marked ``slow`` and does not run by
+default.
 """
 
 from __future__ import annotations

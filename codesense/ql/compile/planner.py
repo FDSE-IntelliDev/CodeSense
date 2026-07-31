@@ -1,11 +1,12 @@
-"""把查询规格排成执行计划。
+"""Ordering a query spec into an execution plan.
 
-**这是编译器里唯一真正做优化的地方。** 算子集合是固定的，
-决定快慢的是顺序——而顺序能优化，是因为倒排索引的 `df` 让我们
-在执行前就能估出每个单元会命中多少符号（`cost` 模块）。
+**The only place the compiler genuinely optimises anything.** The operator
+set is fixed; what decides speed is the order -- and the order is optimisable
+because the inverted index's `df` lets us estimate how many symbols each unit
+will match before running it (the `cost` module).
 
-设计文档（[01](../../../docs/design/01-motivation.md)）说的
-「顺序由查询决定，不是写死在代码里」，落到实处就是这个模块。
+This module is where the design's "order decided by the query, not hardcoded"
+(``docs/design/01-motivation.md``) actually happens.
 """
 
 from __future__ import annotations
@@ -21,39 +22,46 @@ from codesense.ql.unit import QueryUnit
 
 __all__ = ["USELESS_RATIO", "plan"]
 
-#: 单元覆盖率超过这个比例才丢弃。
+#: Coverage above which a unit is discarded.
 #:
-#: 定得很高是**吃过亏的**：原先设 0.5，在 142 个符号的 petclinic 上
-#: 把唯一含答案的单元丢掉了（10 个词的并集轻易过半），只剩一个 2 词的
-#: 无关单元。这和当初 ICF 下限犯的是同一个错——**把调用方明确要的东西
-#: 排除，而不是降权**。丢一个单元省的是一遍倒排扫描，代价却是答案没了。
+#: Set high after **getting burned**: at 0.5, on petclinic's 142 symbols,
+#: the planner discarded the only unit containing the answer -- a ten-term
+#: union easily exceeds half -- leaving an irrelevant two-term unit. That
+#: repeats the mistake the ICF floor made: **excluding what the caller
+#: explicitly asked for instead of downweighting it**. Dropping a unit saves
+#: one posting scan and can cost the answer.
 #:
-#: 现在只丢「几乎命中全部符号」的单元，宽窄之分交给 `_specificity` 加权。
+#: Now only units matching nearly everything are dropped; breadth otherwise
+#: is handled by `_specificity` weighting.
 USELESS_RATIO = 0.9
 
-#: 交给 `intent` 的候选上限。它比查表贵几千倍，输入必须先压住。
+#: Ceiling on candidates handed to `intent`. It costs thousands of lookups,
+#: so its input has to be capped first.
 INTENT_INPUT_CAP = 60
 
-#: 图约束「从小的一侧出发」的判定倍数。两侧规模接近时方向无所谓，
-#: 差出这个倍数才值得为它调整方向。
+#: Ratio at which a graph constraint is worth reversing to start from the
+#: smaller side. When the sides are comparable the direction does not matter.
 ASYMMETRY = 3
 
-#: 单元权重的下限。再宽泛的单元也还有一点信息，不该归零。
+#: Floor on unit weight. Even a very broad unit carries some information and
+#: should not go to zero.
 MIN_UNIT_WEIGHT = 0.15
 
 
 def _specificity(rows: int, total: int) -> float:
-    """单元的特异性：覆盖面越大越不值钱。
+    """A unit's specificity: the more it covers, the less each hit is worth.
 
-    这是 ICF 在**单元**层面的同一个道理。不加这一步，一个覆盖 38% 代码库的
-    单元会和只覆盖 1% 的单元等权相加——实测在 netty 上正是这个把答案挤出
-    了前 60 名：真正的 gold 只强命中窄单元，却输给了在宽单元里刷了三个词的噪音。
+    ICF's logic applied at the **unit** level. Without it a unit covering 38%
+    of the codebase adds with the same weight as one covering 1%, which on
+    netty is exactly what pushed the answers out of the top 60: the real
+    targets only matched the narrow unit and lost to noise that matched three
+    terms in the broad one.
     """
     return max(MIN_UNIT_WEIGHT, 1.0 - rows / max(total, 1))
 
 
 def _reweighted(unit: QueryUnit, factor: float) -> QueryUnit:
-    """按特异性缩放单元里每个 satisfier 的权重。"""
+    """Scale every satisfier's weight in a unit by its specificity."""
     scaled: list[object] = []
     for satisfier in unit.satisfiers:
         if isinstance(satisfier, LexicalSatisfier):
@@ -91,7 +99,7 @@ class _Sized:
 
 
 def plan(spec: QuerySpec, ctx: EvalContext) -> Plan:
-    """按预估选择性把规格排成计划。"""
+    """Order a spec into a plan by estimated selectivity."""
     sized = sorted(
         (
             _Sized(unit=unit, rows=(guess := estimate_unit(unit, ctx)).rows, cost=guess.cost)
@@ -106,42 +114,51 @@ def plan(spec: QuerySpec, ctx: EvalContext) -> Plan:
     useful, dropped = _partition(sized, total)
     for item in dropped:
         why.append(
-            f"丢掉单元 {item.unit.name!r}：预计命中 {item.rows} 个"
-            f"（占 {100 * item.rows / total:.0f}%），几乎等于全表"
+            f"dropping unit {item.unit.name!r}: an estimated {item.rows} matches "
+            f"({100 * item.rows / total:.0f}%), effectively the whole table"
         )
     if not useful:
-        # 全都太宽泛也不能什么都不做——留最窄的那个，至少有个结果
+        # All being broad is no reason to do nothing: keep the narrowest so
+        # there is at least a result
         useful, dropped = sized[:1], sized[1:]
-        why.append("所有单元都很宽泛，保留最窄的一个避免空计划")
+        why.append("every unit is broad; keeping the narrowest to avoid an empty plan")
 
     for position, item in enumerate(useful):
         factor = _specificity(item.rows, total)
         steps.append(EvalUnit(_reweighted(item.unit, factor), seed=position == 0))
         why.append(
-            f"{'先跑' if position == 0 else '并入'} {item.unit.name!r}"
-            f"（预计 {item.rows} 个，占 {100 * item.rows / total:.0f}%，权重 ×{factor:.2f}）"
+            f"{'start with' if position == 0 else 'union in'} {item.unit.name!r} "
+            f"(est. {item.rows} rows, {100 * item.rows / total:.0f}%, weight x{factor:.2f})"
         )
-    why.append("单元之间取**并集**不是交集——它们本来就落在不同元素上（01 章）")
+    why.append(
+        "units union rather than intersect -- they land on different elements (design chapter 01)"
+    )
 
     steps, why = _add_graph(spec, {item.unit.name: item.rows for item in useful}, steps, why)
 
     steps.append(Cohere())
     why.append(
-        "结构凝聚：与最强命中相邻的候选加权。这不需要查询里声明关系——"
-        "「离答案近的更可能也是答案」对每条查询都成立"
+        "structural coherence: candidates near the strongest hits are weighted up. "
+        "This needs no relation stated in the query -- what is near an answer is "
+        "more likely an answer, on every query"
     )
 
     if spec.kinds or spec.concept:
         limit = INTENT_INPUT_CAP if spec.concept else spec.limit
         steps.append(Narrow(kind=spec.kinds or None, limit=limit, by=useful[0].unit.name))
         if spec.concept:
-            why.append(f"判定前先压到 {INTENT_INPUT_CAP} 个：intent 比查表贵几千倍")
+            why.append(
+                f"cap at {INTENT_INPUT_CAP} before judging: intent costs thousands of lookups"
+            )
     else:
         steps.append(Narrow(limit=spec.limit or 100, by=useful[0].unit.name))
 
     if spec.concept:
         steps.append(Intent(spec.concept, max_items=INTENT_INPUT_CAP))
-        why.append("intent 放最后：它是唯一调 LLM 的算子，前面每一步都在替它省钱")
+        why.append(
+            "intent goes last: it is the only operator calling an LLM, and every "
+            "step before it saves money"
+        )
 
     return Plan(steps=tuple(steps), reasoning=tuple(why))
 
@@ -155,21 +172,25 @@ def _partition(sized: list[_Sized], total: int) -> tuple[list[_Sized], list[_Siz
 def _add_graph(
     spec: QuerySpec, rows: dict[str, int], steps: list[Step], why: list[str]
 ) -> tuple[list[Step], list[str]]:
-    """插入图约束，并决定从哪一侧出发。
+    """Insert graph constraints and decide which side to start from.
 
-    图约束是**加权**不是过滤——只命中一侧的答案不该被杀掉。
-    起点永远取小的一侧：`hop` 的代价随起点数线性增长。
+    A graph constraint **weights** rather than filters -- answers matching
+    only one side must not be killed. The start is always the smaller side:
+    `hop` costs scale linearly with the number of seeds.
     """
     for constraint in spec.graph:
         if constraint.src not in rows or constraint.dst not in rows:
-            why.append(f"跳过图约束 {constraint.src}→{constraint.dst}：有一侧的单元没被保留")
+            why.append(
+                f"skipping constraint {constraint.src}->{constraint.dst}: one side's "
+                "unit was not kept"
+            )
             continue
         src, dst = constraint.src, constraint.dst
         if rows[dst] * ASYMMETRY < rows[src]:
             src, dst = dst, src
             why.append(
-                f"图约束反向：从 {src!r}（{rows[src]} 个）出发而不是 "
-                f"{dst!r}（{rows[dst]} 个）——hop 的代价随起点数线性增长"
+                f"constraint reversed: starting from {src!r} ({rows[src]} rows) rather "
+                f"than {dst!r} ({rows[dst]} rows) -- hop cost scales with seed count"
             )
         steps.append(Boost(src, dst, edge=constraint.edge, hops=constraint.hops))
     return steps, why

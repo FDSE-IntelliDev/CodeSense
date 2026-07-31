@@ -1,8 +1,9 @@
-"""收窄类算子：按属性筛、按分数取前 K、按度数筛。
+"""Narrowing operators: filter by attribute, take the top K, filter by degree.
 
-这三个都是手写 QL 时最常用的收窄方式（``tests/integration/
-test_handwritten_queries.py`` 的缺口 4 和 5），没有它们脚本里就得写列表推导，
-而列表推导拿不到证据、也没法保持片段结构。
+These are the three most common ways to narrow when writing QL by hand (gaps
+4 and 5 in ``tests/integration/test_handwritten_queries.py``). Without them a
+script falls back to list comprehensions, which cannot reach the evidence or
+preserve fragment structure.
 """
 
 from __future__ import annotations
@@ -23,13 +24,15 @@ def only(
     language: str | None = None,
     where: Callable[[Element], bool] | None = None,
 ) -> Frag:
-    """按元素属性收窄。
+    """Narrow by element attributes.
 
-    多个条件之间是**与**关系。给 ``None`` 表示该条件不生效——
-    这与「给空序列」不同，后者会筛掉所有元素（明确的空条件）。
+    Conditions combine with **and**. Passing ``None`` disables a condition,
+    which differs from passing an empty sequence -- that filters everything
+    out, being an explicitly empty condition.
 
-    ``where`` 是逃生舱：属性筛不了的用它，但优先用具名条件，
-    因为具名条件能被编译器分析、被证据记录。
+    ``where`` is the escape hatch for anything the named conditions cannot
+    express, but prefer the named ones: a compiler can analyse them and the
+    evidence can record them.
     """
     kinds = _as_set(kind)
     files = _as_set(file)
@@ -47,22 +50,23 @@ def only(
 
 
 def top(frag: Frag, n: int, *, by: str | None = None) -> Frag:
-    """按分数取前 n 个。
+    """Take the top n by score.
 
-    ``by`` 指定按哪个单元的分数排；不给则按所有单元分数之和。
-    排序需要读证据，所以这是 QL 层的算子而不是脚本里的 `sorted()`——
-    脚本拿不到证据结构。
+    ``by`` selects which unit's score to rank on; without it, the sum across
+    units is used. Ranking needs to read evidence, which is why this is an
+    operator rather than a `sorted()` in the script -- scripts cannot reach
+    the evidence structure.
 
-    并列时按 symbol_id 升序，保证结果可复现。
+    Ties break on ascending symbol id so results are reproducible.
     """
     if n < 0:
-        raise ValueError(f"top 的 n 不能为负，收到 {n}")
+        raise ValueError(f"top() needs a non-negative n, got {n}")
     ordered = sorted(frag.nodes, key=lambda sid: (-score_of(frag, sid, by), sid))
     return frag.induced(ordered[:n])
 
 
 def score_of(frag: Frag, symbol_id: int, by: str | None = None) -> float:
-    """某个节点的分数。``by=None`` 时取所有单元之和。"""
+    """One node's score. With ``by=None``, the sum across all units."""
     scores = frag.evidence_for(symbol_id).scores
     return scores.get(by, 0.0) if by is not None else sum(scores.values())
 
@@ -77,16 +81,18 @@ def degree(
     min_out: int | None = None,
     max_out: int | None = None,
 ) -> Frag:
-    """按图上的度数收窄。
+    """Narrow by degree in the graph.
 
-    度数是**全图**的度数，不是片段内的——「这个函数被很多地方调用」
-    问的是它在整个代码库里的地位，不是它在当前候选集里的地位。
+    Degree is measured over the **whole graph**, not within the fragment --
+    "this function is called from many places" is about its standing in the
+    codebase, not among the current candidates.
 
-    参数取名 ``min_in`` / ``max_in`` 而不是设计初稿的 ``in_`` / ``out``：
-    后者要靠下划线避开关键字，而且表达不了区间。
+    The parameters are ``min_in``/``max_in`` rather than the draft's
+    ``in_``/``out``: the latter needed a trailing underscore to dodge a
+    keyword and could not express a range.
 
-    典型用法：``degree(frag, ctx, max_in=0)`` 取入口点，
-    ``degree(frag, ctx, min_in=20)`` 找被广泛调用的工具方法。
+    Typical uses: ``degree(frag, ctx, max_in=0)`` for entry points,
+    ``degree(frag, ctx, min_in=20)`` for widely called utilities.
     """
     kinds = None if edge is None else tuple(_as_set(edge) or ())
 

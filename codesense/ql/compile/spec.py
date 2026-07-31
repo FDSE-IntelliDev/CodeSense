@@ -1,8 +1,9 @@
-"""查询规格：编译器的中间表示。
+"""Query specs: the compiler's intermediate representation.
 
-自然语言先编译成它（那一步要 LLM，在 `codesense.llm` 里），
-再由 `planner` 排成执行计划。中间隔这一层的好处是**规格可以手写**——
-调试时不必每次都过一遍模型。
+Language compiles into one of these first (that step needs an LLM and lives
+in `codesense.llm`), and `planner` then orders it into an execution plan.
+The layer earns its place by being **hand-writable**: debugging need not go
+through a model every time.
 """
 
 from __future__ import annotations
@@ -16,15 +17,17 @@ from codesense.ql.unit import QueryUnit, Term
 
 __all__ = ["GraphConstraint", "QuerySpec", "normalise_hops", "normalise_kinds"]
 
-#: 图约束的默认跳数。跳数越多「有关系」这个结论越弱。
+#: Default hop range for a graph constraint. The more hops, the weaker the
+#: conclusion that two things are related.
 DEFAULT_HOPS = (1, 2)
 
-#: 模型说的种类 → 索引里的种类。
+#: The model's vocabulary of kinds, mapped onto the index's.
 #:
-#: **这是个真实的阻抗不匹配。** 模型说 "class" 时心里含接口和枚举，
-#: 而索引里 `interface` 是独立的 kind。不映射就会静默丢结果——
-#: 实测 netty 的零拷贝查询里，`FileRegion` 正是接口，
-#: 被 `kind=class` 直接筛没了，R@100 从 50% 掉到 25%。
+#: **A genuine impedance mismatch.** A model saying "class" means interfaces
+#: and enums too, while the index treats `interface` as its own kind.
+#: Without the mapping results vanish silently: on netty's zero-copy query
+#: `FileRegion` is an interface, `kind=class` discarded it, and R@100 fell
+#: from 50% to 25%.
 KIND_ALIASES: dict[str, tuple[str, ...]] = {
     "class": ("class", "interface", "enum", "record", "annotation_type"),
     "type": ("class", "interface", "enum", "record", "annotation_type"),
@@ -41,7 +44,7 @@ KIND_ALIASES: dict[str, tuple[str, ...]] = {
 
 
 def normalise_kinds(raw: object) -> tuple[str, ...]:
-    """把模型给的种类映射成索引认识的那些，未知的原样保留。"""
+    """Map the model's kinds onto the index's, passing unknown ones through."""
     if not raw:
         return ()
     values = [raw] if isinstance(raw, str) else list(raw)
@@ -55,7 +58,7 @@ def normalise_kinds(raw: object) -> tuple[str, ...]:
 
 
 def normalise_hops(raw: object) -> tuple[int, int]:
-    """把模型给的跳数收成一个合法闭区间。"""
+    """Coerce whatever the model gave into a valid closed interval."""
     if isinstance(raw, int):
         return (raw, raw) if raw >= 0 else DEFAULT_HOPS
     try:
@@ -72,10 +75,11 @@ def normalise_hops(raw: object) -> tuple[int, int]:
 
 @dataclass(frozen=True, slots=True)
 class GraphConstraint:
-    """两个单元之间的图约束。
+    """A graph constraint between two units.
 
-    方向是**语义上的**（谁调用谁）；真正执行时从哪一侧出发由规划器决定，
-    因为那是代价问题不是语义问题。
+    The direction is **semantic** -- who calls whom. Which side execution
+    actually starts from is the planner's decision, because that is a cost
+    question rather than a meaning one.
     """
 
     src: str
@@ -84,10 +88,10 @@ class GraphConstraint:
     hops: tuple[int, int] = (1, 2)
 
     def __post_init__(self) -> None:
-        """规格来自 LLM，不变式得自己守。
+        """Specs come from an LLM, so the invariants defend themselves.
 
-        实测模型会给出 `hops: [2]` 甚至 `[]`——直接用就会在别处
-        以 IndexError 的形式炸掉，而那时已经离出错点很远了。
+        Models really do return `hops: [2]` or even `[]`, and using that
+        directly explodes with an IndexError somewhere far from the cause.
         """
         object.__setattr__(self, "hops", normalise_hops(self.hops))
         if not self.edge:
@@ -96,7 +100,7 @@ class GraphConstraint:
 
 @dataclass(frozen=True, slots=True)
 class QuerySpec:
-    """一条查询的完整结构。"""
+    """The complete structure of one query."""
 
     query: str
     units: tuple[QueryUnit, ...]
@@ -107,19 +111,20 @@ class QuerySpec:
 
     def __post_init__(self) -> None:
         if not self.units:
-            raise ValueError("查询规格至少要有一个单元")
+            raise ValueError("a query spec needs at least one unit")
         names = [unit.name for unit in self.units]
         if len(names) != len(set(names)):
-            raise ValueError(f"单元名重复: {names}")
+            raise ValueError(f"duplicate unit names: {names}")
         known = set(names)
         for constraint in self.graph:
             unknown = {constraint.src, constraint.dst} - known
             if unknown:
-                raise ValueError(f"图约束引用了不存在的单元: {sorted(unknown)}")
+                raise ValueError(f"graph constraint names unknown units: {sorted(unknown)}")
 
     @classmethod
     def from_dict(cls, payload: dict[str, Any]) -> QuerySpec:
-        """从 LLM 产出的 JSON 构造。**容错但不猜**：结构不对就报错。"""
+        """Build from the JSON an LLM produced. **Tolerant but never guessing**:
+        a malformed structure raises."""
         units = tuple(_unit(item) for item in payload.get("units", ()))
         graph = tuple(
             GraphConstraint(
@@ -153,7 +158,7 @@ def _unit(payload: dict[str, Any]) -> QueryUnit:
     if modifiers:
         satisfiers.append(ModifierSatisfier(modifiers=tuple(modifiers)))
     if not satisfiers:
-        raise ValueError(f"单元 {payload.get('name')!r} 没有任何可执行的条件")
+        raise ValueError(f"unit {payload.get('name')!r} has no executable condition")
     return QueryUnit(
         name=str(payload["name"]),
         concept=str(payload.get("concept") or ""),

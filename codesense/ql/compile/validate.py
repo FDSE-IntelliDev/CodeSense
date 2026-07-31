@@ -1,18 +1,21 @@
-"""校验模型的结构提议是否在**这个代码库里**成立。
+"""Checking the model's structural proposals against **this codebase**.
 
-分工是三段的，不是二选一：
+The division of labour has three stages rather than two options:
 
-    模型提议   查询语义里有没有「A 相关的代码调用 B 相关的代码」这层意思
-    统计校验   这层关系在这个代码库里成不成立
-    统计参数化 从哪一侧出发、走几跳、代价多少
+    the model proposes   whether the query means "A-related code calls
+                         B-related code"
+    statistics validate  whether that relation holds in this codebase
+    statistics tune      which side to start from, how many hops, what cost
 
-前面走过两个极端都不对：让模型决定一切（R@100 21%），
-或者不让它碰结构（47%，且完全用不上图）。**提议是语义问题，校验是统计问题。**
+Both extremes were wrong: letting the model decide everything scored 21%
+R@100, and keeping it away from structure scored 47% while never using the
+graph at all. **Proposing is semantic; validating is statistical.**
 
-实测判别力（netty，42221 符号、12 万条边）：
+Measured discrimination on netty (42221 symbols, 120k edges):
 
-    真实关系   池↔内存块 4.75x   处理器↔流水线 2.20x   零拷贝↔文件通道 1.32x
-    编造关系   零拷贝↔JSON 0.00x   池↔WebSocket 0.00x   DNS↔压缩 0.03x
+    real         pool-chunk 4.75x, handler-pipeline 2.20x,
+                 zerocopy-filechannel 1.32x
+    fabricated   zerocopy-JSON 0.00x, pool-WebSocket 0.00x, DNS-compression 0.03x
 """
 
 from __future__ import annotations
@@ -25,19 +28,22 @@ from codesense.ql.context import EvalContext
 
 __all__ = ["LIFT_FLOOR", "Relation", "relation_lift", "validate_groups", "validate_relations"]
 
-#: 跨边数要达到随机期望的几倍，才认这个关系。
+#: How many times the random expectation the crossing edges must reach.
 #:
-#: 实测真实关系最低 1.32x、编造的最高 0.03x，分界很宽。取 1.2 偏保守：
-#: 图约束是加权不是过滤，认错一个的代价有限，漏掉一个的代价更大。
+#: Measured, real relations bottom out at 1.32x and fabricated ones top out
+#: at 0.03x, so the margin is wide. 1.2 is deliberately lenient: a graph
+#: constraint weights rather than filters, so accepting a wrong one costs
+#: little while missing a real one costs more.
 LIFT_FLOOR = 1.2
 
-#: 采样多少个源节点来数跨边。全量数在大项目上太贵，而判别只需要量级对。
+#: How many source nodes to sample when counting crossings. Counting them all
+#: is too expensive on a large project, and the test only needs a magnitude.
 SAMPLE_CAP = 400
 
 
 @dataclass(frozen=True, slots=True)
 class Relation:
-    """一个校验过的关系。"""
+    """A relation that passed validation."""
 
     src: str
     dst: str
@@ -48,18 +54,19 @@ class Relation:
 def relation_lift(
     src_terms: Sequence[str], dst_terms: Sequence[str], ctx: EvalContext
 ) -> tuple[float, str]:
-    """两组词命中的符号之间，边的密度是随机情况的几倍。
+    """How many times denser the edges between two term groups are than chance.
 
-    随机基线取 ``|A|·|B|·2E/N²``——把图当成同样边数的随机图。
-    这个基线粗糙，但要区分「4.75 倍」和「0 倍」绰绰有余。
+    The baseline is ``|A|*|B|*2E/N^2``, treating the graph as a random one
+    with the same edge count. It is a crude baseline, but ample for telling
+    4.75x from 0.
     """
     total = ctx.symbols.count()
     if total < 2:
-        return 0.0, "符号太少"
+        return 0.0, "too few symbols"
     left = {p.symbol_id for term in src_terms for p in ctx.postings.lookup(term)}
     right = {p.symbol_id for term in dst_terms for p in ctx.postings.lookup(term)}
     if not left or not right:
-        return 0.0, "有一侧没有命中"
+        return 0.0, "one side matched nothing"
 
     sampled = sorted(left)[:SAMPLE_CAP]
     scale = len(left) / len(sampled)
@@ -69,9 +76,9 @@ def relation_lift(
     edges = sum(ctx.edges.degree(node) for node in sampled) * scale
     expected = len(left) * len(right) * edges / (total * total) if total else 0.0
     if expected <= 0:
-        return 0.0, "图上没有边"
+        return 0.0, "the graph has no edges"
     lift = crossing / expected
-    return lift, f"跨边 {crossing:.0f} vs 随机期望 {expected:.0f}（{lift:.2f}x）"
+    return lift, f"{crossing:.0f} crossings vs {expected:.0f} expected ({lift:.2f}x)"
 
 
 def validate_relations(
@@ -81,36 +88,40 @@ def validate_relations(
     *,
     floor: float = LIFT_FLOOR,
 ) -> tuple[list[Relation], list[str]]:
-    """留下在这个代码库里真的成立的关系。
+    """Keep the relations that actually hold in this codebase.
 
-    返回 (通过的, 被否掉的理由)。理由要留着——用户得知道
-    模型提的关系为什么没被采纳。
+    Returns (accepted, reasons for rejection). The reasons matter: a user
+    needs to know why a proposed relation was not used.
     """
     kept: list[Relation] = []
     rejected: list[str] = []
     for src, dst in proposed:
         if src not in groups or dst not in groups or src == dst:
-            rejected.append(f"{src}→{dst}：引用了不存在的组")
+            rejected.append(f"{src}->{dst}: names a group that does not exist")
             continue
         lift, detail = relation_lift(groups[src], groups[dst], ctx)
         if lift >= floor:
             kept.append(Relation(src=src, dst=dst, lift=lift, detail=detail))
         else:
-            rejected.append(f"{src}→{dst}：{detail}，达不到 {floor}x，这个关系在本项目里不成立")
+            rejected.append(
+                f"{src}->{dst}: {detail}, below {floor}x -- the relation does not "
+                "hold in this project"
+            )
     return kept, rejected
 
 
 def validate_groups(
     proposed: dict[str, Sequence[str]], ctx: EvalContext, *, floor: float = OVERLAP_FLOOR
 ) -> tuple[dict[str, list[str]], list[str]]:
-    """校验模型的分组：组内的词真的落在同一批符号上吗？
+    """Check the model's groups: do the terms really land on the same symbols?
 
-    模型按**语义**分组（「零拷贝」「用户态内存」「性能」），但语义相近
-    不代表落点相同。落点不同的组合在一起，等权相加就把答案摊薄了——
-    实测这正是 R@100 从 65% 掉到 21% 的主因。
+    The model groups **semantically** -- zero-copy, user-space memory,
+    performance -- but semantic proximity does not imply the same landing
+    sites. Grouping terms that land differently and adding them with equal
+    weight dilutes the answer, which is what took R@100 from 65% to 21%.
 
-    组内凝聚度不够的，就把它并回去：**宁可一个宽单元，
-    不要几个把答案摊薄的窄单元。**
+    Groups without enough cohesion are folded back: **one broad unit beats
+    several narrow ones that dilute the answer.**
     """
     usable = {
         name: [t for t in terms if ctx.postings.term_info(t) is not None]
@@ -130,12 +141,13 @@ def validate_groups(
         else:
             loose.extend(terms)
             notes.append(
-                f"组 {name!r} 凝聚度 {cohesion:.3f} 不足，并回主组——组内的词并不落在同一批符号上"
+                f"group {name!r} has cohesion {cohesion:.3f}, too low; folded back -- "
+                "its terms do not land on the same symbols"
             )
 
     if not kept:
         return {"q": sorted({t for terms in usable.values() for t in terms})}, [
-            "所有分组的凝聚度都不足，合成一个单元"
+            "no group had enough cohesion; merged into one unit"
         ]
     if loose:
         biggest = max(kept, key=lambda name: len(kept[name]))
@@ -144,7 +156,7 @@ def validate_groups(
 
 
 def _cohesion(terms: Sequence[str], ctx: EvalContext) -> float:
-    """组内两两 Jaccard 的均值。"""
+    """Mean pairwise Jaccard within a group."""
     postings = [{p.symbol_id for p in ctx.postings.lookup(term)} for term in terms]
     pairs = [
         (postings[i], postings[j])

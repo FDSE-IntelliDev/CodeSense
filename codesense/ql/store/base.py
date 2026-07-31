@@ -1,17 +1,20 @@
-"""索引访问的抽象接口。
+"""Abstract interfaces for reading the index.
 
-算子只依赖这里的 ABC，不依赖具体存储。具体实现有两个：
-``memory`` 用于测试与小规模，``sqlite`` 是真正的 IO 边界。
+Operators depend only on the ABCs here, never on concrete storage. There are
+two implementations: ``memory`` for tests and small projects, and ``sqlite``
+as the real IO boundary.
 
-索引拆成四个产物（``docs/design/09-grounding.md`` 第五节），
-因为它们的重建触发条件不同：
+The index splits into four artifacts (``docs/design/09-grounding.md``,
+section 5) because their rebuild triggers differ:
 
-    symbols     代码变化时重建
-    postings    符号或切分器/词表变化时重建
-    terms       postings 变化时重算
-    expansion   LLM 提示词 / 向量模型 / 阈值变化时重建，**与代码无关**
+    symbols     rebuilt when code changes
+    postings    rebuilt when symbols, the splitter or the lexicon change
+    terms       recomputed when postings change
+    expansion   rebuilt when the prompt, embedding or thresholds change,
+                **independently of the code**
 
-绑在一起就得整体重建；分开之后调阈值、换 embedding 不必碰索引。
+Bundled together, everything rebuilds at once; kept apart, retuning a
+threshold or swapping an embedding never touches the index.
 """
 
 from __future__ import annotations
@@ -37,10 +40,11 @@ __all__ = [
 
 @dataclass(frozen=True, slots=True)
 class Posting:
-    """倒排表里的一条记录。
+    """One posting.
 
-    **只存 symbol_id，不存符号对象。** 现有实现把整个符号对象内联进
-    posting，1718 个符号就占 2.2 MB；外推到内核量级是 1 GB vs 11 MB。
+    **Stores a symbol id, not a symbol object.** The previous implementation
+    inlined whole symbol objects, taking 2.2 MB for 1718 symbols -- about
+    1 GB against 11 MB at kernel scale.
     """
 
     symbol_id: int
@@ -50,9 +54,10 @@ class Posting:
 
 @dataclass(frozen=True, slots=True)
 class TermInfo:
-    """一个 term 的统计量。
+    """Statistics for one term.
 
-    ``icf`` 按**符号**算而不是按调用链——两者量纲不同，不可混用。
+    ``icf`` is computed over **symbols**, not call chains -- the two are
+    different quantities and must not be mixed.
     """
 
     term: str
@@ -62,17 +67,18 @@ class TermInfo:
 
     @property
     def icf(self) -> float:
-        """``log(符号总数 / df)``。df 为 0 时记 0，不抛。"""
+        """``log(total symbols / df)``. Zero when df is 0, rather than raising."""
         if self.df <= 0 or self.total_symbols <= 0:
             return 0.0
         return math.log(self.total_symbols / self.df)
 
     @property
     def icf_ratio(self) -> float:
-        """归一化到 [0, 1] 的 ICF，即 ``icf / log(符号总数)``。
+        """ICF normalised to [0, 1], that is ``icf / log(total symbols)``.
 
-        打分要用这个而不是裸 ICF，两个理由：``noisy_or`` 要求分量在 [0, 1]；
-        裸 ICF 的量纲随项目大小变（``log(N)`` 是上界），阈值没法跨项目复用。
+        Scoring uses this rather than raw ICF for two reasons: ``noisy_or``
+        needs components in [0, 1], and raw ICF is bounded by ``log(N)``, so
+        any threshold on it would drift with project size.
         """
         if self.total_symbols <= 1:
             return 0.0
@@ -81,10 +87,11 @@ class TermInfo:
 
 @dataclass(frozen=True, slots=True)
 class Expansion:
-    """扩展表里的一条：从某个键扩展到某个目标，带分数和理由。
+    """One expansion: from a key to a target, with a score and a reason.
 
-    ``reason`` 不是装饰——它决定这条扩展可不可信。``"meta"``（框架声明的
-    元注解关系）是事实，分数 1.0；``"prefix"`` / ``"ctx"`` 是估计。
+    ``reason`` is not decoration -- it says how much to trust the expansion.
+    ``"meta"``, a meta-annotation relation the framework itself declares, is
+    a fact and scores 1.0; ``"prefix"`` and ``"ctx"`` are estimates.
     """
 
     target: str
@@ -93,57 +100,59 @@ class Expansion:
 
 
 class SymbolStore(ABC):
-    """symbol_id → Element。片段里节点本体的唯一来源。"""
+    """symbol_id to Element. The only source of node objects in a fragment."""
 
     @abstractmethod
     def get(self, symbol_id: int) -> Element | None:
-        """取一个元素；不存在返回 None。"""
+        """One element, or None if it does not exist."""
 
     @abstractmethod
     def get_many(self, symbol_ids: Iterable[int]) -> dict[int, Element]:
-        """批量取。缺失的 id 直接不出现在结果里，不抛。"""
+        """Batch lookup. Missing ids are simply absent from the result."""
 
     @abstractmethod
     def count(self) -> int:
-        """符号总数。`TermInfo.icf` 的分母。"""
+        """Total symbols. The denominator of `TermInfo.icf`."""
 
 
 class PostingIndex(ABC):
-    """term → postings，以及 term 的统计量。
+    """Term to postings, plus per-term statistics.
 
-    这一层**保持精确**：不做任何模糊匹配。模糊性全部放在 `ExpansionTable`，
-    这样索引不需要改数据结构、不引入近似误差，调阈值也不必重建索引。
+    This layer stays **exact** and does no fuzzy matching at all. All
+    fuzziness lives in `ExpansionTable`, which keeps the index free of new
+    data structures and approximation error, and lets thresholds change
+    without a rebuild.
     """
 
     @abstractmethod
     def lookup(self, term: str) -> Sequence[Posting]:
-        """精确查一个 term；没有返回空序列。"""
+        """Exact lookup of one term; an empty sequence if absent."""
 
     @abstractmethod
     def term_info(self, term: str) -> TermInfo | None:
-        """取 term 的统计量；不存在返回 None。"""
+        """Statistics for one term, or None if absent."""
 
     @abstractmethod
     def terms(self) -> Iterable[str]:
-        """遍历全部 term。建扩展表时要用。"""
+        """Every term. Needed when building the expansion table."""
 
 
 class ExpansionTable(ABC):
-    """离线算好的扩展表：规范词 → 项目里的实际写法。
+    """The precomputed expansion table: canonical term to project spelling.
 
-    查询时纯查表，**不做向量计算、不调 LLM**。
+    Pure lookup at query time -- **no vector maths, no LLM**.
     """
 
     @abstractmethod
     def expand(self, key: str) -> Sequence[Expansion]:
-        """展开一个键；没有返回空序列。"""
+        """Expand one key; an empty sequence if absent."""
 
 
 class EdgeStore(ABC):
-    """图的邻接访问。
+    """Adjacency access to the graph.
 
-    `hop` 需要的是**路径**而不是可达集，所以这里按方向取边而不是取邻居 id，
-    调用方才能沿边回溯出路径。
+    `hop` needs **paths**, not a reachable set, so this returns edges by
+    direction rather than neighbour ids -- callers reconstruct paths from them.
     """
 
     @abstractmethod
@@ -154,7 +163,7 @@ class EdgeStore(ABC):
         kinds: Sequence[str] | None = None,
         min_confidence: float = 0.0,
     ) -> Sequence[Edge]:
-        """从该节点出发的边。``kinds=None`` 表示不限类型。"""
+        """Edges leaving this node. ``kinds=None`` means any kind."""
 
     @abstractmethod
     def in_edges(
@@ -164,9 +173,9 @@ class EdgeStore(ABC):
         kinds: Sequence[str] | None = None,
         min_confidence: float = 0.0,
     ) -> Sequence[Edge]:
-        """指向该节点的边。``dir="backward"`` 与双向 BFS 的反向半程要用。"""
+        """Edges arriving at this node, used by backward traversal."""
 
     @abstractmethod
     def degree(self, symbol_id: int, *, kinds: Sequence[str] | None = None) -> int:
-        """总度数。hub 节点限流要用——工具方法会被所有人调用，
-        经过它们的路径几乎没有信息量。"""
+        """Total degree, used to throttle hubs -- utility methods are called
+        by everything, and paths through them carry almost no information."""

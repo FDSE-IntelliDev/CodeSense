@@ -1,12 +1,16 @@
-"""`intent` 算子：返回片段中满足某个意图的部分。
+"""The `intent` operator: the part of a fragment that satisfies an intent.
 
-**执行期唯一调 LLM 的算子，也是最贵的。** 三条纪律
-（``docs/design/05-operators.md``）在这里都落成了代码：
+**The only operator that calls an LLM at query time, and the most
+expensive.** The three disciplines from ``docs/design/05-operators.md`` are
+all enforced in code here:
 
-1. 放最后、作用在最小片段上——`max_items` 超限直接报错，
-   逼调用方先用便宜约束收窄，而不是默默烧钱
-2. 判定必须进证据——verdict 带 reason，否则用户无从判断该不该信
-3. 必须能降级——LLM 不可用时按 `fallback` 走，不让整条查询失败
+1. It runs last, on the smallest fragment -- exceeding `max_items` raises
+   rather than quietly spending money, forcing the caller to narrow with
+   cheap constraints first.
+2. Verdicts go into the evidence with a reason, or a user has no basis for
+   trusting the result.
+3. It must degrade -- when the LLM is unavailable `fallback` decides what
+   happens, and the query does not fail.
 """
 
 from __future__ import annotations
@@ -22,15 +26,16 @@ __all__ = ["DEFAULT_MAX_ITEMS", "FALLBACKS", "intent"]
 
 _log = logging.getLogger(__name__)
 
-#: 交给 LLM 的候选数上限。超了就报错——
-#: 「前面还有没用上的便宜约束」是编排错误，不该由钱来兜底。
+#: Ceiling on candidates handed to the LLM. Exceeding it raises: leaving
+#: cheap constraints unused ahead of it is an orchestration error, and money
+#: should not paper over it.
 DEFAULT_MAX_ITEMS = 200
 
-#: 判不出来时怎么办。
+#: What to do when nothing could be decided.
 #:
-#:     keep   保留（召回优先，宁可多给）
-#:     drop   丢弃（精度优先）
-#:     error  直接失败（不接受静默降级的场景）
+#:     keep   keep it (favours recall; err towards showing more)
+#:     drop   discard it (favours precision)
+#:     error  fail outright (when silent degradation is unacceptable)
 FALLBACKS = ("keep", "drop", "error")
 
 _YES = "yes"
@@ -46,19 +51,20 @@ def intent(
     fallback: str = "keep",
     max_items: int | None = DEFAULT_MAX_ITEMS,
 ) -> Frag:
-    """判定片段里哪些元素真的在做 ``concept`` 说的那件事。
+    """Decide which elements really do what ``concept`` describes.
 
-    ``concept`` 用自然语言写，通常直接取查询单元的 ``concept`` 字段。
+    ``concept`` is prose, usually taken straight from a unit's ``concept``.
     """
     if fallback not in FALLBACKS:
-        raise ValueError(f"fallback 只能是 {FALLBACKS} 之一，收到 {fallback!r}")
+        raise ValueError(f"fallback must be one of {FALLBACKS}, got {fallback!r}")
     if not frag:
         return frag
     if max_items is not None and len(frag) > max_items:
         raise ValueError(
-            f"intent 收到 {len(frag)} 个候选，超过 max_items={max_items}。"
-            "它是最贵的算子，应当放在最后、作用在最小片段上——"
-            "先用 hop / only / top 收窄，或显式调大 max_items。"
+            f"intent received {len(frag)} candidates, over max_items={max_items}. "
+            "It is the most expensive operator and belongs last, on the smallest "
+            "fragment -- narrow with hop / only / top first, or raise max_items "
+            "explicitly."
         )
 
     verdicts = _collect(frag, concept, ctx, batch_size)
@@ -71,10 +77,12 @@ def intent(
         if verdict is None:
             undecided += 1
             if fallback == "error":
-                raise RuntimeError(f"符号 {symbol_id} 判定失败，且 fallback='error'")
+                raise RuntimeError(f"symbol {symbol_id} could not be judged, fallback='error'")
             if fallback == "drop":
                 continue
-            verdict = Verdict(source="fallback", label=UNSURE, reason="判定不可用，按降级策略保留")
+            verdict = Verdict(
+                source="fallback", label=UNSURE, reason="judging unavailable; kept by fallback"
+            )
         elif not _passes(verdict, threshold):
             continue
         kept[symbol_id] = element
@@ -82,7 +90,10 @@ def intent(
 
     if undecided:
         _log.warning(
-            "intent 有 %d/%d 个候选没判出来，按 fallback=%r 处理", undecided, len(frag), fallback
+            "intent left %d/%d candidates undecided; applying fallback=%r",
+            undecided,
+            len(frag),
+            fallback,
         )
     return Frag(
         nodes=kept,
@@ -93,26 +104,27 @@ def intent(
 
 
 def _passes(verdict: Verdict, threshold: float) -> bool:
-    """判定为是、且置信度过线。
+    """A yes verdict whose confidence clears the threshold.
 
-    `unsure` 不算通过——判不出和判为是是两回事，前者该走降级而不是直接放行。
+    `unsure` does not pass: undecided and decided-yes are different, and the
+    first belongs on the fallback path rather than waved through.
     """
     return verdict.label == _YES and verdict.score >= threshold
 
 
 def _collect(frag: Frag, concept: str, ctx: EvalContext, batch_size: int) -> dict[int, Verdict]:
     if batch_size < 1:
-        raise ValueError(f"batch_size 必须为正，收到 {batch_size}")
+        raise ValueError(f"batch_size must be positive, got {batch_size}")
     items = [item_of(element) for element in frag.nodes.values()]
     found: dict[int, Verdict] = {}
     known = set(frag.nodes)
     for batch in _batches(items, batch_size):
         try:
             answered = ctx.judge.judge(concept, batch)
-        except Exception:  # noqa: BLE001 —— 判定失败必须降级，不能让整条查询挂掉
-            _log.exception("intent 的一批判定失败，按降级处理")
+        except Exception:  # noqa: BLE001 -- judging must degrade, not kill the query
+            _log.exception("a batch of intent judging failed; degrading")
             continue
-        # 凭空出现的 symbol_id 丢弃：模型可能编号错乱，不能让它往结果里塞东西
+        # Drop ids nobody asked about: a confused model must not inject results
         found.update({sid: v for sid, v in answered.items() if sid in known})
     return found
 

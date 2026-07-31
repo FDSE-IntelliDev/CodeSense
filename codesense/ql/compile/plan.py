@@ -1,10 +1,11 @@
-"""执行计划：一串有序的步骤，可跑、可打印、可解释。
+"""Execution plans: ordered steps that can be run, printed and explained.
 
-计划本身就是产物。跑之前能看到规划器**为什么**这么排（每步的预估规模与
-代价都印在旁边），跑之后能看到预估和实际差多少——差得离谱就说明估计模型
-该修了。
+The plan is itself an artifact. Before running, you can see **why** the
+planner ordered things this way, with each step's predicted size and cost
+beside it; after running, you can see how far prediction and reality
+diverged -- and a wild divergence means the estimator needs fixing.
 
-设计依据见 ``docs/design/06-script-and-execution.md``。
+Design: ``docs/design/06-script-and-execution.md``.
 """
 
 from __future__ import annotations
@@ -33,19 +34,21 @@ __all__ = [
     "Trace",
 ]
 
-#: 落在图约束邻域里的候选获得的乘性加成。图是独立于词法的证据，
-#: 所以加成而不是替代——它不该把词法完全不沾边的东西捧上来。
+#: Multiplicative boost for candidates in a constraint's neighbourhood. The
+#: graph is evidence independent of lexical matching, so it boosts rather
+#: than replaces -- it must not lift things with no lexical basis at all.
 BOOST = 0.6
 
 
-#: 元素种类命中偏好时的加成。比图加成弱——种类是模型猜的，图是索引里的事实。
+#: Boost for matching the preferred element kind. Weaker than the graph
+#: boost: the kind is the model's guess, the graph is a fact in the index.
 KIND_PREFERENCE = 0.3
 
 
 def _top_with_boost(
     frag: Frag, limit: int, boosted: set[int], preferred: set[int] = frozenset()
 ) -> Frag:
-    """按「词法分数 × 图加成 × 种类偏好」取前 n 个。"""
+    """Take the top n by lexical score times graph boost times kind preference."""
     if not boosted and not preferred:
         return top(frag, limit)
     ordered = sorted(
@@ -65,7 +68,7 @@ _log = logging.getLogger(__name__)
 
 @dataclass(frozen=True, slots=True)
 class Trace:
-    """一步跑完之后的实际情况。"""
+    """What actually happened in one step."""
 
     label: str
     estimated: int
@@ -75,16 +78,17 @@ class Trace:
 
     @property
     def drift(self) -> float:
-        """预估与实际的倍数偏差。用来检验估计模型准不准。"""
+        """Ratio of actual to predicted, for checking the estimator."""
         return self.actual / max(self.estimated, 1)
 
 
 @dataclass
 class State:
-    """执行过程中的工作集。
+    """The working set during execution.
 
-    ``projected`` 让同一套 `estimate` 既能用于真跑，也能用于**不跑的静态预演**：
-    预演时没有真的 Frag，只有一路传下来的预计行数。
+    ``projected`` lets one `estimate` implementation serve both a real run
+    and a **static dry run**: in a dry run there is no real Frag, only
+    predicted row counts threaded through.
     """
 
     units: dict[str, Frag] = field(default_factory=dict)
@@ -93,7 +97,7 @@ class State:
     projected: int | None = None
     projected_units: dict[str, int] = field(default_factory=dict)
 
-    #: 被图约束加权过的符号。排序时用，不影响集合成员。
+    #: Symbols boosted by a graph constraint. Affects ranking, not membership.
     boosted: set[int] = field(default_factory=set)
 
     @property
@@ -107,30 +111,31 @@ class State:
 
     @property
     def stopped(self) -> bool:
-        """工作集已经空了——后面的步骤没有意义。"""
+        """The working set is empty; later steps are pointless."""
         return bool(self.units) and not self.current
 
 
 class Step(ABC):
-    """计划里的一步。"""
+    """One step of a plan."""
 
     label: str
 
     @abstractmethod
     def estimate(self, ctx: EvalContext, state: State) -> Estimate:
-        """不执行地估算这一步的输出与代价。"""
+        """Estimate this step's output and cost without running it."""
 
     @abstractmethod
     def apply(self, ctx: EvalContext, state: State) -> None:
-        """就地更新工作集。"""
+        """Update the working set in place."""
 
 
 @dataclass(slots=True)
 class EvalUnit(Step):
-    """求值一个查询单元，并集进工作集。
+    """Evaluate a unit and union it into the working set.
 
-    ``seed`` 表示它是第一个。命中多个单元的符号分数更高（证据累加），
-    但只命中一个也不会被淘汰——**淘汰的活交给 `Boost` 和 `Narrow`**。
+    ``seed`` marks the first one. Symbols matching several units score higher
+    as evidence accumulates, but matching only one is not eliminating --
+    **elimination is `Cohere`'s and `Narrow`'s job**.
     """
 
     unit: QueryUnit
@@ -138,14 +143,14 @@ class EvalUnit(Step):
     label: str = ""
 
     def __post_init__(self) -> None:
-        self.label = f"unit({self.unit.name}){'  ← 种子' if self.seed else ''}"
+        self.label = f"unit({self.unit.name}){'  <- seed' if self.seed else ''}"
 
     def estimate(self, ctx: EvalContext, state: State) -> Estimate:
-        """这一步输出的是**并集**，不是单元本身。"""
+        """This step outputs the **union**, not the unit alone."""
         guess = estimate_unit(self.unit, ctx)
         if self.seed:
             return guess
-        # 并集：按独立假设 |A∪B| = N·(1 − (1−|A|/N)(1−|B|/N))
+        # Union under independence: |A or B| = N*(1 - (1-|A|/N)(1-|B|/N))
         total = max(ctx.symbols.count(), 1)
         merged = total * (1 - (1 - state.rows / total) * (1 - guess.rows / total))
         return Estimate(rows=round(merged), cost=guess.cost, detail=guess.detail)
@@ -153,16 +158,18 @@ class EvalUnit(Step):
     def apply(self, ctx: EvalContext, state: State) -> None:
         found = eval_unit(self.unit, ctx)
         state.units[self.unit.name] = found
-        # **并集，不是交集。** 单元落在不同元素上——「同时含有 performance 和
-        # disk 关键词的元素几乎不存在」（01 章）。交集会把答案杀光：实测
-        # netty 的零拷贝查询里 gold 全在一个单元内，交完一个不剩。
-        # 单元之间的关系由图约束表达，不由集合运算表达。
+        # **Union, not intersection.** Units land on different elements --
+        # "elements containing both performance and disk keywords barely
+        # exist" (design chapter 01). Intersection kills the answers: on
+        # netty's zero-copy query every target sat in one unit and nothing
+        # survived. Relations between units are expressed by graph
+        # constraints, not by set operations.
         state.current = found if self.seed else (state.current | found)
 
 
 @dataclass(slots=True)
 class Filter(Step):
-    """用一个已经求值过的单元收窄工作集。"""
+    """Narrow the working set using an already-evaluated unit."""
 
     unit_name: str
     label: str = ""
@@ -180,13 +187,15 @@ class Filter(Step):
 
 @dataclass(slots=True)
 class Boost(Step):
-    """图约束：给结构上连着的候选**加权**，而不是把别的筛掉。
+    """A graph constraint: **weights** structurally connected candidates
+    rather than filtering the rest away.
 
-    「performance 相关的代码调用了 disk 相关的代码」说的是两个单元之间的
-    关系，不是对候选集的过滤。用它做硬过滤会把只命中一侧的答案全杀掉——
-    而那恰恰是最常见的情形。
+    "Performance code calls disk code" states a relation between two units,
+    not a filter on the candidate set. Using it as a hard filter kills every
+    answer that matches only one side -- which is the common case.
 
-    起点刻意取**小的一侧**：`hop` 的代价随起点数线性增长。
+    The seed is deliberately the **smaller side**: `hop` costs scale linearly
+    with the number of seeds.
     """
 
     src_name: str
@@ -197,7 +206,9 @@ class Boost(Step):
     label: str = ""
 
     def __post_init__(self) -> None:
-        self.label = f"boost({self.src_name} ↔ {self.dst_name}, {self.hops[0]}~{self.hops[1]} 跳)"
+        self.label = (
+            f"boost({self.src_name} <-> {self.dst_name}, {self.hops[0]}-{self.hops[1]} hops)"
+        )
 
     def estimate(self, ctx: EvalContext, state: State) -> Estimate:
         touched = estimate_hop(
@@ -206,7 +217,7 @@ class Boost(Step):
             hops=self.hops,
             dst_rows=state.unit_rows(self.dst_name),
         )
-        # 加权不改变候选数量，只改变排序
+        # Weighting changes ranking, not the number of candidates
         return Estimate(rows=state.rows, cost=touched.cost, detail=touched.detail)
 
     def apply(self, ctx: EvalContext, state: State) -> None:
@@ -219,16 +230,18 @@ class Boost(Step):
 
 @dataclass(slots=True)
 class Cohere(Step):
-    """结构凝聚：给「离强命中近」的候选加权。
+    """Structural coherence: weight up candidates near the strongest hits.
 
-    这和 `Boost` 不是一回事，区别要说清：
+    Not the same thing as `Boost`, and the difference matters:
 
-        Boost    查询语义里声明的关系（「A 相关的代码调用 B」）——
-                 模型提议、统计校验，**大部分查询根本没有这层意思**
-        Cohere   与最强命中结构相邻的候选更可能相关——
-                 **对每条查询都成立**，不需要模型参与
+        Boost    a relation stated by the query ("A-related code calls B") --
+                 proposed by the model, validated by statistics, and **most
+                 queries do not state one at all**
+        Cohere   candidates structurally near the strongest hits are more
+                 likely relevant -- **true of every query**, needing no model
 
-    实测这一条贡献了 R@100 的十几个百分点，而它纯粹是索引里的事实。
+    Measured, this contributes low double digits of R@100, purely from facts
+    already in the index.
     """
 
     seeds: int = 20
@@ -237,11 +250,11 @@ class Cohere(Step):
     label: str = ""
 
     def __post_init__(self) -> None:
-        self.label = f"cohere(前 {self.seeds} 个当种子, {self.hops[0]}~{self.hops[1]} 跳)"
+        self.label = f"cohere(top {self.seeds} as seeds, {self.hops[0]}-{self.hops[1]} hops)"
 
     def estimate(self, ctx: EvalContext, state: State) -> Estimate:
         touched = estimate_hop(min(state.rows, self.seeds), ctx, hops=self.hops)
-        return Estimate(rows=state.rows, cost=touched.cost, detail="仅重排")
+        return Estimate(rows=state.rows, cost=touched.cost, detail="reranks only")
 
     def apply(self, ctx: EvalContext, state: State) -> None:
         if not state.current:
@@ -254,11 +267,13 @@ class Cohere(Step):
 
 @dataclass(slots=True)
 class Narrow(Step):
-    """收窄到最贵那步能承受的规模。
+    """Narrow to what the most expensive step can afford.
 
-    ``kind`` 是**偏好不是过滤**。模型给的种类不可靠：实测查询问「实体字段上的
-    校验约束」，模型给的 kinds 里偏偏没有 `field`，硬过滤会把答案全删光。
-    和图约束同一个道理——不可靠的信号加权，可靠的信号才过滤。
+    ``kind`` is a **preference, not a filter**. The model's kinds are
+    unreliable: asked about validation constraints on entity fields, it
+    omitted `field` entirely, and a hard filter would have deleted every
+    answer. Same principle as graph constraints -- unreliable signals weight,
+    only reliable ones filter.
     """
 
     kind: tuple[str, ...] | None = None
@@ -269,7 +284,7 @@ class Narrow(Step):
     def __post_init__(self) -> None:
         parts = []
         if self.kind:
-            parts.append(f"偏好 {'/'.join(self.kind[:3])}{'…' if len(self.kind) > 3 else ''}")
+            parts.append(f"prefer {'/'.join(self.kind[:3])}{'...' if len(self.kind) > 3 else ''}")
         if self.limit:
             parts.append(f"top {self.limit}")
         self.label = "narrow(" + ", ".join(parts) + ")"
@@ -290,7 +305,8 @@ class Narrow(Step):
 
 @dataclass(slots=True)
 class Intent(Step):
-    """语义判定。**永远是最后一步**，而且规划器会先用 `Narrow` 压住它的输入。"""
+    """Semantic judging. **Always last**, and the planner caps its input with
+    `Narrow` first."""
 
     concept: str
     threshold: float = 0.5
@@ -319,26 +335,27 @@ class Intent(Step):
 
 @dataclass(frozen=True, slots=True)
 class Plan:
-    """一串有序的步骤，外加规划器为什么这么排的说明。"""
+    """Ordered steps, plus why the planner ordered them that way."""
 
     steps: tuple[Step, ...]
     reasoning: tuple[str, ...] = ()
 
     def run(self, ctx: EvalContext, *, skip: tuple[type[Step], ...] = ()) -> State:
-        """执行。``skip`` 用来试跑时跳过昂贵的步骤（通常是 `Intent`）。
+        """Execute. ``skip`` omits expensive steps on a dry run, usually
+        `Intent`.
 
-        工作集一旦空了就停——后面的步骤既不会改变结果，
-        又可能白白花掉一次 LLM 调用。
+        Stops once the working set empties: later steps cannot change the
+        result and might waste an LLM call.
         """
         state = State()
         for step in self.steps:
             if isinstance(step, skip):
                 state.trace.append(
-                    Trace(step.label, 0, len(state.current), 0.0, skipped="试跑跳过")
+                    Trace(step.label, 0, len(state.current), 0.0, skipped="skipped (dry run)")
                 )
                 continue
             if state.stopped:
-                state.trace.append(Trace(step.label, 0, 0, 0.0, skipped="工作集已空"))
+                state.trace.append(Trace(step.label, 0, 0, 0.0, skipped="working set empty"))
                 continue
             predicted = step.estimate(ctx, state).rows
             started = time.perf_counter()
@@ -349,17 +366,19 @@ class Plan:
         return state
 
     def explain(self, ctx: EvalContext) -> str:
-        """跑之前打印计划与预估。"""
-        lines = ["执行计划："]
+        """Print the plan and its estimates before running."""
+        lines = ["execution plan:"]
         lines += [f"  · {why}" for why in self.reasoning]
         lines.append("")
         state = State(projected=0)
         for index, step in enumerate(self.steps, 1):
             guess = step.estimate(ctx, state)
             lines.append(f"  {index}. {step.label:<44}{guess}")
-            # 把预估结果一路传下去，让后面几步基于前面的**预计**规模来估
+            # Thread predictions through so later steps estimate from the
+            # predicted sizes rather than nothing
             if isinstance(step, EvalUnit) and not step.seed:
-                # 单元本身的规模要单独记：图约束选方向时看的是它，不是交集
+                # Record the unit's own size separately: choosing a graph
+                # direction looks at that, not at the union
                 state.projected_units[step.unit.name] = estimate_unit(step.unit, ctx).rows
             elif isinstance(step, EvalUnit):
                 state.projected_units[step.unit.name] = guess.rows
@@ -368,8 +387,9 @@ class Plan:
 
     @staticmethod
     def report(trace: Sequence[Trace]) -> str:
-        """跑之后对比预估与实际。差得离谱说明估计模型该修了。"""
-        lines = [f"  {'步骤':<44}{'预估':>8}{'实际':>8}{'耗时':>9}"]
+        """Compare prediction against reality after a run. A wild divergence
+        means the estimator needs fixing."""
+        lines = [f"  {'step':<44}{'est':>8}{'actual':>8}{'time':>9}"]
         for item in trace:
             if item.skipped:
                 lines.append(f"  {item.label:<44}{item.skipped:>16}")

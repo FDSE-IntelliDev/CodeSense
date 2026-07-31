@@ -1,11 +1,15 @@
-"""LLM 配置。
+"""LLM configuration.
 
-**参数走流水线，密钥走环境。** 端点、模型名、超时都是普通参数，由调用方
-显式传进来（脚本的命令行参数 → 构造函数），不从配置文件读——
-配置文件会变成第二处事实来源，"到底生效的是哪个值"就说不清了。
+**Parameters travel through the pipeline, secrets travel through the
+environment.** Endpoint, model name and timeout are ordinary parameters,
+passed in explicitly by the caller (script command line to constructor)
+rather than read from a config file -- a config file becomes a second source
+of truth and "which value is actually in effect" stops being answerable.
 
-只有 API key 例外：它不能当命令行参数（会进 shell 历史和进程列表），
-所以从环境变量 `CODESENSE_API_KEY` 读，回落到未被跟踪的 `config.yml`。
+The API key is the one exception: it cannot be a command-line argument (it
+would land in shell history and the process list), so it is read from the
+`CODESENSE_API_KEY` environment variable, falling back to the untracked
+`config.yml`.
 """
 
 from __future__ import annotations
@@ -17,11 +21,13 @@ from typing import Any
 
 __all__ = ["DEFAULT_BASE_URL", "DEFAULT_MODEL", "LlmConfig"]
 
-#: dashscope 的 OpenAI 兼容端点。换供应商改这里或在配置里覆盖。
+#: dashscope's OpenAI-compatible endpoint. Change here or override in config
+#: to switch provider.
 DEFAULT_BASE_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1"
 DEFAULT_MODEL = "qwen-plus"
 
-#: 环境变量优先于配置文件——CI 与容器里通常只有环境变量。
+#: The environment wins over the config file -- in CI and containers the
+#: environment is usually all there is.
 ENV_API_KEY = "CODESENSE_API_KEY"
 
 _KEY_ALIASES = ("api-key", "api_key", "apikey", "key")
@@ -37,31 +43,34 @@ class LlmConfig:
     def __post_init__(self) -> None:
         if not self.api_key:
             raise ValueError(
-                f"没有 API key。设环境变量 {ENV_API_KEY}，"
-                "或在未被跟踪的 config.yml 里配 LLM.api-key。"
+                f"no API key; set the {ENV_API_KEY} environment variable, "
+                "or put LLM.api-key in the untracked config.yml."
             )
 
     @classmethod
     def load(cls, *, secrets_file: Path | str = "config.yml", **params: Any) -> LlmConfig:
-        """构造配置：参数由调用方给，密钥自动找。
+        """Build a config: parameters from the caller, the key found
+        automatically.
 
-        ``params`` 里能传 `base_url` / `model` / `timeout`——它们是流水线参数，
-        应当一路从命令行传下来。密钥不在 ``params`` 里，除非显式覆盖。
+        ``params`` accepts `base_url` / `model` / `timeout` -- pipeline
+        parameters that should be threaded down from the command line. The
+        key is not in ``params`` unless explicitly overridden.
         """
         api_key = params.pop("api_key", None) or find_api_key(secrets_file)
         return cls(api_key=api_key, **params)
 
     def __repr__(self) -> str:
-        """永远不打印密钥。
+        """Never print the key.
 
-        它会出现在日志、异常栈、`pytest -v` 的输出里——
-        默认 repr 会把密钥泄进这些地方，而那正是最容易被复制粘贴出去的地方。
+        This shows up in logs, exception tracebacks and `pytest -v` output --
+        the default repr would leak the key into exactly the places most
+        likely to be copy-pasted elsewhere.
         """
-        return f"LlmConfig(model={self.model!r}, base_url={self.base_url!r}, api_key=<已隐藏>)"
+        return f"LlmConfig(model={self.model!r}, base_url={self.base_url!r}, api_key=<hidden>)"
 
 
 def find_api_key(secrets_file: Path | str = "config.yml") -> str:
-    """环境变量优先，回落到未被跟踪的配置文件。"""
+    """The environment wins, falling back to the untracked config file."""
     return os.environ.get(ENV_API_KEY, "").strip() or _find_key(_read(Path(secrets_file)))
 
 

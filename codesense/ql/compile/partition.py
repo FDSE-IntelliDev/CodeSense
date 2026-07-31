@@ -1,13 +1,17 @@
-"""按统计信息决定词该分几个单元——**不问 LLM**。
+"""Deciding how many units a set of terms forms, from statistics -- **not by
+asking the LLM**.
 
-这是 MySQL 式分工的核心一条：优化器不问用户怎么 join，它查统计信息。
-同样地，「这些词该分成几个单元」是个统计问题，不是语义问题——
-判据是**这些词是否落在同一批符号上**，而这个答案在倒排索引里。
+This follows a query optimiser's division of labour: it does not ask the
+user how to join, it consults statistics. "How many units should these terms
+form" is likewise a statistical question rather than a semantic one, and the
+criterion -- **do these terms land on the same symbols** -- is answered by
+the inverted index.
 
-实测证据（``docs/design/06-script-and-execution.md``）：让 LLM 按语义把
-netty 的零拷贝查询拆成「零拷贝 / 用户态内存 / 性能」三个单元，R@100 从
-65% 掉到 21%。而统计说这些词两两 Jaccard 平均只有 0.011——
-它们描述的是同一件事的不同侧面，本来就该是一个单元。
+Measured (``docs/design/06-script-and-execution.md``): having the LLM split
+netty's zero-copy query semantically into zero-copy, user-space memory and
+performance took R@100 from 65% down to 21%. The statistics said the mean
+pairwise Jaccard was 0.011 -- these terms describe facets of one thing and
+belonged in a single unit.
 """
 
 from __future__ import annotations
@@ -19,37 +23,41 @@ from codesense.ql.context import EvalContext
 
 __all__ = ["OVERLAP_FLOOR", "Cluster", "partition"]
 
-#: 两个词算「属于同一个单元」的 Jaccard 下限。
+#: Jaccard floor for two terms to count as belonging to one unit.
 #:
-#: 定得高是刻意的：**拆错的代价远大于不拆**。不拆最坏是一个宽单元
-#: （仍能召回，只是排序差些），拆错会把答案分到不同单元再被权重摊薄。
+#: Deliberately high: **splitting wrongly costs far more than not splitting**.
+#: Not splitting yields at worst one broad unit, which still recalls and only
+#: ranks less well; splitting wrongly scatters the answer across units where
+#: weighting then dilutes it.
 OVERLAP_FLOOR = 0.08
 
-#: 一个词的 posting 超过这个比例就不参与聚类——它和谁都重叠，
-#: 会把本该分开的簇粘成一坨。
+#: A term above this share of postings is excluded from clustering: it
+#: overlaps with everything and would glue separate clusters into one.
 HUB_RATIO = 0.25
 
-#: 最多分几个单元。再多就说明聚类没聚出结构，不如不拆。
+#: Maximum number of units. More than this means the clustering found no
+#: structure, and not splitting is better.
 MAX_UNITS = 3
 
 
 @dataclass(frozen=True, slots=True)
 class Cluster:
-    """一组该放进同一个单元的词。"""
+    """Terms that belong in one unit."""
 
     terms: tuple[str, ...]
     reason: str = ""
 
 
 def partition(terms: Sequence[str], ctx: EvalContext) -> list[Cluster]:
-    """按 posting 重叠度把词分组。
+    """Group terms by posting overlap.
 
-    **默认不拆**：只有当聚类真的分出了结构（多于一个簇，且每个簇都不是
-    孤零零一个词）才拆，否则返回单个簇。
+    **Defaults to not splitting**: it splits only when the clustering found
+    real structure -- more than one cluster, none of them a lone term --
+    and otherwise returns a single cluster.
     """
     usable = [term for term in terms if ctx.postings.term_info(term) is not None]
     if len(usable) < 4:
-        return [Cluster(tuple(usable), "词太少，不拆")]
+        return [Cluster(tuple(usable), "too few terms to split")]
 
     total = max(ctx.symbols.count(), 1)
     postings = {term: {p.symbol_id for p in ctx.postings.lookup(term)} for term in usable}
@@ -61,27 +69,31 @@ def partition(terms: Sequence[str], ctx: EvalContext) -> list[Cluster]:
         return [
             Cluster(
                 tuple(usable),
-                f"聚类没分出结构（{len(solid)} 个成形的簇），不拆——拆错比不拆贵",
+                f"clustering found no structure ({len(solid)} formed clusters); "
+                "not splitting, since splitting wrongly costs more",
             )
         ]
 
     loose = [term for group in groups if len(group) < 2 for term in group] + sorted(hubs)
-    clusters = [Cluster(tuple(sorted(group)), f"{len(group)} 个词互相重叠") for group in solid]
+    clusters = [
+        Cluster(tuple(sorted(group)), f"{len(group)} mutually overlapping terms") for group in solid
+    ]
     if loose:
-        # 落单的词并进最大的簇：单独成一个单元只会被权重摊薄
+        # Fold stray terms into the largest cluster: a unit of their own would
+        # only be diluted by weighting
         biggest = max(range(len(clusters)), key=lambda i: len(clusters[i].terms))
         merged = tuple(sorted({*clusters[biggest].terms, *loose}))
-        clusters[biggest] = Cluster(merged, clusters[biggest].reason + "，并入落单的词")
+        clusters[biggest] = Cluster(merged, clusters[biggest].reason + ", plus stray terms")
     return clusters
 
 
 def _connected(
     terms: Sequence[str], postings: dict[str, set[int]], floor: float
 ) -> list[list[str]]:
-    """按「重叠度超过下限」连边，取连通分量。
+    """Connect terms whose overlap clears the floor, then take components.
 
-    用连通分量而不是 k-means 之类：簇的**数量**本身就是要推断的东西，
-    不该由参数给定。
+    Components rather than something like k-means: the **number** of clusters
+    is itself what has to be inferred, not supplied as a parameter.
     """
     parent = {term: term for term in terms}
 

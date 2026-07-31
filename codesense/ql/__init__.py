@@ -1,11 +1,12 @@
-"""CodeSense QL —— 把自然语言查询编译成一段代码查询脚本。
+"""CodeSense QL: compiling a natural-language query into a query script.
 
-设计见 ``docs/design/``。这是一次**从设计文档从头实现**，
-不复用 ``codesense`` 下其它子包的执行层代码；重写前的实现见 git tag
-``pre-ql-rewrite`` 与分支 ``archive/legacy-implementation``。
+Design lives in ``docs/design/``. This is a **reimplementation from the
+design documents** that reuses no execution-layer code from the other
+``codesense`` subpackages; the pre-rewrite tree is at git tag
+``pre-ql-rewrite`` and branch ``archive/legacy-implementation``.
 
-隔离由 ``tests/contract/test_ql_isolation.py`` 强制：本包不得 import
-``codesense`` 下的任何其它子包。
+Isolation is enforced by ``tests/contract/test_ql_isolation.py``: this
+package must not import any other ``codesense`` subpackage.
 """
 
 from codesense.ql.fields import DEFAULT_FIELD_WEIGHTS, FieldWeights, IndexField

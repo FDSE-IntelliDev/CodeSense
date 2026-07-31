@@ -1,10 +1,12 @@
-"""意图判定的**端口**。
+"""The **port** for intent judging.
 
-`intent` 是执行期唯一调 LLM 的算子，也是最贵的。但 QL 层按契约只用标准库，
-所以这里只定义接口，真正调模型的适配器在 `codesense.llm`。
+`intent` is the only operator that calls an LLM at query time, and the most
+expensive one. The QL layer is contractually standard-library only, so this
+defines the interface and the adapter that actually calls a model lives in
+`codesense.llm`.
 
-这样带来两个好处：QL 的测试不需要网络也不需要 API key；
-换模型、换供应商不动算子一行代码。
+Two benefits: QL tests need neither network nor API key, and swapping model
+or provider touches no operator code.
 """
 
 from __future__ import annotations
@@ -17,18 +19,20 @@ from codesense.ql.frag import Element, Verdict
 
 __all__ = ["Judge", "JudgeItem", "NullJudge", "UNSURE", "item_of"]
 
-#: 判定不出来时的标签。**不是 "no"**——判不出和判为否是两回事，
-#: 前者应该走降级策略，后者应该直接筛掉。
+#: Label for "could not decide". **Not "no"** -- undecided and decided-against
+#: are different: the first should take the fallback path, the second should
+#: simply be filtered out.
 UNSURE = "unsure"
 
 
 @dataclass(frozen=True, slots=True)
 class JudgeItem:
-    """交给模型判定的一个候选。
+    """One candidate handed to the model.
 
-    只带模型真正用得上的字段。不传 `symbol_id` 之外的内部标识，
-    也不传整段源码——判定的是「这个元素是不是在做某件事」，
-    签名和文档通常就够，塞进源码只会让 token 成本失控。
+    Carries only what the model can use. No internal identifiers beyond
+    `symbol_id`, and no source body -- the question is whether an element
+    does a certain thing, for which signature and doc usually suffice, and
+    including bodies would put token cost out of control.
     """
 
     symbol_id: int
@@ -51,26 +55,28 @@ def item_of(element: Element) -> JudgeItem:
 
 
 class Judge(ABC):
-    """判定一批元素是否满足某个意图。
+    """Decide whether a batch of elements satisfies an intent.
 
-    按批而不是按个：一次调用判五个，token 与延迟都摊薄了，
-    而且模型看到同批的其它候选后判得更稳。
+    Batched rather than one at a time: five per call amortises tokens and
+    latency, and seeing its peers makes the model's judgements steadier.
     """
 
     @abstractmethod
     def judge(self, concept: str, items: Sequence[JudgeItem]) -> dict[int, Verdict]:
-        """返回 symbol_id → 判定。
+        """Return symbol_id to verdict.
 
-        允许少返回——没返回的候选按 `UNSURE` 处理，走降级策略。
-        **不允许多返回**：凭空出现的 symbol_id 会被调用方丢弃。
+        Returning fewer is allowed -- anything missing is treated as `UNSURE`
+        and takes the fallback path. Returning **more** is not: symbol ids
+        that were never asked about are discarded by the caller.
         """
 
 
 class NullJudge(Judge):
-    """什么都判不出来的判定器。
+    """A judge that decides nothing.
 
-    默认注入它而不是 `None`，这样 `intent` 的降级路径在**没有配 LLM 的环境里
-    也会被真正走到**——如果降级有 bug，测试就会发现，而不是等到线上。
+    Injected by default instead of `None`, so `intent`'s fallback path is
+    **genuinely exercised in environments without an LLM** -- a bug there
+    surfaces in tests rather than in production.
     """
 
     def judge(self, concept: str, items: Sequence[JudgeItem]) -> dict[int, Verdict]:

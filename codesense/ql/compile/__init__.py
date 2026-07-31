@@ -1,11 +1,13 @@
-"""编译：自然语言 → 查询规格 → 执行计划。
+"""Compilation: natural language to a query spec to an execution plan.
 
-    QuerySpec   中间表示，可手写、可从 LLM 的 JSON 构造
-    plan()      **按预估选择性排序**——编译器里唯一做优化的地方
-    Plan        有序步骤，可跑、可打印、可对比预估与实际
+    QuerySpec   the intermediate form; hand-writable, or built from LLM JSON
+    plan()      **orders steps by estimated selectivity** -- the only place
+                the compiler optimises anything
+    Plan        ordered steps; runnable, printable, and comparable against
+                what actually happened
 
-自然语言 → 规格 那一步要 LLM，所以在 `codesense.llm` 里，
-不在这（QL 层按契约只用标准库）。
+Turning language into a spec needs an LLM, so that step lives in
+`codesense.llm` rather than here (the QL layer is standard-library only).
 """
 
 from codesense.ql.compile.build import ScoredTerm, build_spec, infer_fields, infer_kinds

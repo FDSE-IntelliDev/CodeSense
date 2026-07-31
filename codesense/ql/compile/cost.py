@@ -1,11 +1,13 @@
-"""不执行就估算算子的输出规模与代价。
+"""Estimating an operator's output size and cost without running it.
 
-这是编排能优化的**前提**。倒排索引里每个 term 都带 `df`，
-所以一个词法单元会命中多少符号，查表就能估出来——不必真跑一遍。
-没有这一步，「顺序由查询决定」就只能靠猜。
+This is what makes ordering optimisable at all. The inverted index carries
+`df` for every term, so how many symbols a lexical unit will match is a
+lookup rather than an execution. Without it, "order decided by the query"
+would be guesswork.
 
-估计只求**量级对**：区分「几个」「几百个」「几万个」足以决定顺序，
-把 527 估成 480 没有额外价值。
+Estimates only need the right **order of magnitude**: telling "a few" from
+"a few hundred" from "tens of thousands" decides the ordering, and getting
+527 rather than 480 adds nothing.
 """
 
 from __future__ import annotations
@@ -20,23 +22,26 @@ from codesense.ql.unit import QueryUnit
 
 __all__ = ["Estimate", "estimate_hop", "estimate_intent", "estimate_unit"]
 
-#: 一次 LLM 判定相当于多少次查表。用来让代价可比——
-#: `intent` 比任何查表算子贵几个数量级，排序时必须体现出来。
+#: How many lookups one LLM judgement is worth, so costs are comparable.
+#: `intent` is orders of magnitude more expensive than any lookup operator,
+#: and the ordering has to reflect that.
 INTENT_COST_FACTOR = 5_000.0
 
-#: 意图判定的通过率假设。没有先验时按一半算。
+#: Assumed pass rate for intent judging. Half, absent any prior.
 INTENT_PASS_RATE = 0.5
 
-#: 估不出来时假定的平均度数。真实值从边表数，这个只在没有边时兜底。
+#: Fallback average degree. The real value is counted from the edges; this
+#: only applies when there are none.
 FALLBACK_DEGREE = 4.0
 
 
 @dataclass(frozen=True, slots=True)
 class Estimate:
-    """一步的预计输出规模与代价。
+    """Predicted output size and cost of one step.
 
-    ``rows`` 决定下一步有多少输入，``cost`` 决定这一步值不值得先做。
-    两者都是量级估计，不是精确值。
+    ``rows`` determines how much input the next step gets; ``cost`` decides
+    whether this step is worth doing first. Both are order-of-magnitude
+    estimates, not exact figures.
     """
 
     rows: int
@@ -44,16 +49,17 @@ class Estimate:
     detail: str = ""
 
     def __str__(self) -> str:
-        note = f"（{self.detail}）" if self.detail else ""
-        return f"~{self.rows} 个 / 代价 {self.cost:,.0f}{note}"
+        note = f" ({self.detail})" if self.detail else ""
+        return f"~{self.rows} rows / cost {self.cost:,.0f}{note}"
 
 
 def estimate_unit(unit: QueryUnit, ctx: EvalContext) -> Estimate:
-    """估一个查询单元会命中多少符号。
+    """Estimate how many symbols a unit will match.
 
-    多个词之间按**独立**假设求并集：``N · (1 − Π(1 − dfᵢ/N))``。
-    独立假设当然不成立（`buffer` 和 `buf` 高度相关），但它给出的是上界，
-    而排序只需要上界能区分量级。
+    Terms are unioned under an **independence** assumption:
+    ``N * (1 - Prod(1 - df_i/N))``. Independence plainly does not hold --
+    `buffer` and `buf` are highly correlated -- but it yields an upper bound,
+    and ordering only needs that bound to separate magnitudes.
     """
     total = max(ctx.symbols.count(), 1)
     miss = 1.0
@@ -69,17 +75,19 @@ def estimate_unit(unit: QueryUnit, ctx: EvalContext) -> Estimate:
                 cost += len(ctx.postings.lookup(surface))
                 miss *= 1.0 - min(info.df / total, 1.0)
     rows = round(total * (1.0 - miss))
-    return Estimate(rows=rows, cost=cost, detail=f"{terms} 个词")
+    return Estimate(rows=rows, cost=cost, detail=f"{terms} terms")
 
 
 def estimate_hop(
     src_rows: int, ctx: EvalContext, *, hops: tuple[int, int], dst_rows: int | None = None
 ) -> Estimate:
-    """估从 ``src_rows`` 个起点出发的图约束会留下多少符号。
+    """Estimate what a graph constraint from ``src_rows`` starts will leave.
 
-    分两步：先按平均度数的幂次估**可达集**（这是代价），
-    再按 dst 的密度折一次估**结果**——`hop` 只保留能到达 dst 的路径，
-    不是把可达的都留下。少了后半步会系统性高估（实测 18689 vs 实际 2022）。
+    Two stages: the **reachable set** by powers of the average degree, which
+    is the cost; then discounted by dst's density for the **result**, since
+    `hop` keeps only paths that reach dst rather than everything reachable.
+    Omitting the second stage overestimates systematically -- 18689 predicted
+    against 2022 actual, measured.
     """
     total = max(ctx.symbols.count(), 1)
     degree = _average_degree(ctx)
@@ -95,15 +103,16 @@ def estimate_hop(
     return Estimate(
         rows=min(total, round(touched * density)),
         cost=touched,
-        detail=f"平均度 {degree:.1f}",
+        detail=f"avg degree {degree:.1f}",
     )
 
 
 def estimate_intent(rows: int) -> Estimate:
-    """估意图判定的代价。
+    """Estimate the cost of intent judging.
 
-    它**不减少多少行，却贵几个数量级**——所以排序时它总该排在最后。
-    这个估计存在的意义就是让规划器自己得出这个结论，而不是写死一条规则。
+    It **removes few rows while costing orders of magnitude more**, so it
+    always belongs last. This estimate exists so the planner reaches that
+    conclusion itself rather than following a hard-coded rule.
     """
     return Estimate(
         rows=round(rows * INTENT_PASS_RATE),
@@ -113,7 +122,8 @@ def estimate_intent(rows: int) -> Estimate:
 
 
 def _average_degree(ctx: EvalContext) -> float:
-    """采样估平均度数。全量数一遍在大项目上太贵，而估计只需要量级对。"""
+    """Average degree by sampling. Counting everything is too expensive on a
+    large project, and an estimate only needs the right magnitude."""
     sampled = 0
     total = 0
     for symbol_id in range(1, min(ctx.symbols.count(), 200) + 1):

@@ -1,22 +1,29 @@
-"""自然语言 → 相关词 + 判定标准。
+"""Natural language to related terms plus a judging criterion.
 
-**分工**：模型做 NLP，统计做优化。
+**The division of labour**: the model does NLP, statistics does optimisation.
 
-模型**提议**，统计**校验**，统计**参数化**——三段，不是二选一。
+The model **proposes**, statistics **validates**, statistics
+**parameterises** -- three stages, not a choice between two.
 
-模型这一步做它擅长的：读懂查询、挑相关的词、按语义分组、
-指出查询里有没有「A 相关的代码调用 B 相关的代码」这层意思、
-写出一句可判真假的意图。这些都是阅读理解。
+Here the model does what it is good at: read the query, pick relevant terms,
+group them by meaning, say whether the query means "A-related code calls
+B-related code", and write one falsifiable sentence of intent. All of that is
+reading comprehension.
 
-但它的提议**不直接生效**：分组要过凝聚度校验（组内的词真落在同一批符号上吗），
-关系要过边密度校验（这个关系在这个代码库里成不成立），
-种类偏好和执行顺序压根不问它——那些是统计问题
-（`codesense.ql.compile.validate` / `build` / `planner`）。
+But its proposals **do not take effect directly**: groups must pass a
+cohesion check (do the terms in a group really land on the same symbols?),
+relations must pass an edge-density check (does the relation hold in this
+codebase?), and kind preferences and execution order are never asked of it at
+all -- those are statistical questions
+(`codesense.ql.compile.validate` / `build` / `planner`).
 
-走过两个极端都不对：让模型决定一切，R@100 21%；不让它碰结构，47%
-但完全用不上图。**提议是语义问题，校验是统计问题。**
+Both extremes were tried and neither works: let the model decide everything
+and R@100 is 21%; keep it away from structure entirely and it is 47% but the
+graph goes unused. **Proposing is a semantic problem, validating is a
+statistical one.**
 
-放在 `codesense.llm` 而不是 `codesense.ql`，因为 QL 层按契约只用标准库。
+This lives in `codesense.llm` rather than `codesense.ql` because the QL layer
+is contractually standard-library only.
 """
 
 from __future__ import annotations
@@ -32,38 +39,43 @@ __all__ = ["PROMPT", "QueryUnderstanding"]
 _log = logging.getLogger(__name__)
 
 PROMPT = """\
-你在为一个代码检索系统理解查询。
+You are interpreting a query for a code retrieval system.
 
-代码库：{project}
-查询：{query}
+Codebase: {project}
+Query: {query}
 
-这个代码库里出现过的词（**terms 只能从中挑**）：
+Words that occur in this codebase (**terms may only be drawn from this
+list**):
 {vocab}
 
-输出 JSON：
+Output JSON:
 {{
-  "terms": {{"词": 相关度0到1, ...}},
-  "groups": {{"组名": ["词1", "词2", ...], ...}},
-  "relations": [["组名A", "组名B"], ...],
-  "annotations": ["@注解名", ...],
-  "concept": "一句话的判定标准，用来逐个判断某段代码算不算答案"
+  "terms": {{"word": relevance from 0 to 1, ...}},
+  "groups": {{"group name": ["word1", "word2", ...], ...}},
+  "relations": [["group A", "group B"], ...],
+  "annotations": ["@AnnotationName", ...],
+  "concept": "one sentence of criterion, used to judge each piece of code"
 }}
 
-要求：
-- terms 挑 15~30 个，全部来自上面的词表，按相关度打分
-  （直接指向查询意图的给 0.8~1.0，间接相关的给 0.3~0.6）
-- 不要挑 get/set/value 这类通用词
-- groups 把 terms 按语义分组。**查询只讲一件事就只给一个组**；
-  只有查询确实在讲两件不同的东西时才分（如「性能」和「磁盘」是两件事）
-- relations 只在查询确实是「A 相关的代码调用/包含 B 相关的代码」这个意思时才给，
-  否则给空列表。**这些提议会用代码库里的实际边去核对，编造的会被丢掉**
-- annotations 可以写词表里没有的框架注解，没有就给空列表
-- concept 要具体、可判真假，不要复述查询
+Requirements:
+- pick 15-30 terms, all from the list above, scored by relevance (0.8-1.0 for
+  ones pointing directly at the query's intent, 0.3-0.6 for indirect ones)
+- do not pick generic words like get/set/value
+- group the terms by meaning. **If the query is about one thing, give one
+  group**; split only when the query really is about two different things
+  (for instance "performance" and "disk" are two things)
+- give relations only when the query really means "A-related code
+  calls/contains B-related code", otherwise give an empty list. **These
+  proposals are checked against the codebase's actual edges and fabricated
+  ones are discarded**
+- annotations may name framework annotations absent from the vocabulary; give
+  an empty list if there are none
+- concept must be specific and falsifiable, not a restatement of the query
 """
 
 
 def _groups(raw: object, terms: dict[str, float]) -> dict[str, list[str]]:
-    """模型给的分组，只保留确实在 terms 里的词。"""
+    """The model's groups, keeping only words that are actually in terms."""
     if not isinstance(raw, dict):
         return {}
     found: dict[str, list[str]] = {}
@@ -96,19 +108,22 @@ def _score(raw: object) -> float:
 
 
 class QueryUnderstanding:
-    """读懂查询。结构与优化交给 `codesense.ql.compile`。"""
+    """Interpret the query. Structure and optimisation belong to
+    `codesense.ql.compile`."""
 
     def __init__(self, config: LlmConfig, session: object | None = None) -> None:
         self._config = config
         self._session = session
 
     def understand(self, query: str, project: str, vocabulary: Sequence[str]) -> dict | None:
-        """读懂查询：挑词、给分、按语义分组、指出关系、写判定标准。
+        """Interpret: pick terms, score them, group by meaning, state
+        relations, write a criterion.
 
-        **这些都是提议**——分组和关系要过 `codesense.ql.compile.validate`
-        的统计校验才生效。
+        **These are all proposals** -- groups and relations take effect only
+        after passing `codesense.ql.compile.validate`'s statistical checks.
 
-        失败返回 None——调用方决定是降级还是放弃。
+        Returns None on failure; the caller decides whether to degrade or
+        give up.
         """
         content = self._ask(
             PROMPT.format(project=project, query=query, vocab=", ".join(vocabulary))
@@ -117,18 +132,18 @@ class QueryUnderstanding:
             return None
         start, end = content.find("{"), content.rfind("}")
         if start < 0 or end <= start:
-            _log.warning("编译输出里找不到 JSON")
+            _log.warning("no JSON found in the compilation output")
             return None
         try:
             payload = json.loads(content[start : end + 1])
         except json.JSONDecodeError:
-            _log.warning("编译输出不是合法 JSON")
+            _log.warning("compilation output is not valid JSON")
             return None
         terms = payload.get("terms")
-        if isinstance(terms, list):  # 模型偶尔给列表而不是打分字典
+        if isinstance(terms, list):  # the model occasionally gives a list, not a scored dict
             terms = {str(t): 1.0 for t in terms if isinstance(t, str)}
         if not isinstance(terms, dict) or not terms:
-            _log.warning("模型没给出可用的词")
+            _log.warning("the model gave no usable terms")
             return None
         scored = {str(k).lower(): _score(v) for k, v in terms.items()}
         return {
@@ -158,6 +173,6 @@ class QueryUnderstanding:
             )
             response.raise_for_status()
             return str(response.json()["choices"][0]["message"]["content"])
-        except Exception:  # noqa: BLE001 —— 编译失败要能降级，不该炸掉整条查询
-            _log.exception("调用编译接口失败")
+        except Exception:  # noqa: BLE001 -- compilation must degrade, not kill the query
+            _log.exception("compilation request failed")
             return None

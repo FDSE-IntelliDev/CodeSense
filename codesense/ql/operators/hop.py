@@ -1,10 +1,11 @@
-"""`hop` 与 `reach`：图上的路径算子。
+"""`hop` and `reach`: path operators over the graph.
 
-`hop` 是整套设计的核心算子——它不是过滤器，是**把分散在多处的语义连成一个
-整体**。「performance 相关的代码调用了 disk 相关的代码」这句话里两个单元
-落在不同元素上，靠图连起来。
+`hop` is the operator the design turns on. It is not a filter but the thing
+that **connects semantics scattered across several elements**: in
+"performance code calls disk code", the two units land on different elements
+and the graph is what joins them.
 
-设计依据见 ``docs/design/05-operators.md`` 与 ``docs/design/10-graph.md``。
+Design: ``docs/design/05-operators.md`` and ``docs/design/10-graph.md``.
 """
 
 from __future__ import annotations
@@ -21,13 +22,15 @@ __all__ = ["DEFAULT_MAX_DEGREE", "DEFAULT_MAX_PATHS", "hop", "reach"]
 
 _log = logging.getLogger(__name__)
 
-#: 路径数上限。**必须有默认值**：路径数随跳数指数增长，
-#: 实测修复后平均度约 4.4，``hops=(1,5)`` 就是 2133 条路径/起点。
+#: Ceiling on paths. **A default is mandatory**: path count grows
+#: exponentially with hops, and at the measured average degree of about 4.4,
+#: ``hops=(1,5)`` means roughly 2133 paths per start node.
 DEFAULT_MAX_PATHS = 10_000
 
-#: 单节点度数上限。超过它的节点不再展开——工具方法（`Result.success`、
-#: `Assert.judge`）会被所有人调用，经过它们的路径几乎没有信息量，
-#: 却会主导路径枚举。
+#: Per-node degree ceiling. Nodes above it are not expanded -- utility
+#: methods such as `Result.success` and `Assert.judge` are called by
+#: everything, so paths through them carry almost no information while
+#: dominating the enumeration.
 DEFAULT_MAX_DEGREE = 64
 
 _FORWARD = "forward"
@@ -50,25 +53,29 @@ def hop(
     max_paths: int | None = DEFAULT_MAX_PATHS,
     max_degree: int | None = DEFAULT_MAX_DEGREE,
 ) -> Frag:
-    """两个片段之间满足图约束的路径。
+    """Paths between two fragments that satisfy a graph constraint.
 
-    参数取名 ``hops`` / ``direction`` 而不是设计初稿的 ``len`` / ``dir``：
-    后者遮蔽内置名，函数体内就用不了 `len()` 了。
+    The parameters are ``hops`` and ``direction`` rather than the draft's
+    ``len`` and ``dir``, which shadow builtins and would make `len()`
+    unusable inside the body.
 
-    ``hops`` 是**闭区间**不是上限——``hops=(2, 2)`` 表示恰好两跳，
-    「间接调用而非直接调用」是真实意图。给整数表示恰好该跳数。
+    ``hops`` is a **closed interval**, not a ceiling: ``hops=(2, 2)`` means
+    exactly two hops, and "indirectly rather than directly called" is a real
+    intent. An integer means exactly that many hops.
 
-    返回的片段含路径上的全部节点、边，以及路径见证。
+    The returned fragment carries every node and edge on the paths, plus the
+    path witnesses themselves.
     """
     lo, hi = _normalise_hops(hops)
     kinds = _normalise_kinds(edge)
     if direction not in _DIRECTIONS:
-        raise ValueError(f"direction 只能是 {_DIRECTIONS} 之一，收到 {direction!r}")
+        raise ValueError(f"direction must be one of {_DIRECTIONS}, got {direction!r}")
     if not src or not dst:
         return Frag()
 
-    # 先从终点反向算「到 dst 的最短跳数」。只算距离不留路径，很便宜，
-    # 但能让正向枚举把「再走也到不了」的分支整枝剪掉。
+    # First compute the shortest distance to dst backwards from the targets.
+    # Distances only, no paths, so it is cheap -- but it lets the forward
+    # enumeration prune whole branches that can never reach dst.
     to_dst = _distances(ctx.edges, dst.nodes.keys(), _flip(direction), hi, kinds, min_confidence)
 
     finder = _PathFinder(
@@ -87,7 +94,8 @@ def hop(
     paths = finder.run(src.nodes.keys(), max_paths)
     if finder.truncated:
         _log.warning(
-            "hop 触到 max_paths=%s 被截断，结果不完整；收紧 hops 上界或加 avoid 可以让它完整",
+            "hop hit max_paths=%s and truncated; the result is incomplete. "
+            "Tightening the hops ceiling or adding avoid would complete it",
             max_paths,
         )
     return _to_frag(paths, src, dst, ctx)
@@ -102,14 +110,16 @@ def reach(
     hops: int | tuple[int, int] = (1, 3),
     min_confidence: float = 0.0,
 ) -> Frag:
-    """从这里出发能到哪。没有 ``dst``——它在探索，不在验证约束。
+    """Where you can get to from here. No ``dst`` -- this explores rather
+    than verifying a constraint.
 
-    只返回节点，不返回路径：探索场景下路径见证的开销通常不值得。
+    Returns nodes only, not paths: witnesses rarely pay for themselves while
+    exploring.
     """
     lo, hi = _normalise_hops(hops)
     kinds = _normalise_kinds(edge)
     if direction not in _DIRECTIONS:
-        raise ValueError(f"direction 只能是 {_DIRECTIONS} 之一，收到 {direction!r}")
+        raise ValueError(f"direction must be one of {_DIRECTIONS}, got {direction!r}")
 
     dist = _distances(ctx.edges, src.nodes.keys(), direction, hi, kinds, min_confidence)
     found = {sid for sid, d in dist.items() if lo <= d <= hi}
@@ -117,9 +127,10 @@ def reach(
 
 
 class _PathFinder:
-    """带剪枝的路径枚举。
+    """Path enumeration with pruning.
 
-    用显式栈的 DFS 而不是递归：路径可以很长，递归会撞 Python 的栈深度限制。
+    DFS on an explicit stack rather than recursion: paths can be long and
+    recursion would hit Python's depth limit.
     """
 
     def __init__(
@@ -163,7 +174,7 @@ class _PathFinder:
         return found
 
     def _walk(self, start: int) -> Iterator[Path]:
-        # 栈元素：(当前节点, 到这里的节点序列, 到这里的边序列)
+        # Stack entries: (node, nodes so far, edges so far)
         stack: list[tuple[int, tuple[int, ...], tuple[Edge, ...]]] = [(start, (start,), ())]
         while stack:
             node, nodes, path_edges = stack.pop()
@@ -182,16 +193,16 @@ class _PathFinder:
                 stack.append((nxt, (*nodes, nxt), (*path_edges, edge)))
 
     def _too_busy(self, node: int) -> bool:
-        """hub 限流。起点不受限——调用方明确要求从那里出发。"""
+        """Hub throttling. Start nodes are exempt: the caller asked for them."""
         if self._max_degree is None:
             return False
         return self._edges.degree(node, kinds=self._kinds) > self._max_degree
 
     def _worth_exploring(self, node: int, depth: int) -> bool:
-        """剩下的跳数还够不够走到 dst。
+        """Whether the remaining hops can still reach dst.
 
-        ``to_dst`` 是**最短**距离，所以这个剪枝是可采纳的——
-        不会砍掉任何真实存在的合法路径。
+        ``to_dst`` holds **shortest** distances, so the prune is admissible
+        and discards no path that really exists.
         """
         remaining = self._to_dst.get(node)
         return remaining is not None and depth + remaining <= self._hi
@@ -211,7 +222,7 @@ def _distances(
     kinds: tuple[str, ...] | None,
     min_confidence: float,
 ) -> dict[int, int]:
-    """从 seeds 出发的最短跳数（BFS）。只算距离，不留路径。"""
+    """Shortest hop counts from the seeds, by BFS. Distances only, no paths."""
     dist = {sid: 0 for sid in seeds}
     queue: deque[int] = deque(dist)
     while queue:
@@ -233,7 +244,7 @@ def _neighbours(
     kinds: tuple[str, ...] | None,
     min_confidence: float,
 ) -> list[tuple[Edge, int]]:
-    """沿指定方向走一步，返回 (走过的边, 到达的节点)。"""
+    """One step in the given direction, returning (edge taken, node reached)."""
     out: list[tuple[Edge, int]] = []
     if direction in (_FORWARD, _ANY):
         for e in edges.out_edges(node, kinds=kinds, min_confidence=min_confidence):
@@ -255,7 +266,7 @@ def _flip(direction: str) -> str:
 def _normalise_hops(hops: int | tuple[int, int]) -> tuple[int, int]:
     lo, hi = (hops, hops) if isinstance(hops, int) else hops
     if lo < 0 or hi < lo:
-        raise ValueError(f"hops 必须是非负的闭区间，收到 {hops!r}")
+        raise ValueError(f"hops must be a non-negative closed interval, got {hops!r}")
     return lo, hi
 
 
@@ -263,26 +274,31 @@ def _normalise_kinds(edge: str | Sequence[str]) -> tuple[str, ...] | None:
     if isinstance(edge, str):
         return (edge,)
     kinds = tuple(edge)
-    # 空序列表示不限类型，而不是"什么都不匹配"——后者没有使用场景。
+    # An empty sequence means any kind, not "match nothing" -- the latter has
+    # no use case.
     return kinds or None
 
 
 def _to_frag(paths: Sequence[Path], src: Frag, dst: Frag, ctx: EvalContext) -> Frag:
-    """把路径集合装配成片段，并把两端片段的证据带过来。
+    """Assemble paths into a fragment, carrying over the evidence from both
+    endpoints.
 
-    中间节点没有单元证据——它们在结果里是因为**结构**，不是因为命中了什么词。
+    Intermediate nodes carry no unit evidence: they are in the result because
+    of **structure**, not because they matched a term.
     """
     if not paths:
         return Frag()
 
-    # 符号表里查不到的节点会让路径不完整。这种路径整条丢掉——
-    # 只留一半的路径不是「部分结果」，是错误结果。
+    # A node missing from the symbol store leaves a path incomplete, and such
+    # paths are dropped whole -- half a path is not a partial result, it is a
+    # wrong one.
     known = ctx.symbols.get_many({sid for p in paths for sid in p.nodes})
     keep = tuple(p for p in paths if all(sid in known for sid in p.nodes))
     if not keep:
         return Frag()
 
-    # 节点只取还留在路径上的，否则会剩下一堆既无边也无路径的孤立节点。
+    # Take nodes only from surviving paths, or orphans with neither edges nor
+    # witnesses are left behind.
     nodes = {sid: known[sid] for p in keep for sid in p.nodes}
 
     evidence: dict[int, Evidence] = {}
@@ -290,7 +306,7 @@ def _to_frag(paths: Sequence[Path], src: Frag, dst: Frag, ctx: EvalContext) -> F
         for sid, ev in source.evidence.items():
             if sid not in nodes:
                 continue
-            # 一个节点可能同时是某条路径的起点和另一条的终点，两边的理由都得留。
+            # A node can start one path and end another; keep both reasons.
             existing = evidence.get(sid)
             evidence[sid] = ev if existing is None else existing.merge(ev)
 

@@ -1,10 +1,11 @@
-"""查询单元（Query Unit）。
+"""Query units.
 
-**它是语义槽位，不是关键词，也不是一条 regex。**
-单元是后续所有条件的挂载点——`hop` 和 `intent` 都挂在单元上，
-所以单元的身份必须一路保留到最后，不能在匹配完成后被拍平。
+**A unit is a semantic slot, not a keyword and not a regex.** It is what
+every later condition attaches to -- `hop` and `intent` both hang off units
+-- so a unit's identity has to survive all the way to the end rather than
+being flattened once matching finishes.
 
-设计依据见 ``docs/design/04-query-unit.md``。
+Design: ``docs/design/04-query-unit.md``.
 """
 
 from __future__ import annotations
@@ -16,16 +17,19 @@ __all__ = ["QueryUnit", "Term"]
 
 @dataclass(frozen=True, slots=True)
 class Term:
-    """单元的一个词，带来源与理由。
+    """One term of a unit, carrying where it came from and why.
 
-    ``source`` 的区分是有实际后果的：
+    The ``source`` distinction has real consequences:
 
-        literal   查询里直接出现，置信度最高但代码里往往最少出现
-        synonym   语义等价，可互换
-        derived   语义联想（`performance` → `buffer`），**单独命中不可下结论**
+        literal   appears in the query itself; most trustworthy, but often
+                  the rarest in actual code
+        synonym   semantically interchangeable
+        derived   association (`performance` -> `buffer`); **a hit on one of
+                  these alone proves nothing**
 
-    ``derived`` 词大幅提召回、明显伤精度，所以要么和同单元其它信号合成，
-    要么靠 `hop` 的图约束锚住，要么交给 `intent` 复核。
+    Derived terms lift recall a lot and hurt precision noticeably, so they
+    must either combine with other signals in the same unit, be anchored by
+    a graph constraint, or be reviewed by `intent`.
     """
 
     value: str
@@ -35,16 +39,16 @@ class Term:
 
     def __post_init__(self) -> None:
         if not self.value:
-            raise ValueError("Term.value 不能为空")
+            raise ValueError("Term.value must not be empty")
 
 
 @dataclass(frozen=True, slots=True)
 class QueryUnit:
-    """一个语义槽位，可以被多种信号满足。
+    """A semantic slot that several kinds of signal can satisfy.
 
-    ``concept`` 是给人和 `intent` 算子看的自然语言描述，不参与匹配。
-    ``satisfiers`` 里放的是 `codesense.ql.satisfiers` 的实例——
-    这里不直接引用它们的类型，避免和 satisfier 模块循环依赖。
+    ``concept`` is prose for humans and for the `intent` operator; it takes
+    no part in matching. ``satisfiers`` holds `codesense.ql.satisfiers`
+    instances -- the type is not referenced here to avoid a circular import.
     """
 
     name: str
@@ -54,12 +58,12 @@ class QueryUnit:
 
     def __post_init__(self) -> None:
         if not self.name:
-            raise ValueError("QueryUnit.name 不能为空")
+            raise ValueError("QueryUnit.name must not be empty")
 
 
 @dataclass(frozen=True, slots=True)
 class UnitScore:
-    """一个符号在某个单元上的最终得分与构成。"""
+    """A symbol's final score for one unit, and what it was made of."""
 
     unit: str
     score: float

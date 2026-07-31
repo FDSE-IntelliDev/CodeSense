@@ -1,11 +1,14 @@
-"""脚本产物的测试。
+"""Tests for the emitted script.
 
-**最要紧的一条是等价性**：脚本必须和它声称代表的 `Plan` 跑出同一个结果。
-一旦分叉，脚本就成了一份看着像那么回事的假文档——比没有更糟，
-因为人会照着它推断系统行为。
+**Equivalence is the thing that matters most**: the script must produce the
+same result as the `Plan` it claims to represent. Once they diverge the
+script becomes a plausible-looking fiction -- worse than having none, because
+people will reason about the system from it.
 
-写这个测试之前踩过两次：`only(kind=...)` 被渲染成硬过滤而计划里是偏好加权，
-`Cohere` 在脚本里当场重排而计划里只标记邻域。两次都是脚本比计划筛得更狠。
+Two divergences happened before this test existed: `only(kind=...)` rendered
+as a hard filter where the plan weighted a preference, and `Cohere` reranked
+inline in the script where the plan only marked the neighbourhood. Both times
+the script narrowed harder than the plan.
 """
 
 from __future__ import annotations
@@ -55,7 +58,7 @@ def make_context() -> EvalContext:
 
 def make_spec(**overrides: object) -> QuerySpec:
     payload: dict[str, object] = {
-        "query": "找出缓存相关的方法",
+        "query": "find cache-related methods",
         "units": [
             {"name": "narrow", "terms": ["rare"], "annotations": ["@Cacheable"]},
             {"name": "wide", "terms": ["common"], "modifiers": ["static"]},
@@ -73,28 +76,29 @@ def run_script(source: str, ctx: EvalContext) -> set[int]:
 
 
 class TestEquivalence:
-    """脚本跑出来的必须和 `Plan` 跑出来的一样。"""
+    """Running the script must give what running the `Plan` gives."""
 
-    def test_基本情形(self) -> None:
+    def test_the_basic_case(self) -> None:
         ctx = make_context()
         spec = make_spec()
         execution = plan(spec, ctx)
         assert run_script(to_script(execution, spec), ctx) == set(execution.run(ctx).current.nodes)
 
-    def test_带种类偏好(self) -> None:
-        """踩过：`only(kind=...)` 被渲染成硬过滤，而计划里是偏好加权。"""
+    def test_with_a_kind_preference(self) -> None:
+        """Happened once: `only(kind=...)` rendered as a hard filter where
+        the plan weighted a preference."""
         ctx = make_context()
         spec = make_spec(kinds=["class"])
         execution = plan(spec, ctx)
         assert run_script(to_script(execution, spec), ctx) == set(execution.run(ctx).current.nodes)
 
-    def test_带意图判定(self) -> None:
+    def test_with_intent_judging(self) -> None:
         ctx = make_context()
-        spec = make_spec(concept="它是否在做缓存")
+        spec = make_spec(concept="does this do caching")
         execution = plan(spec, ctx)
         assert run_script(to_script(execution, spec), ctx) == set(execution.run(ctx).current.nodes)
 
-    def test_单个单元(self) -> None:
+    def test_a_single_unit(self) -> None:
         ctx = make_context()
         spec = QuerySpec.from_dict({"query": "q", "units": [{"name": "only", "terms": ["rare"]}]})
         execution = plan(spec, ctx)
@@ -102,42 +106,45 @@ class TestEquivalence:
 
 
 class TestReadability:
-    """脚本是给人看的，所以形态本身有要求。"""
+    """The script is meant to be read, so its shape is a requirement too."""
 
-    def test_是合法的_python(self) -> None:
+    def test_is_valid_python(self) -> None:
         ctx = make_context()
         spec = make_spec()
         compile(to_script(plan(spec, ctx), spec), "<generated>", "exec")
 
-    def test_头部记录查询与索引(self) -> None:
-        """同一段脚本在不同索引上结果不同，不记就没法复现。"""
+    def test_the_header_records_the_query_and_the_index(self) -> None:
+        """The same script gives different results on a different index, and
+        without recording it nothing is reproducible."""
         ctx = make_context()
         spec = make_spec()
-        source = to_script(plan(spec, ctx), spec, index="netty · 42221 符号")
-        assert "找出缓存相关的方法" in source
-        assert "netty · 42221 符号" in source
+        source = to_script(plan(spec, ctx), spec, index="netty - 42221 symbols")
+        assert "find cache-related methods" in source
+        assert "netty - 42221 symbols" in source
 
-    def test_注释解释编排理由(self) -> None:
-        """算子语义在设计文档里，脚本只说「为什么这么排」。"""
+    def test_comments_explain_why_the_steps_are_ordered_this_way(self) -> None:
+        """Operator semantics live in the design docs; the script only says
+        why the steps are ordered this way."""
         ctx = make_context()
-        spec = make_spec(concept="它是否在做缓存")
+        spec = make_spec(concept="does this do caching")
         source = to_script(plan(spec, ctx), spec)
-        assert "# 先跑" in source
-        assert "intent 放最后" in source
+        assert "start with" in source
+        assert "intent goes last" in source
 
-    def test_每个单元一个变量(self) -> None:
+    def test_one_variable_per_unit(self) -> None:
         ctx = make_context()
         spec = make_spec()
         source = to_script(plan(spec, ctx), spec)
         assert "narrow = QueryUnit(" in source
 
-    def test_产出名为_answer(self) -> None:
+    def test_the_result_is_named_answer(self) -> None:
         ctx = make_context()
         spec = make_spec()
         assert "\nanswer = frag" in to_script(plan(spec, ctx), spec)
 
-    def test_相关度进了脚本(self) -> None:
-        """词的权重是编译结果的一部分，看得见才改得动。"""
+    def test_relevance_makes_it_into_the_script(self) -> None:
+        """Term weights are part of the compilation result, and only what is
+        visible can be edited."""
         ctx = make_context()
         spec = QuerySpec.from_dict({"query": "q", "units": [{"name": "u", "terms": ["rare"]}]})
         source = to_script(plan(spec, ctx), spec)

@@ -1,9 +1,10 @@
-"""索引域（field）及其权重。
+"""Index fields and their weights.
 
-命中在哪个字段不一样重：符号名里出现 `buffer` 和 javadoc 里出现 `buffer`
-是完全不同强度的证据。域也是 `structural` / `semantic` satisfier 的落地点。
+Where a hit lands matters: `buffer` in a symbol name and `buffer` in a
+javadoc are evidence of very different strength. Fields are also where the
+`structural` and `semantic` satisfiers attach.
 
-设计依据见 ``docs/design/09-grounding.md`` 第五节。
+Design: ``docs/design/09-grounding.md``, section 5.
 """
 
 from __future__ import annotations
@@ -17,10 +18,10 @@ __all__ = ["DEFAULT_FIELD_WEIGHTS", "FieldWeights", "IndexField"]
 
 
 class IndexField(str, Enum):
-    """倒排表里一条 posting 命中的位置。
+    """Where a posting hit lands.
 
-    继承 ``str``，所以可以直接当字符串用（`UnitHit.field`、JSON 序列化），
-    同时又有枚举的取值约束。
+    Subclasses ``str`` so it serialises and compares like one (`UnitHit.field`,
+    JSON) while still constraining the set of values.
     """
 
     NAME = "name"
@@ -37,10 +38,11 @@ class IndexField(str, Enum):
 
 @dataclass(frozen=True, slots=True)
 class FieldWeights:
-    """各域的权重。
+    """Per-field weights.
 
-    默认值是设计文档给的初值，**不是标定过的结果**——
-    按 ``docs/design/08-open-questions.md`` 的评测集调。
+    The defaults are the design's starting values, **not calibrated ones** --
+    tune them against the evaluation set in
+    ``docs/design/08-open-questions.md``.
     """
 
     name: float = 1.0
@@ -52,7 +54,7 @@ class FieldWeights:
     doc: float = 0.3
 
     def weight(self, field: IndexField | str) -> float:
-        """取某个域的权重。未知的域记 0，不静默当成 1。"""
+        """Weight of one field. Unknown fields weigh 0 rather than silently 1."""
         return self.as_mapping().get(str(field), 0.0)
 
     def as_mapping(self) -> Mapping[str, float]:
@@ -69,5 +71,6 @@ class FieldWeights:
         )
 
 
-#: 共享的默认权重。要改就构造新的 `FieldWeights` 注入，别改这个。
+#: Shared defaults. To change them, construct and inject a new `FieldWeights`
+#: rather than mutating this one.
 DEFAULT_FIELD_WEIGHTS = FieldWeights()

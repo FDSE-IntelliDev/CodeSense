@@ -1,4 +1,4 @@
-"""LLM 适配器的解析与配置测试。不碰网络。"""
+"""Parsing and configuration tests for the LLM adapters. No network."""
 
 from __future__ import annotations
 
@@ -34,7 +34,7 @@ class FakeSession:
 
 class BrokenSession:
     def post(self, url: str, **kwargs: object) -> FakeResponse:
-        raise ConnectionError("网络挂了")
+        raise ConnectionError("the network is down")
 
 
 def config() -> LlmConfig:
@@ -46,106 +46,116 @@ def items() -> list[JudgeItem]:
 
 
 class TestParse:
-    def test_干净的_json(self) -> None:
+    def test_clean_json(self) -> None:
         found = _parse('[{"id":1,"label":"yes","score":0.9,"reason":"r"}]', {1})
         assert found[1].label == "yes"
         assert found[1].score == 0.9
 
-    def test_容忍_code_fence(self) -> None:
-        """模型经常不听「只输出 JSON」。"""
+    def test_tolerates_a_code_fence(self) -> None:
+        """Models routinely ignore "output JSON only"."""
         raw = '```json\n[{"id":1,"label":"yes","score":1,"reason":"r"}]\n```'
         assert 1 in _parse(raw, {1})
 
-    def test_容忍前后废话(self) -> None:
-        raw = '好的，我的判断如下：\n[{"id":1,"label":"no","score":1,"reason":"r"}]\n希望有帮助'
+    def test_tolerates_surrounding_chatter(self) -> None:
+        raw = (
+            "Sure, here are my judgements:\n"
+            '[{"id":1,"label":"no","score":1,"reason":"r"}]\nHope that helps'
+        )
         assert _parse(raw, {1})[1].label == "no"
 
-    def test_丢弃没问过的_id(self) -> None:
+    def test_discards_ids_that_were_never_asked_about(self) -> None:
         assert _parse('[{"id":99,"label":"yes","score":1,"reason":"r"}]', {1}) == {}
 
-    def test_非法_json_返回空而不是抛(self) -> None:
-        assert _parse("[{不是 json}]", {1}) == {}
+    def test_invalid_json_returns_nothing_rather_than_raising(self) -> None:
+        assert _parse("[{not json}]", {1}) == {}
 
-    def test_找不到数组返回空(self) -> None:
-        assert _parse("我拒绝回答", {1}) == {}
+    def test_returns_nothing_when_no_array_is_found(self) -> None:
+        assert _parse("I decline to answer", {1}) == {}
 
-    def test_跳过结构不对的条目(self) -> None:
-        raw = '[{"id":1,"label":"yes","score":1,"reason":"r"}, "垃圾", {"没有id":true}]'
+    def test_skips_malformed_entries(self) -> None:
+        raw = '[{"id":1,"label":"yes","score":1,"reason":"r"}, "junk", {"no_id":true}]'
         assert set(_parse(raw, {1, 2})) == {1}
 
-    def test_分数越界被夹紧(self) -> None:
+    def test_out_of_range_scores_are_clamped(self) -> None:
         assert _parse('[{"id":1,"label":"yes","score":5,"reason":""}]', {1})[1].score == 1.0
         assert _parse('[{"id":1,"label":"yes","score":-3,"reason":""}]', {1})[1].score == 0.0
 
-    def test_分数不是数字时记0(self) -> None:
-        assert _parse('[{"id":1,"label":"yes","score":"高","reason":""}]', {1})[1].score == 0.0
+    def test_a_non_numeric_score_becomes_0(self) -> None:
+        assert _parse('[{"id":1,"label":"yes","score":"high","reason":""}]', {1})[1].score == 0.0
 
-    def test_缺少_label_记_unsure(self) -> None:
+    def test_a_missing_label_becomes_unsure(self) -> None:
         assert _parse('[{"id":1,"score":1,"reason":""}]', {1})[1].label == "unsure"
 
 
 class TestJudge:
-    def test_空候选不发请求(self) -> None:
+    def test_no_request_is_sent_for_an_empty_candidate_list(self) -> None:
         session = FakeSession("[]")
         assert OpenAICompatibleJudge(config(), session).judge("c", []) == {}
         assert session.calls == []
 
-    def test_请求打到_chat_completions(self) -> None:
+    def test_the_request_goes_to_chat_completions(self) -> None:
         session = FakeSession('[{"id":1,"label":"yes","score":1,"reason":"r"}]')
         OpenAICompatibleJudge(config(), session).judge("c", items())
         assert session.calls[0]["url"].endswith("/chat/completions")  # type: ignore[union-attr]
 
-    def test_意图写进提示词(self) -> None:
+    def test_the_intent_reaches_the_prompt(self) -> None:
         session = FakeSession("[]")
-        OpenAICompatibleJudge(config(), session).judge("判断它是否签发令牌", items())
+        OpenAICompatibleJudge(config(), session).judge("decide whether it issues a token", items())
         body = session.calls[0]["json"]
-        assert "判断它是否签发令牌" in body["messages"][0]["content"]  # type: ignore[index]
+        assert "decide whether it issues a token" in body["messages"][0]["content"]  # type: ignore[index]
 
-    def test_温度为0_结果可复现(self) -> None:
+    def test_temperature_0_so_results_reproduce(self) -> None:
         session = FakeSession("[]")
         OpenAICompatibleJudge(config(), session).judge("c", items())
         assert session.calls[0]["json"]["temperature"] == 0  # type: ignore[index]
 
-    def test_网络异常时返回空而不是抛(self) -> None:
-        """降级由 intent 决定，适配器不该炸掉整条查询。"""
+    def test_a_network_error_returns_nothing_rather_than_raising(self) -> None:
+        """Degrading is intent's decision; the adapter must not kill the
+        whole query."""
         assert OpenAICompatibleJudge(config(), BrokenSession()).judge("c", items()) == {}
 
 
 class TestConfig:
-    def test_repr_不泄露密钥(self) -> None:
-        """它会出现在日志、异常栈、pytest -v 里。"""
+    def test_repr_does_not_leak_the_key(self) -> None:
+        """It shows up in logs, tracebacks and pytest -v."""
         assert "sk-test" not in repr(config())
-        assert "已隐藏" in repr(config())
+        assert "hidden" in repr(config())
 
-    def test_没有密钥时报错并说清怎么配(self) -> None:
+    def test_a_missing_key_raises_and_says_how_to_configure_it(self) -> None:
         with pytest.raises(ValueError, match="CODESENSE_API_KEY"):
             LlmConfig(api_key="")
 
-    def test_参数由调用方给(self) -> None:
+    def test_parameters_come_from_the_caller(self) -> None:
         cfg = LlmConfig(api_key="k", base_url="https://x/v1", model="mymodel")
         assert (cfg.base_url, cfg.model) == ("https://x/v1", "mymodel")
 
-    def test_环境变量优先于文件(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_the_environment_wins_over_the_file(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         secrets = tmp_path / "config.yml"
         secrets.write_text("LLM:\n  - api-key: from-file\n", encoding="utf-8")
         monkeypatch.setenv("CODESENSE_API_KEY", "from-env")
         assert LlmConfig.load(secrets_file=secrets).api_key == "from-env"
 
-    def test_回落到未跟踪的配置文件(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_falls_back_to_the_untracked_config_file(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         monkeypatch.delenv("CODESENSE_API_KEY", raising=False)
         secrets = tmp_path / "config.yml"
         secrets.write_text("LLM:\n  - api-key: from-file\n", encoding="utf-8")
         assert LlmConfig.load(secrets_file=secrets).api_key == "from-file"
 
-    def test_也接受非列表写法(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_the_non_list_form_is_accepted_too(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         monkeypatch.delenv("CODESENSE_API_KEY", raising=False)
         secrets = tmp_path / "config.yml"
         secrets.write_text("LLM:\n  api_key: plain\n", encoding="utf-8")
         assert LlmConfig.load(secrets_file=secrets).api_key == "plain"
 
-    def test_文件不存在且无环境变量时报错(
+    def test_raises_when_the_file_is_absent_and_the_environment_is_unset(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         monkeypatch.delenv("CODESENSE_API_KEY", raising=False)
         with pytest.raises(ValueError, match="API key"):
-            LlmConfig.load(secrets_file=tmp_path / "缺失.yml")
+            LlmConfig.load(secrets_file=tmp_path / "missing.yml")

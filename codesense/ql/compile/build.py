@@ -1,15 +1,16 @@
-"""从「打过分的词」确定性地构造查询规格。
+"""Building a query spec deterministically from scored terms.
 
-模型**提议**语义结构（哪些词相关、怎么分组、组之间有没有关系），
-统计**校验**它在这个代码库里成不成立（`validate`），
-统计再**决定**模型问不出来的部分：
+The model **proposes** semantic structure -- which terms matter, how they
+group, whether the groups relate. Statistics **validate** that against this
+codebase (`validate`), and statistics **decide** what the model cannot know:
 
-    偏好什么种类  词的 posting 落在哪些种类的符号上
-    查哪些域     词的 posting 落在哪些域上
-    执行顺序     `df` 让选择性在执行前可估（`planner`）
+    kind preference   which kinds of symbol the terms' postings land on
+    which fields      which fields those postings land in
+    execution order   `df` makes selectivity estimable up front (`planner`)
 
-分界线是：**语义问题问模型，事实问索引。** 查询问「实体字段上的校验」，
-模型给的 kinds 里偏偏没有 `field`——那不是它该答的问题。
+The dividing line: **semantic questions go to the model, facts go to the
+index.** Asked about validation on entity fields, the model omitted `field`
+from its kinds -- that was never its question to answer.
 """
 
 from __future__ import annotations
@@ -28,27 +29,30 @@ from codesense.ql.unit import QueryUnit, Term
 
 __all__ = ["KIND_PREFERENCE_FLOOR", "build_spec", "infer_kinds"]
 
-#: 某个种类要占到这个比例才值得当偏好。定低了等于没偏好，
-#: 定高了会漏掉「答案确实集中在字段上」这种情形。
+#: Share a kind must reach before it counts as a preference. Too low is no
+#: preference at all; too high misses cases where the answers really do
+#: concentrate in fields.
 KIND_PREFERENCE_FLOOR = 0.25
 
-#: 域偏好的下限，同理。
+#: The same floor for field preference.
 FIELD_FLOOR = 0.15
 
 
 @dataclass(frozen=True, slots=True)
 class ScoredTerm:
-    """LLM 判定为相关的一个词。分数是它给的相关度。"""
+    """A term the LLM judged relevant, with the relevance it assigned."""
 
     value: str
     score: float = 1.0
 
 
 def infer_kinds(terms: Sequence[str], ctx: EvalContext) -> tuple[str, ...]:
-    """从词的 posting 落点推断该偏好哪些种类的符号。
+    """Infer which kinds of symbol to prefer, from where the postings land.
 
-    这是「访问路径选择」的一半：查询问什么种类，看它的词命中什么种类，
-    比问模型可靠——模型答的是它对查询措辞的印象，统计答的是这个索引的事实。
+    Half of access-path selection. What kind a query is about is answered
+    more reliably by what its terms actually hit than by asking the model:
+    the model reports its impression of the wording, the statistics report a
+    fact about this index.
     """
     counts: Counter[str] = Counter()
     for term in terms:
@@ -65,10 +69,10 @@ def infer_kinds(terms: Sequence[str], ctx: EvalContext) -> tuple[str, ...]:
 
 
 def infer_fields(terms: Sequence[str], ctx: EvalContext) -> tuple[IndexField, ...]:
-    """推断该查哪些域。
+    """Infer which fields to probe.
 
-    另一半访问路径选择。若某个词的命中几乎全在 `doc` 上，
-    只查 `name` 就会整个落空。
+    The other half of access-path selection. If a term's hits are almost all
+    in `doc`, probing only `name` misses everything.
     """
     counts: Counter[str] = Counter()
     for term in terms:
@@ -91,16 +95,18 @@ def build_spec(
     groups: Mapping[str, Sequence[str]] | None = None,
     relations: Sequence[tuple[str, str]] = (),
 ) -> tuple[QuerySpec, list[str]]:
-    """把模型的提议组装成规格，并把校验记录一并返回。
+    """Assemble the model's proposals into a spec, returning the validation
+    record alongside it.
 
-    ``groups`` / ``relations`` 是模型的**提议**——先过统计校验，
-    没通过的会被合并或丢弃，理由记在返回的第二项里。
-    没给分组时退回按 posting 重叠度自动划分。
+    ``groups`` and ``relations`` are **proposals**: they pass through
+    statistical validation first, and anything that fails is merged away or
+    discarded with the reason recorded in the second return value. Without
+    groups, partitioning falls back to posting overlap.
     """
     scored = _normalise(terms)
     known = [item for item in scored if ctx.postings.term_info(item.value) is not None]
     if not known:
-        raise ValueError("没有一个词能在索引里查到")
+        raise ValueError("not one term could be found in the index")
 
     notes: list[str] = []
     values = [item.value for item in known]
@@ -108,13 +114,13 @@ def build_spec(
         checked, group_notes = validate_groups(dict(groups), ctx)
         notes += group_notes
         clusters = [
-            Cluster(tuple(sorted(members)), f"模型分组 {name!r}，凝聚度校验通过")
+            Cluster(tuple(sorted(members)), f"model group {name!r}, cohesion validated")
             for name, members in checked.items()
         ]
         names = list(checked)
         kept_relations, rejected = validate_relations(relations, checked, ctx)
         notes += rejected
-        notes += [f"采纳关系 {r.src}→{r.dst}：{r.detail}" for r in kept_relations]
+        notes += [f"accepted relation {r.src}->{r.dst}: {r.detail}" for r in kept_relations]
         constraints = tuple(
             GraphConstraint(src=f"u{names.index(r.src)}", dst=f"u{names.index(r.dst)}")
             for r in kept_relations
@@ -131,7 +137,8 @@ def build_spec(
                 weight=0.5,
             )
         ]
-        # 注解信号只挂在第一个单元上：它是独立证据，重复挂等于给它多倍权重
+        # Annotations attach to the first unit only: they are independent
+        # evidence, and repeating them would multiply their weight
         if annotations and index == 0:
             satisfiers.append(AnnotationSatisfier(names=tuple(annotations)))
         units.append(

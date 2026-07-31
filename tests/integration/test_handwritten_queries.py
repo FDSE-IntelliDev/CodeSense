@@ -1,19 +1,23 @@
-"""阶段 A 验收：手写 QL 覆盖不同查询类型，检验算子集合够不够。
+"""Phase A acceptance: hand-written QL across query types, testing whether the
+operator set suffices.
 
-``docs/design/07-mapping-to-current.md`` 的原话：
+``docs/design/07-mapping-to-current.md`` puts it this way:
 
-    **手写** 3–5 段 QL 覆盖不同查询类型，验证算子集合够不够。
-    写不出来的地方就是缺的算子——这一步很便宜（几百行），
-    但能避免把编译器建在错的算子集上。
+    **Hand-write** 3-5 pieces of QL across different query types and check
+    whether the operator set suffices. Wherever it cannot be written is a
+    missing operator -- this step is cheap (a few hundred lines) and stops
+    the compiler being built on the wrong operator set.
 
-所以本文件有两类测试：
+So this file holds two kinds of test:
 
-- ``TestQueryN`` —— 能写出来的，顺便当回归测试
-- ``TestGaps`` —— **写不出来的**，把缺口钉成可执行的断言，
-  补上对应能力时这些测试会失败，提醒回来改
+- ``TestQueryN`` -- what can be written, doubling as regression tests
+- ``TestGaps`` -- what **cannot**, pinning each gap as an executable
+  assertion, so that filling the capability makes the test fail and calls
+  attention back here
 
-数据来自真实项目（``scripts/build_ql_fixture.py`` 从 youlai-boot 抽取），
-不是编造的拓扑——真实数据的稀疏与命名习惯才是算子会碰到的东西。
+The data comes from a real project (``scripts/build_ql_fixture.py`` extracts
+it from youlai-boot) rather than an invented topology -- the sparsity and
+naming habits of real data are what the operators will meet.
 """
 
 from __future__ import annotations
@@ -85,7 +89,7 @@ def names(frag: Frag) -> set[str]:
 
 
 def ranked(frag: Frag, unit: str) -> list[tuple[str, float]]:
-    """按分数排序。**目前得手写**——见 `TestGaps.test_缺少_top_k_算子`。"""
+    """Sort by score."""
     scored = [
         (frag.nodes[sid].name, frag.evidence_for(sid).scores.get(unit, 0.0)) for sid in frag.nodes
     ]
@@ -93,18 +97,18 @@ def ranked(frag: Frag, unit: str) -> list[tuple[str, float]]:
 
 
 class TestQuery1LexicalOnly:
-    """`find the token manager` —— 纯实体定位，只靠词法。"""
+    """`find the token manager` -- pure entity location, lexical only."""
 
-    def test_能定位到_token_管理器(self, ctx: EvalContext) -> None:
+    def test_locates_the_token_manager(self, ctx: EvalContext) -> None:
         unit = QueryUnit(
             "token_manager",
-            concept="管理令牌的组件",
+            concept="the component managing tokens",
             satisfiers=(LexicalSatisfier(terms=(Term("token"), Term("manager")), weight=1.0),),
         )
         top = ranked(eval_unit(unit, ctx), "token_manager")
         assert top[0][0] == "RedisTokenManager"
 
-    def test_同时命中两个词的排在只命中一个的前面(self, ctx: EvalContext) -> None:
+    def test_matching_both_words_ranks_above_matching_one(self, ctx: EvalContext) -> None:
         unit = QueryUnit(
             "token_manager",
             satisfiers=(
@@ -117,22 +121,28 @@ class TestQuery1LexicalOnly:
 
 
 class TestQuery2GraphOnly:
-    """`RedisTokenManager 里有哪些方法` —— 纯图约束，关键词没有区分度。
+    """`what methods does RedisTokenManager have` -- pure graph constraint,
+    with no discriminating keyword.
 
-    这是设计文档举的例子：现有三段管线会先跑一遍全量词法匹配，
-    而这个查询根本没有有意义的关键词。
+    The design doc's own example: the existing three-stage pipeline would run
+    a full lexical match first, and this query has no meaningful keyword at
+    all.
     """
 
-    def test_用_contains_边列出类的成员(self, ctx: EvalContext) -> None:
+    def test_lists_a_classs_members_through_contains_edges(self, ctx: EvalContext) -> None:
         cls = _by_name(ctx, "RedisTokenManager", kind="class")
         members = reach(cls, ctx, edge="contains", hops=1)
         assert {"generateToken", "parseToken", "validateToken"} <= names(members)
 
-    def test_物化_contains_把孤点从大多数降到极少数(self, ctx: EvalContext) -> None:
-        """10 章的判断：把 contains 物化出来，孤点问题基本就没了。
+    def test_materialising_contains_takes_orphans_from_most_to_almost_none(
+        self, ctx: EvalContext
+    ) -> None:
+        """Chapter 10's claim: materialise contains and the orphan problem
+        largely disappears.
 
-        实测 33% → 98%。剩下那 2%（7 个）是符号表里 container 为空的记录，
-        属于上游解析的欠账，不是 contains 物化没做到位。
+        Measured, 33% to 98%. The remaining 2% (7 records) have an empty
+        container in the symbol table -- an upstream parsing debt, not a
+        shortfall in materialising contains.
         """
         payload = json.loads(FIXTURE.read_text(encoding="utf-8"))
         total = len(payload["symbols"])
@@ -144,19 +154,22 @@ class TestQuery2GraphOnly:
         assert len(by_kind["calls"]) / total < 0.4
         assert len(by_kind["calls"] | by_kind["contains"]) / total > 0.95
 
-    def test_只有_calls_边时大量符号够不着(self, ctx: EvalContext) -> None:
-        """反证：不物化 contains，同样的查询就废了。"""
+    def test_with_calls_edges_alone_many_symbols_are_unreachable(self, ctx: EvalContext) -> None:
+        """The converse: without materialising contains, the same query is
+        useless."""
         cls = _by_name(ctx, "RedisTokenManager", kind="class")
         assert not reach(cls, ctx, edge="calls", hops=(1, 3))
 
 
 class TestQuery3MultiUnitHop:
-    """`token 相关的代码调用了 redis 相关的代码` —— 两个单元靠图连起来。
+    """`token-related code calls redis-related code` -- two units connected
+    through the graph.
 
-    这句话表达不成「同时含有 token 和 redis 关键词的元素」——那样的元素几乎不存在。
+    This cannot be expressed as "elements containing both token and redis
+    keywords" -- such elements barely exist.
     """
 
-    def test_两个单元之间的调用路径(self, ctx: EvalContext) -> None:
+    def test_the_call_paths_between_two_units(self, ctx: EvalContext) -> None:
         token = eval_unit(
             QueryUnit("token", satisfiers=(LexicalSatisfier(terms=(Term("token"),)),)), ctx
         )
@@ -166,7 +179,7 @@ class TestQuery3MultiUnitHop:
         linked = hop(token, redis, ctx, edge=["calls", "contains"], hops=(1, 2))
         assert linked.witnesses
 
-    def test_结果保留了路径而不只是端点(self, ctx: EvalContext) -> None:
+    def test_the_result_keeps_the_paths_not_just_the_endpoints(self, ctx: EvalContext) -> None:
         token = eval_unit(
             QueryUnit("token", satisfiers=(LexicalSatisfier(terms=(Term("token"),)),)), ctx
         )
@@ -176,7 +189,7 @@ class TestQuery3MultiUnitHop:
         linked = hop(token, redis, ctx, edge=["calls", "contains"], hops=(1, 2))
         assert all(len(p.nodes) == len(p.edges) + 1 for p in linked.witnesses)
 
-    def test_两端的单元证据都被带进结果(self, ctx: EvalContext) -> None:
+    def test_unit_evidence_from_both_ends_reaches_the_result(self, ctx: EvalContext) -> None:
         token = eval_unit(
             QueryUnit("token", satisfiers=(LexicalSatisfier(terms=(Term("token"),)),)), ctx
         )
@@ -195,115 +208,126 @@ def _unit(name: str, *terms: str, weight: float = 1.0) -> QueryUnit:
 
 
 class TestQuery4Algebra:
-    """`既和 token 有关又和 redis 有关` —— 片段代数。"""
+    """`related to both token and redis` -- the fragment algebra."""
 
-    def test_交集(self, ctx: EvalContext) -> None:
+    def test_intersection(self, ctx: EvalContext) -> None:
         both = eval_unit(_unit("token", "token"), ctx) & eval_unit(_unit("redis", "redis"), ctx)
         assert "RedisTokenManager" in names(both)
 
-    def test_差集(self, ctx: EvalContext) -> None:
-        """按 symbol_id 比，不按名字——不同符号可以同名。"""
+    def test_difference(self, ctx: EvalContext) -> None:
+        """Compared on symbol_id, not name -- different symbols may share a
+        name."""
         token = eval_unit(_unit("token", "token"), ctx)
         redis = eval_unit(_unit("redis", "redis"), ctx)
         assert not set((token - redis).nodes) & set(redis.nodes)
         assert set((token - redis).nodes) < set(token.nodes)
 
-    def test_交集合并两边证据(self, ctx: EvalContext) -> None:
+    def test_intersection_merges_evidence_from_both_sides(self, ctx: EvalContext) -> None:
         both = eval_unit(_unit("token", "token"), ctx) & eval_unit(_unit("redis", "redis"), ctx)
         sid = next(sid for sid in both.nodes if both.nodes[sid].name == "RedisTokenManager")
         assert {"token", "redis"} <= {h.unit for h in both.evidence_for(sid).unit_hits}
 
 
 class TestFindingIcfIsRelativeToTheIndex:
-    """发现：ICF 对索引组成敏感，同一个词在不同索引里强弱不同。
+    """A finding: ICF is sensitive to what the index contains, so the same
+    word is strong or weak depending on the index.
 
-    `user` 在全项目是 125/1718 → icf_ratio 0.352，
-    在这个 375 符号的样本里是 65/375 → 0.296。
+    Across the whole project `user` is 125/1718, an icf_ratio of 0.352; in
+    this 375-symbol sample it is 65/375, or 0.296.
 
-    起初这个差异会让词被**静默丢掉**；benchmark 在 netty 上把这个设计
-    问题放大到无法忽视（`buf` 占 15.4% 被丢，而查询问的就是缓冲区），
-    于是改成：下限只管扩展词，查询词一律保留但按 ICF 降权。
+    Originally that difference made words get **silently dropped**; the
+    benchmark magnified the design problem on netty past ignoring (`buf`, on
+    15.4% of symbols, was dropped when the query was about buffers). Hence
+    the change: the floor governs expansions only, and query terms are always
+    kept but down-weighted by ICF.
     """
 
-    def test_领域高频词得分远低于稀有词(self, ctx: EvalContext) -> None:
-        """它仍然能查到（下限只管扩展词），但排序上被压得很低。"""
+    def test_a_frequent_domain_word_scores_far_below_a_rare_one(self, ctx: EvalContext) -> None:
+        """It is still findable -- the floor governs expansions only -- but
+        ranks far down."""
         common = eval_unit(_unit("user", "user"), ctx)
         rare = eval_unit(_unit("token", "token"), ctx)
-        assert common, "明确要求的词不该被丢掉"
+        assert common, "an explicitly requested word must not be dropped"
         best_common = max(common.evidence_for(s).scores["user"] for s in common.nodes)
         best_rare = max(rare.evidence_for(s).scores["token"] for s in rare.nodes)
         assert best_common < best_rare
 
-    def test_扩展词仍受下限约束(self, ctx: EvalContext) -> None:
-        """否则一次噪音扩展就能把泛词灌进结果。"""
+    def test_expansions_remain_subject_to_the_floor(self, ctx: EvalContext) -> None:
+        """Otherwise one noisy expansion floods the result with generic
+        words."""
         from dataclasses import replace
 
         from codesense.ql.store import Expansion, InMemoryExpansionTable
 
         noisy = replace(
-            ctx, expansion=InMemoryExpansionTable({"人": [Expansion("user", 0.9, "prefix")]})
+            ctx, expansion=InMemoryExpansionTable({"person": [Expansion("user", 0.9, "prefix")]})
         )
-        assert not eval_unit(_unit("人", "人"), noisy)
+        assert not eval_unit(_unit("person", "person"), noisy)
 
 
 class TestQuery6Intent:
-    """`和 token 有关、且真的在管理令牌的方法` —— 最贵的算子放最后。
+    """`token-related methods that really do manage tokens` -- the most
+    expensive operator last.
 
-    这里用默认的空判定器，所以走的是**降级路径**：它验证的是编排本身
-    ——`intent` 拿到的候选已经被前面的便宜约束收窄过。
-    真实判定的验证在 `tests/integration/test_llm_judge.py`。
+    The default null judge is used here, so this runs the **fallback path**:
+    what it verifies is the orchestration itself -- that the candidates
+    reaching `intent` have already been narrowed by the cheap constraints
+    upstream. Real judging is verified in
+    `tests/integration/test_llm_judge.py`.
     """
 
     def _narrowed(self, ctx: EvalContext) -> Frag:
         return top(only(eval_unit(_unit("token", "token"), ctx), kind="method"), 5, by="token")
 
-    def test_收窄之后才轮到_intent(self, ctx: EvalContext) -> None:
+    def test_intent_comes_only_after_narrowing(self, ctx: EvalContext) -> None:
         narrowed = self._narrowed(ctx)
         assert len(narrowed) <= 5
-        assert len(intent(narrowed, "管理令牌生命周期", ctx, max_items=10)) <= 5
+        assert len(intent(narrowed, "manages a token lifecycle", ctx, max_items=10)) <= 5
 
-    def test_候选没收窄时直接报错(self, ctx: EvalContext) -> None:
-        """把没收窄的片段丢给 intent 是编排错误，不该由钱来兜底。"""
+    def test_unnarrowed_candidates_raise_outright(self, ctx: EvalContext) -> None:
+        """Handing an unnarrowed fragment to intent is an orchestration
+        error, and money should not be what absorbs it."""
         wide = eval_unit(_unit("token", "token"), ctx)
         with pytest.raises(ValueError, match="max_items"):
-            intent(wide, "管理令牌生命周期", ctx, max_items=3)
+            intent(wide, "manages a token lifecycle", ctx, max_items=3)
 
-    def test_没配_LLM_时降级而不是失败(self, ctx: EvalContext) -> None:
+    def test_degrades_rather_than_failing_when_no_LLM_is_configured(self, ctx: EvalContext) -> None:
         narrowed = self._narrowed(ctx)
-        result = intent(narrowed, "管理令牌生命周期", ctx, max_items=10)
+        result = intent(narrowed, "manages a token lifecycle", ctx, max_items=10)
         assert len(result) == len(narrowed)
         assert all(result.evidence_for(s).verdicts[0].source == "fallback" for s in result.nodes)
 
 
 class TestQuery5Narrowing:
-    """`和 token 有关的方法里最相关的 5 个` —— 收窄算子。
+    """`the 5 most relevant token-related methods` -- the narrowing
+    operators.
 
-    缺口 4 和 5 在这里被填掉：`only` 和 `top` 已经实现。
+    Gaps 4 and 5 are filled here: `only` and `top` are implemented.
     """
 
-    def test_按元素类型收窄(self, ctx: EvalContext) -> None:
+    def test_narrows_by_element_kind(self, ctx: EvalContext) -> None:
         found = eval_unit(_unit("token", "token"), ctx)
         methods = only(found, kind="method")
         assert methods and len(methods) < len(found)
         assert {e.kind for e in methods} == {"method"}
 
-    def test_取前_5_名(self, ctx: EvalContext) -> None:
+    def test_takes_the_top_5(self, ctx: EvalContext) -> None:
         found = only(eval_unit(_unit("token", "token"), ctx), kind="method")
         assert len(top(found, 5, by="token")) == 5
 
-    def test_取前_K_保留证据(self, ctx: EvalContext) -> None:
+    def test_top_k_preserves_evidence(self, ctx: EvalContext) -> None:
         found = eval_unit(_unit("token", "token"), ctx)
         best = top(found, 3, by="token")
         assert all(best.evidence_for(sid).unit_hits for sid in best.nodes)
 
-    def test_入口点用度数取(self, ctx: EvalContext) -> None:
-        """`没有人调用它的那些` —— 入度为 0。"""
+    def test_entry_points_are_selected_by_degree(self, ctx: EvalContext) -> None:
+        """`the ones nobody calls` -- in-degree 0."""
         found = eval_unit(_unit("token", "token"), ctx)
         entries = degree(found, ctx, edge="calls", max_in=0)
         assert entries and len(entries) < len(found)
 
-    def test_算子可以串起来(self, ctx: EvalContext) -> None:
-        """脚本本来就该长这样：一串 Frag -> Frag。"""
+    def test_the_operators_compose(self, ctx: EvalContext) -> None:
+        """This is what a script should look like: a chain of Frag -> Frag."""
         result = top(
             only(eval_unit(_unit("token", "token"), ctx), kind="method"),
             3,
@@ -313,44 +337,51 @@ class TestQuery5Narrowing:
 
 
 class TestGaps:
-    """写不出来的地方。**每条都是一个待补的能力。**"""
+    """Where it cannot be written. **Each one is a capability still owed.**"""
 
-    def test_缺口1_真实索引里还没有注解(self, ctx: EvalContext) -> None:
-        """抽取已经实现（`codesense.indexing.annotations`），但**还没灌进真实索引**。
+    def test_gap1_the_real_index_has_no_annotations_yet(self, ctx: EvalContext) -> None:
+        """Extraction is implemented (`codesense.lang.java.annotations`) but
+        **has not been fed into the real index**.
 
-        卡在两处：样例项目的 Java 源码不在本机，以及索引构建流程还没调抽取器。
-        注解查询本身能跑，见 `tests/integration/test_annotation_queries.py`。
+        Two things block it: the sample project's Java source is not on this
+        machine, and the index build does not yet call the extractor.
+        Annotation queries themselves work -- see
+        `tests/integration/test_annotation_queries.py`.
         """
         unit = QueryUnit(
             "transactional", satisfiers=(AnnotationSatisfier(names=("@Transactional",)),)
         )
-        assert not eval_unit(unit, ctx), "注解已经能索引了，请删掉这条缺口断言"
+        assert not eval_unit(unit, ctx), "annotations are indexed now; delete this gap assertion"
 
-    def test_缺口2_没有字段读写边(self, ctx: EvalContext) -> None:
-        """`谁修改了这个字段` 写不出来——没有 reads / writes 边。"""
+    def test_gap2_there_are_no_field_read_write_edges(self, ctx: EvalContext) -> None:
+        """`who modifies this field` cannot be written -- there are no reads
+        or writes edges."""
         field = _any_of_kind(ctx, "variable")
         assert not reach(field, ctx, edge="writes", direction="backward"), (
-            "writes 边已经有了，请删掉这条缺口断言"
+            "writes edges exist now; delete this gap assertion"
         )
 
-    def test_缺口3_真实索引里还没有修饰符(self, ctx: EvalContext) -> None:
-        """抽取已经实现（`JavaDeclarationScanner`），但**还没灌进真实索引**。
+    def test_gap3_the_real_index_has_no_modifiers_yet(self, ctx: EvalContext) -> None:
+        """Extraction is implemented (`JavaDeclarationScanner`) but **has not
+        been fed into the real index**.
 
-        和注解卡在同一处：源码不在本机，索引构建流程也还没调扫描器。
+        Blocked on the same things as annotations: the source is not on this
+        machine and the index build does not yet call the scanner.
         """
         assert all(not e.modifiers for e in ctx.symbols.get_many(range(1, 200)).values()), (
-            "修饰符已经有了，请删掉这条缺口断言"
+            "modifiers exist now; delete this gap assertion"
         )
 
-    def test_缺口4_真实索引里还没有数据流边(self, ctx: EvalContext) -> None:
-        """`这个参数的值从哪来` 写不出来——没有 flows_to 边。
+    def test_gap4_the_real_index_has_no_dataflow_edges_yet(self, ctx: EvalContext) -> None:
+        """`where does this parameter's value come from` cannot be written --
+        there are no flows_to edges.
 
-        它是唯一需要**新建分析能力**的一项（10 章第六节），
-        其余都是重组已有数据。
+        It is the only item needing **new analysis capability** (chapter 10,
+        section 6); the rest are rearrangements of data already held.
         """
         field = _any_of_kind(ctx, "variable")
         assert not reach(field, ctx, edge="flows_to", direction="backward"), (
-            "flows_to 边已经有了，请删掉这条缺口断言"
+            "flows_to edges exist now; delete this gap assertion"
         )
 
 
@@ -360,7 +391,7 @@ def _any_of_kind(ctx: EvalContext, kind: str) -> Frag:
         for sid, element in ctx.symbols.get_many(range(1, 2000)).items()
         if element.kind == kind
     }
-    assert found, f"fixture 里没有 {kind}"
+    assert found, f"no {kind} in the fixture"
     return Frag(nodes=dict(sorted(found.items())[:1]))
 
 
@@ -370,5 +401,5 @@ def _by_name(ctx: EvalContext, name: str, *, kind: str) -> Frag:
         for sid, element in ctx.symbols.get_many(range(1, 2000)).items()
         if element.name == name and element.kind == kind
     }
-    assert found, f"fixture 里没有 {kind} {name}"
+    assert found, f"no {kind} {name} in the fixture"
     return Frag(nodes=found)

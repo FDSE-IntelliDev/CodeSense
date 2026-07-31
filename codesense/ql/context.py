@@ -1,7 +1,9 @@
-"""求值上下文：算子运行时需要的一切外部依赖。
+"""Evaluation context: every external dependency an operator needs.
 
-所有依赖从构造函数注入，模块里不读配置、不开数据库、不碰全局状态。
-这样算子既可测（注入内存实现），又能换存储而不改代码。
+Everything is injected through the constructor. Nothing here reads config,
+opens a database, or touches global state, which keeps operators testable
+against in-memory implementations and lets storage change without touching
+them.
 """
 
 from __future__ import annotations
@@ -17,7 +19,7 @@ __all__ = ["EvalContext"]
 
 @dataclass(frozen=True, slots=True)
 class EvalContext:
-    """把索引访问与打分参数打成一包传给算子。"""
+    """Bundles index access and scoring parameters for the operators."""
 
     symbols: SymbolStore
     postings: PostingIndex
@@ -25,15 +27,18 @@ class EvalContext:
     edges: EdgeStore
     field_weights: FieldWeights = field(default=DEFAULT_FIELD_WEIGHTS)
 
-    #: 意图判定器。默认是"什么都判不出"的空实现而不是 `None`——
-    #: 这样 `intent` 的降级路径在没配 LLM 的环境里**也会被真正走到**，
-    #: 降级逻辑有 bug 时测试就能发现，而不是等到线上。
+    #: Intent judge. Defaults to a null implementation that decides nothing,
+    #: rather than `None`, so `intent`'s degradation path is genuinely
+    #: exercised in environments without an LLM -- a bug there surfaces in
+    #: tests instead of in production.
     judge: Judge = field(default_factory=NullJudge)
 
-    #: 归一化 ICF 的下限。低于它的词不参与打分——`get`（1718 个符号里占 207 个）
-    #: 这类词什么都"相似"，扩展它只会制造噪音。
-    #: 0.34 对应样例项目上裸 ICF ≈ 2.5（log(1718) ≈ 7.45）。
+    #: Floor on normalised ICF. Below it a term contributes nothing --
+    #: `get`, on 207 of 1718 symbols, is "similar" to everything and
+    #: expanding it only adds noise. 0.34 corresponds to a raw ICF of about
+    #: 2.5 on the sample project, where log(1718) is about 7.45.
     icf_floor: float = 0.34
 
-    #: 单条证据的最低分。低于它的命中直接丢弃，避免证据链被噪音淹没。
+    #: Minimum score for a single piece of evidence. Anything below is
+    #: dropped so the evidence trail does not drown in noise.
     min_hit_score: float = 1e-6
