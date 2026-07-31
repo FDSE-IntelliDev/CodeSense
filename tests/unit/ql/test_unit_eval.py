@@ -12,7 +12,7 @@ from codesense.ql.combine import COMBINERS, combine
 from codesense.ql.context import EvalContext
 from codesense.ql.operators import eval_unit
 from codesense.ql.registry import Registry
-from codesense.ql.satisfiers import AnnotationSatisfier, LexicalSatisfier
+from codesense.ql.satisfiers import AnnotationSatisfier, LexicalSatisfier, ModifierSatisfier
 from codesense.ql.store import (
     Expansion,
     InMemoryEdgeStore,
@@ -192,6 +192,35 @@ class TestAnnotationSatisfier:
 
     def test_默认权重高于词法(self) -> None:
         assert AnnotationSatisfier().weight > LexicalSatisfier(terms=()).weight
+
+
+class TestModifierSatisfier:
+    def test_只查_modifier_域(self) -> None:
+        ctx = make_context(
+            postings={"native": [Posting(1, IndexField.MODIFIER), Posting(2, IndexField.NAME)]},
+            elements=[make_element(1, "a"), make_element(2, "nativeHelper")],
+        )
+        assert set(ModifierSatisfier(modifiers=("native",)).hits("perf", ctx)) == {1}
+
+    def test_泛修饰符被_ICF_挡掉(self) -> None:
+        """`public` 几乎所有符号都有，区分度趋零。"""
+        ctx = make_context(
+            postings={"public": [Posting(i, IndexField.MODIFIER) for i in range(1600)]},
+            elements=[make_element(i, f"m{i}") for i in range(1600)],
+        )
+        assert ModifierSatisfier(modifiers=("public",)).hits("u", ctx) == {}
+
+    def test_罕见修饰符保留(self) -> None:
+        ctx = make_context(postings={"volatile": [Posting(1, IndexField.MODIFIER)]})
+        assert ModifierSatisfier(modifiers=("volatile",)).hits("u", ctx) != {}
+
+    def test_权重介于词法与注解之间(self) -> None:
+        """修饰符是语言级事实，比词法准；但注解携带的语义更具体。"""
+        assert (
+            LexicalSatisfier(terms=()).weight
+            < ModifierSatisfier().weight
+            < AnnotationSatisfier().weight
+        )
 
 
 class TestEvalUnit:

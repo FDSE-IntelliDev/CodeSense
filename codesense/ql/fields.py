@@ -29,6 +29,7 @@ class IndexField(str, Enum):
     DOC = "doc"
     ANNOTATION = "annotation"
     ANNOTATION_ARG = "annotation_arg"
+    MODIFIER = "modifier"
 
     def __str__(self) -> str:
         return self.value
@@ -45,6 +46,7 @@ class FieldWeights:
     name: float = 1.0
     annotation: float = 0.9
     annotation_arg: float = 0.7
+    modifier: float = 0.6
     signature: float = 0.6
     container: float = 0.5
     doc: float = 0.3
@@ -59,6 +61,7 @@ class FieldWeights:
                 IndexField.NAME.value: self.name,
                 IndexField.ANNOTATION.value: self.annotation,
                 IndexField.ANNOTATION_ARG.value: self.annotation_arg,
+                IndexField.MODIFIER.value: self.modifier,
                 IndexField.SIGNATURE.value: self.signature,
                 IndexField.CONTAINER.value: self.container,
                 IndexField.DOC.value: self.doc,

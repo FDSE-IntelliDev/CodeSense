@@ -85,15 +85,15 @@ class TestPostingTerms:
 
 
 @pytest.mark.slow
-class TestJavaAnnotationExtractor:
+class TestJavaAnnotationExtraction:
     """需要 tree-sitter。"""
 
     @pytest.fixture(scope="class")
     def uses(self) -> list[AnnotationUse]:
         pytest.importorskip("tree_sitter_languages")
-        from codesense.indexing import JavaAnnotationExtractor
+        from codesense.indexing import JavaDeclarationScanner
 
-        return JavaAnnotationExtractor.for_java().extract(SOURCE)
+        return JavaDeclarationScanner.for_java().annotations(SOURCE)
 
     def test_抽到类上的注解(self, uses: list[AnnotationUse]) -> None:
         found = {(u.name, u.target_name) for u in uses if u.target_kind == "class"}

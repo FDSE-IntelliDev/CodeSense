@@ -8,7 +8,13 @@
 """
 
 from codesense.indexing.expansion import build_expansion_table
-from codesense.indexing.annotations import AnnotationUse, JavaAnnotationExtractor, arg_tokens
+from codesense.indexing.java import (
+    JAVA_MODIFIERS,
+    Declaration,
+    JavaDeclarationScanner,
+    modifier_terms,
+)
+from codesense.indexing.annotations import AnnotationUse, arg_tokens, posting_terms
 from codesense.indexing.meta_annotations import (
     META_ANNOTATIONS,
     expansions_for,
@@ -17,10 +23,14 @@ from codesense.indexing.meta_annotations import (
 
 __all__ = [
     "META_ANNOTATIONS",
+    "JAVA_MODIFIERS",
     "AnnotationUse",
-    "JavaAnnotationExtractor",
+    "Declaration",
+    "JavaDeclarationScanner",
     "arg_tokens",
     "build_expansion_table",
     "expansions_for",
+    "modifier_terms",
+    "posting_terms",
     "meta_expansion_table",
 ]

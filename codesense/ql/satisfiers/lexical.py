@@ -15,7 +15,7 @@ from codesense.ql.fields import IndexField
 from codesense.ql.satisfiers.base import SATISFIERS, HitsBySymbol, Satisfier, collect_term_hits
 from codesense.ql.unit import Term
 
-__all__ = ["AnnotationSatisfier", "LexicalSatisfier"]
+__all__ = ["AnnotationSatisfier", "LexicalSatisfier", "ModifierSatisfier"]
 
 #: 注解相关的域。注解名和注解参数都要查——`@PreAuthorize("@ss.hasPerm('sys:user:query')")`
 #: 的权限串、`@Schema(description=…)` 的自然语言描述都在参数里，
@@ -86,3 +86,35 @@ class AnnotationSatisfier(Satisfier):
 def _as_terms(names: Sequence[str]) -> tuple[Term, ...]:
     """点名的注解按 literal 词处理；元注解展开由扩展表负责。"""
     return tuple(Term(value=name, source="literal") for name in names)
+
+
+@SATISFIERS.decorator("modifier")
+@dataclass(frozen=True, slots=True)
+class ModifierSatisfier(Satisfier):
+    """语言级修饰符匹配：`static` / `abstract` / `synchronized` / `native`……
+
+    修饰符是**事实**不是猜测——查「异步的写盘函数」时 `synchronized`、
+    `volatile` 是确定的，而名字里有没有 "async" 是猜的。所以默认权重（0.6）
+    高于词法（0.5），但低于注解（0.9）：注解携带的语义比修饰符更具体。
+
+    不需要扩展——`static` 就是 `static`，没有 `buf`/`buffer` 那种表层差异。
+    扩展表里本来也不会有这些键，所以复用同一条通路是安全的。
+
+    强弱由 ICF 自动区分：`public` 几乎所有符号都有，会被 ICF 下限挡掉；
+    `native` / `volatile` 罕见，正是有信息的那些。
+    """
+
+    signal: ClassVar[str] = "modifier"
+
+    modifiers: tuple[str, ...] = ()
+    weight: float = 0.6
+
+    def hits(self, unit: str, ctx: EvalContext) -> HitsBySymbol:
+        return collect_term_hits(
+            unit=unit,
+            signal=self.signal,
+            terms=tuple(Term(value=m, source="literal") for m in self.modifiers),
+            ctx=ctx,
+            weight=self.weight,
+            fields=(IndexField.MODIFIER,),
+        )

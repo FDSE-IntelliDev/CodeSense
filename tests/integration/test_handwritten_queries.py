@@ -292,10 +292,10 @@ class TestGaps:
             "writes 边已经有了，请删掉这条缺口断言"
         )
 
-    def test_缺口3_没有修饰符(self, ctx: EvalContext) -> None:
-        """`静态的工具方法` 写不出来——`Element.modifiers` 恒为空。
+    def test_缺口3_真实索引里还没有修饰符(self, ctx: EvalContext) -> None:
+        """抽取已经实现（`JavaDeclarationScanner`），但**还没灌进真实索引**。
 
-        修饰符是语言级事实，比任何关键词都准，但解析器没抽。
+        和注解卡在同一处：源码不在本机，索引构建流程也还没调扫描器。
         """
         assert all(not e.modifiers for e in ctx.symbols.get_many(range(1, 200)).values()), (
             "修饰符已经有了，请删掉这条缺口断言"
