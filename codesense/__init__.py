@@ -1,11 +1,12 @@
-"""CodeSense —— 基于语义查询语言（SemQL）的代码搜索系统。
+"""CodeSense —— 把一条自然语言查询编译成一段针对代码库的查询脚本。
 
-包内分两段（详见仓库根目录 ARCHITECTURE.md）：
+    自然语言 query  ──编译──▶  QL 脚本（Python）  ──执行──▶  带证据的结果
 
-    离线索引  indexing/ + codeql/ + parsers/  源码 → 符号表 / 调用图 / 倒排索引
-    在线查询  query/ → executors/ → filters/  自然语言 → SemCon → SemQL → 候选集
+实现全部在 `codesense.ql`：脚本由若干基本查询算子编排，
+所有算子都是 ``Frag -> Frag``。设计见 ``docs/design/``。
 
-配置统一从 ``codesense.config`` 取，不要在模块里写死路径或超参。
+重写前那套 SemCon → SemQL → 三执行器的实现已归档到仓库根目录的
+``legacy/``，不参与构建、lint 与测试。
 """
 
-__version__ = "0.1.0"
+__version__ = "0.2.0.dev0"

@@ -105,7 +105,7 @@ https://s3.amazonaws.com/code2vec/model/java14m_model.tar.gz
 ### 实测 cc.en.300（2M 词表 / d=300）
 
 > 下面全部是在本项目词表上跑出来的真实数字，不是估计。
-> 探针脚本：`scripts/probe_pretrained_embedding.py`。
+> 探针脚本：`scripts/probe_embeddings.py`（`coverage` / `senses` / `abbrev` 子命令）。
 
 **a. 覆盖率 99%——比预期好得多。**
 
@@ -690,7 +690,7 @@ OOV 只有 3 个词——而是**高频词的词义错配**。
 
 对每个词 t，取它在项目语料里的共现词（ICF 加权，压掉 `get`/`save`），
 算 t 与这些词在**通用空间**里的平均余弦。分数低 = 通用向量放的位置
-和项目怎么用它对不上。脚本：`scripts/probe_sense_mismatch.py`。
+和项目怎么用它对不上。脚本：`scripts/probe_embeddings.py mismatch`。
 
 | 词 | 项目频次 | 错配分 | 项目里的共现词 | 通用义 vs 项目义 |
 |---|---|---|---|---|
@@ -729,7 +729,7 @@ OOV 只有 3 个词——而是**高频词的词义错配**。
 第二跳依赖 `cos(dept, department) = 0.749`。微调时 `dept` 朝项目上下文移动，
 而 `department` 在项目里 0 次、原地不动，距离可能被拉开。
 
-**但实测下来这个张力基本是假的**（`scripts/probe_gate_overlap.py`）：
+**但实测下来这个张力基本是假的**（`scripts/probe_embeddings.py gates`）：
 
 | 分组 | 对数 | 例 | 门禁1 风险 |
 |---|---|---|---|
@@ -786,7 +786,7 @@ OOV 拿到了合理起点，逐词控制又精确。门禁 1 对冻结组**按�
 **回归测试照跑**（错配分只是代理指标，可能误判）：
 
 ```
-微调前后跑 scripts/probe_pretrained_embedding.py
+微调前后跑 scripts/probe_embeddings.py abbrev
 冻结组：11/13 通过率不下降，cos(dept, department) ≥ 0.70
 放开组：cos(perms, permission) 应从 0.174 上升
 ```
@@ -982,7 +982,7 @@ annotation(
 
 两个都不需要端到端评测：
 
-**a. 锚点漂移**（第二节）——不需要任何标注，微调完立刻能算，
+**a. 锚点漂移**（第二节）——不需要任何标注，微调完立刻能算（`probe_embeddings.py gates`），
 用来判断微调的强度对不对。
 
 **b. 一份小 gold set**——人工标 50~100 对 `(项目表层写法, 规范形)`，

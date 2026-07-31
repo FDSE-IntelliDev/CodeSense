@@ -25,7 +25,7 @@ import pytest
 
 from codesense.ql import Edge, Element, Frag, IndexField
 from codesense.ql.context import EvalContext
-from codesense.ql.operators import eval_unit, hop, reach
+from codesense.ql.operators import degree, eval_unit, hop, only, reach, top
 from codesense.ql.satisfiers import AnnotationSatisfier, LexicalSatisfier
 from codesense.ql.store import (
     InMemoryEdgeStore,
@@ -234,6 +234,43 @@ class TestFindingIcfIsRelativeToTheIndex:
         assert eval_unit(_unit("user", "user"), loose)
 
 
+class TestQuery5Narrowing:
+    """`和 token 有关的方法里最相关的 5 个` —— 收窄算子。
+
+    缺口 4 和 5 在这里被填掉：`only` 和 `top` 已经实现。
+    """
+
+    def test_按元素类型收窄(self, ctx: EvalContext) -> None:
+        found = eval_unit(_unit("token", "token"), ctx)
+        methods = only(found, kind="method")
+        assert methods and len(methods) < len(found)
+        assert {e.kind for e in methods} == {"method"}
+
+    def test_取前_5_名(self, ctx: EvalContext) -> None:
+        found = only(eval_unit(_unit("token", "token"), ctx), kind="method")
+        assert len(top(found, 5, by="token")) == 5
+
+    def test_取前_K_保留证据(self, ctx: EvalContext) -> None:
+        found = eval_unit(_unit("token", "token"), ctx)
+        best = top(found, 3, by="token")
+        assert all(best.evidence_for(sid).unit_hits for sid in best.nodes)
+
+    def test_入口点用度数取(self, ctx: EvalContext) -> None:
+        """`没有人调用它的那些` —— 入度为 0。"""
+        found = eval_unit(_unit("token", "token"), ctx)
+        entries = degree(found, ctx, edge="calls", max_in=0)
+        assert entries and len(entries) < len(found)
+
+    def test_算子可以串起来(self, ctx: EvalContext) -> None:
+        """脚本本来就该长这样：一串 Frag -> Frag。"""
+        result = top(
+            only(eval_unit(_unit("token", "token"), ctx), kind="method"),
+            3,
+            by="token",
+        )
+        assert len(result) == 3
+
+
 class TestGaps:
     """写不出来的地方。**每条都是一个待补的能力。**"""
 
@@ -264,24 +301,7 @@ class TestGaps:
             "修饰符已经有了，请删掉这条缺口断言"
         )
 
-    def test_缺口4_按元素类型过滤要手写(self, ctx: EvalContext) -> None:
-        """`只要方法，不要字段和类` 目前得在脚本里手写列表推导。
-
-        缺一个 `only(frag, kind=...)` 算子——这是最常用的收窄方式之一。
-        """
-        found = eval_unit(_unit("token", "token"), ctx)
-        manual = found.induced(sid for sid in found.nodes if found.nodes[sid].kind == "method")
-        assert manual and len(manual) < len(found)
-
-    def test_缺口5_取前_K_名要手写(self, ctx: EvalContext) -> None:
-        """`最相关的 5 个` 目前得手写排序——见本文件的 `ranked()`。
-
-        缺一个 `top(frag, n, by=unit)` 算子。排序需要知道按哪个单元的分数排，
-        这个信息在证据里，所以算子放在 QL 层而不是脚本层才对。
-        """
-        assert len(ranked(eval_unit(_unit("token", "token"), ctx), "token")) > 5
-
-    def test_缺口6_没有_intent_算子(self) -> None:
+    def test_缺口4_没有_intent_算子(self) -> None:
         """`真正在做鉴权的那个入口` 写不出来——`intent` 还没实现。
 
         它是唯一需要 LLM 的算子，刻意放在最后、候选最少时。

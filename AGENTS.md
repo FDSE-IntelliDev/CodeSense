@@ -1,5 +1,9 @@
 # AGENTS.md
 
+> **重写进行中。** 现役实现是 `codesense/ql/`（按 `docs/design/` 从头写）；
+> 重写前那套 SemCon → SemQL → 三执行器已归档到 `legacy/`，不参与构建与测试。
+> 本文档描述的多数内容属于归档实现，正在逐步更新。
+
 给在这个仓库里干活的 agent 的约定。结构规则见
 [ARCHITECTURE.md](ARCHITECTURE.md)，提交规范见 [CONTRIBUTING.md](CONTRIBUTING.md)。
 

@@ -1,5 +1,9 @@
 # 架构约定
 
+> **重写进行中。** 现役实现是 `codesense/ql/`（按 `docs/design/` 从头写）；
+> 重写前那套 SemCon → SemQL → 三执行器已归档到 `legacy/`，不参与构建与测试。
+> 本文档描述的多数内容属于归档实现，正在逐步更新。
+
 > 这份文档解释 CodeSense **为什么这样分层**，以及每条规则拦住了哪种常见写法。
 > 通用写法规范见组内 [DEV-COOKBOOK](https://github.com/FDSE-IntelliDev/DEV-COOKBOOK)，
 > 这里只写与本项目结构相关的部分。

@@ -48,6 +48,7 @@ codesense = "codesense.__main__:main"
 # 边界说明见 ARCHITECTURE.md「核心与脚手架的边界」。
 where = ["."]
 include = ["codesense*"]
+exclude = ["legacy*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -63,20 +64,17 @@ markers = [
 line-length = 100
 target-version = "py310"
 src = [".", "tests", "scripts"]
+# legacy/ 是只读快照；*.md 里的代码块是设计文档的示意性伪代码
+# （引用的 `q.unit`、`lexical()` 还没实现），格式化它们只会制造无意义的 diff。
+extend-exclude = ["legacy", "*.md"]
 
 [tool.ruff.format]
 # 和下面 lint 的豁免名单同一个道理：老模块从没被格式化过，全量 format 会产生
 # 一个覆盖 70 个文件的 diff，把真正的改动淹掉。所以先把它们排除在格式化之外，
 # 让 `ruff format --check .` 从今天起是绿的，新代码才有个真门禁。
 # 改到哪个老模块，就顺手 `ruff format` 它，并从这里删掉对应路径。
-# 新代码（codesense/ql/**）**不在**豁免名单里 —— 它从第一行起就受格式化门禁约束。
-exclude = [
-    "codesense/codeql/**", "codesense/dsl/**", "codesense/embedding/**",
-    "codesense/executors/**", "codesense/expansion/**", "codesense/filters/**",
-    "codesense/indexing/**", "codesense/parsers/**", "codesense/query/**",
-    "codesense/search/**", "codesense/tokenizer/**", "codesense/utils/**",
-    "codesense/__main__.py",
-]
+# 旧实现已归档到 legacy/，整体排除。现役代码（codesense/ql/**）全量受约束。
+exclude = ["legacy/**"]
 
 [tool.ruff.lint]
 select = [
@@ -105,16 +103,6 @@ select = [
 [tool.ruff.lint.per-file-ignores]
 # 只豁免旧子包。codesense/ql/** 刻意**不在**名单里：新代码从第一行起全量遵守规则。
 "codesense/{codeql,dsl,embedding,executors,expansion,filters,indexing,parsers,query,search,tokenizer,utils}/**" = [
-    "A002",
-    "B006", "B007", "B019", "B020", "B033", "B904", "B905",
-    "E401", "E402", "E501",
-    "F401", "F541", "F811", "F841",
-    "I001",
-    "SIM102", "SIM103", "SIM105", "SIM108", "SIM110", "SIM115", "SIM118", "SIM300",
-    "UP006", "UP007", "UP009", "UP015", "UP028", "UP031", "UP035", "UP037", "UP045",
-    "W191", "W291", "W292",
-]
-"codesense/__main__.py" = [
     "A002",
     "B006", "B007", "B019", "B020", "B033", "B904", "B905",
     "E401", "E402", "E501",
