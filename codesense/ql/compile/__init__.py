@@ -10,6 +10,7 @@
 
 from codesense.ql.compile.build import ScoredTerm, build_spec, infer_fields, infer_kinds
 from codesense.ql.compile.cost import Estimate, estimate_hop, estimate_intent, estimate_unit
+from codesense.ql.compile.emit import to_script
 from codesense.ql.compile.partition import Cluster, partition
 from codesense.ql.compile.plan import (
     Boost,
@@ -55,6 +56,7 @@ __all__ = [
     "infer_kinds",
     "partition",
     "plan",
+    "to_script",
     "relation_lift",
     "validate_groups",
     "validate_relations",
