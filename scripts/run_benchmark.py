@@ -9,6 +9,7 @@
     generic    LLM 凭通用知识派生词，**不给它看项目词表**
     grounded   LLM **从项目词表里挑**，外加注解信号
     graph      在 grounded 之上用调用图/包含关系给候选重排序
+    planned    **全流程**：自然语言 → 查询规格（LLM）→ 按预估代价排序 → 执行
 
 `grounded` vs `graph` 检验的是另一件事：在 4 万符号的项目里，
 25 个词 OR 起来会让结果集涨到几千个，**弱信号叠加会盖过强信号**。
@@ -267,6 +268,63 @@ def graph_rerank(frag: Frag, ctx: EvalContext, unit: str) -> dict[str, int]:
     return ranks
 
 
+def run_planned(
+    case: dict[str, Any],
+    ctx: EvalContext,
+    vocab: Sequence[str],
+    config: Any,
+    cache: Path | None = None,
+    attempt: int = 0,
+) -> tuple[dict[str, int], list[str]]:
+    """全流程：编译成规格 → 规划 → 执行（试跑，跳过 intent）。
+
+    召回率这个指标下要跳过 `intent`：它只会筛掉候选，
+    而我们量的是「该找到的有没有被找到」。它的作用另外看。
+    """
+    from codesense.llm import SpecCompiler
+    from codesense.ql.compile import Intent, plan
+
+    spec = SpecCompiler(config).compile(case["query"], case["project"], vocab)
+    if spec is None:
+        return {}, ["编译失败"]
+    execution = plan(spec, ctx)
+    state = execution.run(ctx, skip=(Intent,))
+    names: dict[str, int] = {}
+    ordered = sorted(
+        state.current.nodes, key=lambda sid: (-score_of(state.current, sid, None), sid)
+    )
+    for position, symbol_id in enumerate(ordered, 1):
+        names.setdefault(state.current.nodes[symbol_id].name, position)
+    return names, list(execution.reasoning)
+
+
+def _spec_json(spec: Any) -> dict[str, Any]:
+    """把规格转回 JSON，供缓存复原。"""
+    from codesense.ql.satisfiers import AnnotationSatisfier, LexicalSatisfier, ModifierSatisfier
+
+    units = []
+    for unit in spec.units:
+        item: dict[str, Any] = {"name": unit.name, "concept": unit.concept}
+        for satisfier in unit.satisfiers:
+            if isinstance(satisfier, LexicalSatisfier):
+                item["terms"] = [t.value for t in satisfier.terms]
+            elif isinstance(satisfier, AnnotationSatisfier):
+                item["annotations"] = list(satisfier.names)
+            elif isinstance(satisfier, ModifierSatisfier):
+                item["modifiers"] = list(satisfier.modifiers)
+        units.append(item)
+    return {
+        "query": spec.query,
+        "units": units,
+        "graph": [
+            {"src": g.src, "dst": g.dst, "edge": list(g.edge), "hops": list(g.hops)}
+            for g in spec.graph
+        ],
+        "concept": spec.concept,
+        "kinds": list(spec.kinds),
+    }
+
+
 def rank(frag: Frag, unit: str) -> dict[str, int]:
     """符号名 → 名次。同名取最好的名次。"""
     ordered = sorted(frag.nodes, key=lambda sid: (-score_of(frag, sid, unit), sid))
@@ -319,24 +377,31 @@ def run(args: argparse.Namespace) -> list[Result]:
             if arm == "grounded":
                 result.ranks["graph"] = graph_rerank(found, ctx, "q")
 
+        vocab = vocabulary(ctx, args.vocab_size)
+        result.ranks["planned"], reasoning = run_planned(
+            case, ctx, vocab, config, args.cache, args.attempt
+        )
+        result.terms["plan_reasoning"] = reasoning
+
         in_vocab = sum(1 for t in result.terms["generic"] if ctx.postings.term_info(t) is not None)
         total = len(result.terms["generic"]) or 1
         results.append(result)
         print(
-            f"  {case['id']:<22}generic {total} 词（{in_vocab} 个在项目词表里, "
-            f"{100 * in_vocab / total:.0f}%）  grounded {len(result.terms['grounded'])} 词"
+            f"  {case['id']:<22}generic {total} 词（{100 * in_vocab / total:.0f}% 在词表里）"
+            f"  grounded {len(result.terms['grounded'])} 词"
+            f"  planned {len(result.ranks['planned'])} 个结果"
         )
     return results
 
 
-ARMS = ("literal", "generic", "grounded", "graph")
+ARMS = ("literal", "generic", "grounded", "graph", "planned")
 
 
 def report(results: Sequence[Result]) -> None:
     for cutoff in CUTOFFS:
-        print(f"\n{'=' * 74}\n召回率 @{cutoff}")
+        print(f"\n{'=' * 86}\n召回率 @{cutoff}")
         print(f"  {'查询':<24}{'gold':>5}" + "".join(f"{a:>11}" for a in ARMS))
-        print("  " + "-" * 70)
+        print("  " + "-" * 82)
         totals: Counter[str] = Counter()
         for result in results:
             row = f"  {result.query_id:<24}{len(result.gold):>5}"
@@ -346,7 +411,7 @@ def report(results: Sequence[Result]) -> None:
                 row += f"{value:>10.0%} "
             print(row)
         n = len(results) or 1
-        print("  " + "-" * 70)
+        print("  " + "-" * 82)
         print(f"  {'平均':<24}{'':>5}" + "".join(f"{totals[a] / n:>10.0%} " for a in ARMS))
     print()
 
