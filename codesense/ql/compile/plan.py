@@ -21,7 +21,17 @@ from codesense.ql.frag import Frag
 from codesense.ql.operators import eval_unit, intent, reach, score_of, top
 from codesense.ql.unit import QueryUnit
 
-__all__ = ["Boost", "EvalUnit", "Filter", "Intent", "Narrow", "Plan", "State", "Step", "Trace"]
+__all__ = [
+    "Boost",
+    "Cohere",
+    "EvalUnit",
+    "Intent",
+    "Narrow",
+    "Plan",
+    "State",
+    "Step",
+    "Trace",
+]
 
 #: 落在图约束邻域里的候选获得的乘性加成。图是独立于词法的证据，
 #: 所以加成而不是替代——它不该把词法完全不沾边的东西捧上来。
@@ -204,6 +214,41 @@ class Boost(Step):
         if not src or not state.current:
             return
         near = reach(src, ctx, edge=list(self.edge), direction="any", hops=self.hops)
+        state.boosted |= set(near.nodes) & set(state.current.nodes)
+
+
+@dataclass(slots=True)
+class Cohere(Step):
+    """结构凝聚：给「离强命中近」的候选加权。
+
+    这和 `Boost` 不是一回事，区别要说清：
+
+        Boost    查询语义里声明的关系（「A 相关的代码调用 B」）——
+                 模型提议、统计校验，**大部分查询根本没有这层意思**
+        Cohere   与最强命中结构相邻的候选更可能相关——
+                 **对每条查询都成立**，不需要模型参与
+
+    实测这一条贡献了 R@100 的十几个百分点，而它纯粹是索引里的事实。
+    """
+
+    seeds: int = 20
+    edge: tuple[str, ...] = ("calls", "contains")
+    hops: tuple[int, int] = (1, 2)
+    label: str = ""
+
+    def __post_init__(self) -> None:
+        self.label = f"cohere(前 {self.seeds} 个当种子, {self.hops[0]}~{self.hops[1]} 跳)"
+
+    def estimate(self, ctx: EvalContext, state: State) -> Estimate:
+        touched = estimate_hop(min(state.rows, self.seeds), ctx, hops=self.hops)
+        return Estimate(rows=state.rows, cost=touched.cost, detail="仅重排")
+
+    def apply(self, ctx: EvalContext, state: State) -> None:
+        if not state.current:
+            return
+        ordered = sorted(state.current.nodes, key=lambda sid: (-score_of(state.current, sid), sid))
+        seeds = state.current.induced(ordered[: self.seeds])
+        near = reach(seeds, ctx, edge=list(self.edge), direction="any", hops=self.hops)
         state.boosted |= set(near.nodes) & set(state.current.nodes)
 
 

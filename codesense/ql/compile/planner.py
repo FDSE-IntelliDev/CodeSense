@@ -13,7 +13,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from codesense.ql.compile.cost import estimate_unit
-from codesense.ql.compile.plan import Boost, EvalUnit, Intent, Narrow, Plan, Step
+from codesense.ql.compile.plan import Boost, Cohere, EvalUnit, Intent, Narrow, Plan, Step
 from codesense.ql.compile.spec import QuerySpec
 from codesense.ql.context import EvalContext
 from codesense.ql.satisfiers.lexical import AnnotationSatisfier, LexicalSatisfier, ModifierSatisfier
@@ -125,13 +125,19 @@ def plan(spec: QuerySpec, ctx: EvalContext) -> Plan:
 
     steps, why = _add_graph(spec, {item.unit.name: item.rows for item in useful}, steps, why)
 
+    steps.append(Cohere())
+    why.append(
+        "结构凝聚：与最强命中相邻的候选加权。这不需要查询里声明关系——"
+        "「离答案近的更可能也是答案」对每条查询都成立"
+    )
+
     if spec.kinds or spec.concept:
         limit = INTENT_INPUT_CAP if spec.concept else spec.limit
         steps.append(Narrow(kind=spec.kinds or None, limit=limit, by=useful[0].unit.name))
         if spec.concept:
             why.append(f"判定前先压到 {INTENT_INPUT_CAP} 个：intent 比查表贵几千倍")
-    elif spec.limit:
-        steps.append(Narrow(limit=spec.limit, by=useful[0].unit.name))
+    else:
+        steps.append(Narrow(limit=spec.limit or 100, by=useful[0].unit.name))
 
     if spec.concept:
         steps.append(Intent(spec.concept, max_items=INTENT_INPUT_CAP))

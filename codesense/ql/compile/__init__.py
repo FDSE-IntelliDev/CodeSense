@@ -13,6 +13,7 @@ from codesense.ql.compile.cost import Estimate, estimate_hop, estimate_intent, e
 from codesense.ql.compile.partition import Cluster, partition
 from codesense.ql.compile.plan import (
     Boost,
+    Cohere,
     EvalUnit,
     Intent,
     Narrow,
@@ -23,10 +24,17 @@ from codesense.ql.compile.plan import (
 )
 from codesense.ql.compile.planner import plan
 from codesense.ql.compile.spec import GraphConstraint, QuerySpec
+from codesense.ql.compile.validate import (
+    Relation,
+    relation_lift,
+    validate_groups,
+    validate_relations,
+)
 
 __all__ = [
     "Boost",
     "Cluster",
+    "Cohere",
     "Estimate",
     "EvalUnit",
     "GraphConstraint",
@@ -34,6 +42,7 @@ __all__ = [
     "Narrow",
     "Plan",
     "QuerySpec",
+    "Relation",
     "ScoredTerm",
     "State",
     "Step",
@@ -46,4 +55,7 @@ __all__ = [
     "infer_kinds",
     "partition",
     "plan",
+    "relation_lift",
+    "validate_groups",
+    "validate_relations",
 ]

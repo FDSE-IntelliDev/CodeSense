@@ -306,12 +306,14 @@ def run_planned(
         return {}, ["理解失败"]
 
     try:
-        spec = build_spec(
+        spec, notes = build_spec(
             case["query"],
             understood["terms"],
             ctx,
             concept=understood["concept"],
             annotations=understood["annotations"],
+            groups=understood.get("groups"),
+            relations=understood.get("relations", ()),
         )
     except ValueError as exc:
         return {}, [f"构造规格失败: {exc}"]
@@ -322,7 +324,7 @@ def run_planned(
     ordered = sorted(state.current.nodes, key=lambda sid: (-score_of(state.current, sid), sid))
     for position, symbol_id in enumerate(ordered, 1):
         names.setdefault(state.current.nodes[symbol_id].name, position)
-    return names, list(execution.reasoning)
+    return names, notes + list(execution.reasoning)
 
 
 def rank(frag: Frag, unit: str) -> dict[str, int]:

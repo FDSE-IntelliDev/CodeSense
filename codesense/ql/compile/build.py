@@ -1,14 +1,15 @@
 """从「打过分的词」确定性地构造查询规格。
 
-LLM 只负责一件事：**判断哪些词和查询相关**。剩下的全部由统计决定——
+模型**提议**语义结构（哪些词相关、怎么分组、组之间有没有关系），
+统计**校验**它在这个代码库里成不成立（`validate`），
+统计再**决定**模型问不出来的部分：
 
-    单元怎么分   posting 重叠度（`partition`）
-    查哪些域     词的 posting 落在哪些域上
     偏好什么种类  词的 posting 落在哪些种类的符号上
+    查哪些域     词的 posting 落在哪些域上
+    执行顺序     `df` 让选择性在执行前可估（`planner`）
 
-理由和 MySQL 优化器不问用户怎么 join 一样：这些是统计问题，
-而统计在索引里、不在模型脑子里。实测模型在这三件事上都判得很差——
-查询问「实体字段上的校验」，它给的 kinds 里偏偏没有 `field`。
+分界线是：**语义问题问模型，事实问索引。** 查询问「实体字段上的校验」，
+模型给的 kinds 里偏偏没有 `field`——那不是它该答的问题。
 """
 
 from __future__ import annotations
@@ -17,8 +18,9 @@ from collections import Counter
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 
-from codesense.ql.compile.partition import partition
+from codesense.ql.compile.partition import Cluster, partition
 from codesense.ql.compile.spec import GraphConstraint, QuerySpec
+from codesense.ql.compile.validate import validate_groups, validate_relations
 from codesense.ql.context import EvalContext
 from codesense.ql.fields import IndexField
 from codesense.ql.satisfiers import AnnotationSatisfier, LexicalSatisfier
@@ -86,19 +88,40 @@ def build_spec(
     *,
     concept: str = "",
     annotations: Sequence[str] = (),
-    graph: Sequence[GraphConstraint] = (),
-) -> QuerySpec:
-    """把打过分的词组装成规格。
+    groups: Mapping[str, Sequence[str]] | None = None,
+    relations: Sequence[tuple[str, str]] = (),
+) -> tuple[QuerySpec, list[str]]:
+    """把模型的提议组装成规格，并把校验记录一并返回。
 
-    单元划分、种类偏好都由统计决定；``concept`` 与 ``annotations``
-    来自 LLM，因为它们确实是语义判断。
+    ``groups`` / ``relations`` 是模型的**提议**——先过统计校验，
+    没通过的会被合并或丢弃，理由记在返回的第二项里。
+    没给分组时退回按 posting 重叠度自动划分。
     """
     scored = _normalise(terms)
     known = [item for item in scored if ctx.postings.term_info(item.value) is not None]
     if not known:
         raise ValueError("没有一个词能在索引里查到")
 
-    clusters = partition([item.value for item in known], ctx)
+    notes: list[str] = []
+    values = [item.value for item in known]
+    if groups:
+        checked, group_notes = validate_groups(dict(groups), ctx)
+        notes += group_notes
+        clusters = [
+            Cluster(tuple(sorted(members)), f"模型分组 {name!r}，凝聚度校验通过")
+            for name, members in checked.items()
+        ]
+        names = list(checked)
+        kept_relations, rejected = validate_relations(relations, checked, ctx)
+        notes += rejected
+        notes += [f"采纳关系 {r.src}→{r.dst}：{r.detail}" for r in kept_relations]
+        constraints = tuple(
+            GraphConstraint(src=f"u{names.index(r.src)}", dst=f"u{names.index(r.dst)}")
+            for r in kept_relations
+        )
+    else:
+        clusters = partition(values, ctx)
+        constraints = ()
     weights = {item.value: item.score for item in known}
     units: list[QueryUnit] = []
     for index, cluster in enumerate(clusters):
@@ -119,12 +142,15 @@ def build_spec(
             )
         )
 
-    return QuerySpec(
-        query=query,
-        units=tuple(units),
-        graph=tuple(graph) if len(units) > 1 else (),
-        concept=concept,
-        kinds=infer_kinds([item.value for item in known], ctx),
+    return (
+        QuerySpec(
+            query=query,
+            units=tuple(units),
+            graph=constraints if len(units) > 1 else (),
+            concept=concept,
+            kinds=infer_kinds(values, ctx),
+        ),
+        notes,
     )
 
 
