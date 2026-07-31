@@ -9,12 +9,13 @@
 
 from __future__ import annotations
 
+import re
 from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
 
 from codesense.indexing.annotations import AnnotationUse
 
-__all__ = ["Declaration", "JavaDeclarationScanner"]
+__all__ = ["Declaration", "Invocation", "JavaDeclarationScanner"]
 
 #: 带 ``modifiers`` 子节点的声明。注解与修饰符都挂在那上面。
 _DECLARATIONS: dict[str, str] = {
@@ -36,6 +37,11 @@ _ANNOTATION_NODES = frozenset({"marker_annotation", "annotation"})
 _TYPE_KINDS = frozenset({"class", "interface", "enum", "record", "annotation_type"})
 
 _DOC_PREFIX = "/**"
+
+_WORD = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
+
+#: 有方法体、值得收集调用的声明。
+_CALLABLE_KINDS = frozenset({"method", "constructor"})
 
 #: Java 的修饰符关键字。tree-sitter 把它们做成节点类型本身，
 #: 所以「不是注解的 modifiers 子节点」就是修饰符——但仍然显式列出来，
@@ -61,6 +67,18 @@ JAVA_MODIFIERS = frozenset(
 
 
 @dataclass(frozen=True, slots=True)
+class Invocation:
+    """一个调用点。
+
+    ``receiver`` 是点号左边那段原文（`""` 表示没有接收者，即 `m()` 或 `this.m()`）。
+    保留原文而不是当场解析：解析需要整个项目的类型表，那是索引构建阶段的事。
+    """
+
+    name: str
+    receiver: str = ""
+
+
+@dataclass(frozen=True, slots=True)
 class Declaration:
     """一处声明的全部可索引信息。"""
 
@@ -73,6 +91,18 @@ class Declaration:
     doc: str = ""
     modifiers: frozenset[str] = frozenset()
     annotations: tuple[AnnotationUse, ...] = ()
+
+    #: 这个声明体内的调用点。带**接收者表达式**，让下游能按类型收窄——
+    #: Java 里绝大多数项目内调用是 `this.m()` / `field.m()` / `local.m()`，
+    #: 而字段和局部变量的声明类型就在 AST 里，不需要类型检查器。
+    calls: tuple[Invocation, ...] = ()
+
+    #: 本声明内可见的 `变量名 → 声明类型`：字段、参数、局部变量。
+    #: 用来把 `receiver.m()` 里的 receiver 解析成类型。
+    local_types: tuple[tuple[str, str], ...] = ()
+
+    #: 这个类型继承/实现了谁。查方法时要沿着它往上找。
+    supertypes: tuple[str, ...] = ()
 
 
 class JavaDeclarationScanner:
@@ -135,7 +165,70 @@ class JavaDeclarationScanner:
             doc=_javadoc(node, data),
             modifiers=frozenset(modifiers),
             annotations=tuple(uses),
+            calls=_invocations(node, data) if kind in _CALLABLE_KINDS else (),
+            local_types=_local_types(node, data) if kind in _CALLABLE_KINDS else (),
+            supertypes=_supertypes(node, data) if kind in _TYPE_KINDS else (),
         )
+
+
+def _invocations(node: object, data: bytes) -> tuple[Invocation, ...]:
+    """方法体里的调用点，保序去重。
+
+    只在**本声明自己的体**里找：碰到嵌套的方法声明就停，
+    否则匿名类里的调用会被算到外层方法头上。
+    """
+    found: dict[Invocation, None] = {}
+    for current in _own_body(node):
+        if current.type != "method_invocation":
+            continue
+        name = _text(current.child_by_field_name("name"), data)
+        if name:
+            receiver = _text(current.child_by_field_name("object"), data)
+            found.setdefault(Invocation(name=name, receiver=receiver), None)
+    return tuple(found)
+
+
+def _local_types(node: object, data: bytes) -> tuple[tuple[str, str], ...]:
+    """参数与局部变量的声明类型。"""
+    found: dict[str, str] = {}
+    for current in _own_body(node):
+        if current.type == "local_variable_declaration":
+            declared = _text(current.child_by_field_name("type"), data)
+            for child in current.children:
+                if child.type == "variable_declarator":
+                    name = _text(child.child_by_field_name("name"), data)
+                    if name and declared:
+                        found.setdefault(name, declared)
+    parameters = _child_of_type(node, "formal_parameters")
+    if parameters is not None:
+        for child in parameters.children:  # type: ignore[attr-defined]
+            if child.type == "formal_parameter":
+                name = _text(child.child_by_field_name("name"), data)
+                declared = _text(child.child_by_field_name("type"), data)
+                if name and declared:
+                    found.setdefault(name, declared)
+    return tuple(found.items())
+
+
+def _supertypes(node: object, data: bytes) -> tuple[str, ...]:
+    """`extends` / `implements` 里列的类型名。"""
+    found: list[str] = []
+    for field_name in ("superclass", "interfaces"):
+        child = node.child_by_field_name(field_name)  # type: ignore[attr-defined]
+        if child is not None:
+            found.extend(_WORD.findall(_text(child, data)))
+    return tuple(dict.fromkeys(n for n in found if n and n[0].isupper()))
+
+
+def _own_body(node: object) -> Iterator[object]:
+    """本声明自己的体内的节点——碰到嵌套的方法声明就不再往下。"""
+    stack = list(node.children)  # type: ignore[attr-defined]
+    while stack:
+        current = stack.pop()
+        if current.type in ("method_declaration", "constructor_declaration"):
+            continue
+        yield current
+        stack.extend(current.children)
 
 
 def _annotation_use(

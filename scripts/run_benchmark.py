@@ -8,6 +8,12 @@
     literal    只用查询里的字面词（下限参照）
     generic    LLM 凭通用知识派生词，**不给它看项目词表**
     grounded   LLM **从项目词表里挑**，外加注解信号
+    graph      在 grounded 之上用调用图/包含关系给候选重排序
+
+`grounded` vs `graph` 检验的是另一件事：在 4 万符号的项目里，
+25 个词 OR 起来会让结果集涨到几千个，**弱信号叠加会盖过强信号**。
+图的作用是给候选加一个与词法无关的证据——
+与强命中结构相邻的符号更可能相关。
 
 `generic` vs `grounded` 才是关键对比——它直接检验
 ``docs/design/09-grounding.md`` 第六节的主张：把项目词表放进 prompt，
@@ -15,6 +21,11 @@
 
 指标用**召回率**而非准确率：gold 集只求确凿不求完备，
 列出的都确实是正确答案，但没列的未必是错的。
+
+**派生结果会缓存**（`--cache`）。这不是为了省钱：实测同一条查询、
+同一份词表、temperature=0，两次运行的召回率能差 20 个百分点——
+LLM 的运行间方差和要测的效应同量级。不固定住它，任何跨运行的对比都是噪音。
+`--repeat` 可以跑多次取平均来量化这个方差。
 """
 
 from __future__ import annotations
@@ -30,9 +41,9 @@ from pathlib import Path
 from typing import Any
 
 from codesense.indexing import build_expansion_table
-from codesense.ql import Element, Frag, IndexField
+from codesense.ql import Edge, Element, Frag, IndexField
 from codesense.ql.context import EvalContext
-from codesense.ql.operators import eval_unit, score_of
+from codesense.ql.operators import eval_unit, reach, score_of
 from codesense.ql.satisfiers import AnnotationSatisfier, LexicalSatisfier
 from codesense.ql.store import (
     InMemoryEdgeStore,
@@ -48,6 +59,16 @@ VOCAB_SAMPLE = 600
 
 #: 报告用的截断位置。
 CUTOFFS = (10, 30, 100)
+
+#: 取多少个最强命中作为图的种子。太多就等于没收窄，太少则锚不住。
+GRAPH_SEEDS = 20
+
+#: 落在种子邻域里的候选获得的加成。图是**独立于词法**的证据，
+#: 所以是乘性加成而不是替代——它不该把词法完全不沾边的东西捧上来。
+GRAPH_BOOST = 0.6
+
+#: 种子邻域的跳数。跳数越多「有关系」这个结论越弱。
+GRAPH_HOPS = (1, 2)
 
 GENERIC_PROMPT = """\
 你在为一个代码检索系统扩展查询词。
@@ -121,7 +142,16 @@ def load_index(path: Path) -> tuple[EvalContext, dict[str, list[int]]]:
         symbols=InMemorySymbolStore(elements),
         postings=InMemoryPostingIndex(postings, total_symbols=len(elements)),
         expansion=build_expansion_table(),
-        edges=InMemoryEdgeStore([]),
+        edges=InMemoryEdgeStore(
+            Edge(
+                source_id=e["source_id"],
+                target_id=e["target_id"],
+                kind=e["kind"],
+                confidence=e["confidence"],
+                provenance=e["provenance"],
+            )
+            for e in payload.get("edges", ())
+        ),
     )
     by_name: dict[str, list[int]] = {}
     for element in elements:
@@ -162,10 +192,24 @@ def literal_terms(query: str, ctx: EvalContext) -> list[str]:
 
 
 def derive(
-    query: str, project: str, vocab: Sequence[str] | None, judge_config: Any
+    query: str,
+    project: str,
+    vocab: Sequence[str] | None,
+    judge_config: Any,
+    cache: Path | None = None,
+    attempt: int = 0,
 ) -> dict[str, Any]:
     """让 LLM 派生查询词。``vocab`` 为 None 时它只能凭通用知识。"""
+    import hashlib
+
     import requests
+
+    key = hashlib.sha256(
+        f"{judge_config.model}|{project}|{query}|{len(vocab or ())}|{attempt}".encode()
+    ).hexdigest()[:16]
+    slot = cache / f"{key}.json" if cache else None
+    if slot is not None and slot.is_file():
+        return json.loads(slot.read_text(encoding="utf-8"))
 
     prompt = (
         PROMPT.format(project=project, query=query, vocab=", ".join(vocab))
@@ -185,9 +229,42 @@ def derive(
     response.raise_for_status()
     content = response.json()["choices"][0]["message"]["content"]
     start, end = content.find("{"), content.rfind("}")
-    if start < 0 or end <= start:
-        return {"terms": [], "annotations": []}
-    return json.loads(content[start : end + 1])
+    answer = (
+        json.loads(content[start : end + 1])
+        if start >= 0 and end > start
+        else {"terms": [], "annotations": []}
+    )
+    if slot is not None:
+        slot.parent.mkdir(parents=True, exist_ok=True)
+        slot.write_text(json.dumps(answer, ensure_ascii=False), encoding="utf-8")
+    return answer
+
+
+def graph_rerank(frag: Frag, ctx: EvalContext, unit: str) -> dict[str, int]:
+    """用图邻近性给词法结果重排序。
+
+    取最强的若干命中当种子，向外走 1~2 跳，落在邻域里的候选加成。
+    走 `reach` 而不是 `hop`：这里只关心「沾不沾边」，不需要路径本身，
+    而路径枚举在几千个候选上会贵得多。
+    """
+    if not frag:
+        return {}
+    ordered = sorted(frag.nodes, key=lambda sid: (-score_of(frag, sid, unit), sid))
+    seeds = frag.induced(ordered[:GRAPH_SEEDS])
+    neighbourhood = set(
+        reach(seeds, ctx, edge=["calls", "contains"], direction="any", hops=GRAPH_HOPS).nodes
+    )
+    boosted = sorted(
+        frag.nodes,
+        key=lambda sid: (
+            -score_of(frag, sid, unit) * (1 + GRAPH_BOOST * (sid in neighbourhood)),
+            sid,
+        ),
+    )
+    ranks: dict[str, int] = {}
+    for position, symbol_id in enumerate(boosted, 1):
+        ranks.setdefault(frag.nodes[symbol_id].name, position)
+    return ranks
 
 
 def rank(frag: Frag, unit: str) -> dict[str, int]:
@@ -231,13 +308,16 @@ def run(args: argparse.Namespace) -> list[Result]:
         result.ranks["literal"] = rank(search(ctx, literal, ()), "q")
 
         for arm, vocab in (("generic", None), ("grounded", vocabulary(ctx, args.vocab_size))):
-            answer = derive(case["query"], project, vocab, config)
+            answer = derive(case["query"], project, vocab, config, args.cache, args.attempt)
             terms = [t.lower() for t in answer.get("terms", []) if isinstance(t, str)][:25]
             annotations = [a for a in answer.get("annotations", []) if isinstance(a, str)]
             result.terms[arm] = terms
             if arm == "grounded":
                 result.annotations = annotations
-            result.ranks[arm] = rank(search(ctx, sorted({*literal, *terms}), annotations), "q")
+            found = search(ctx, sorted({*literal, *terms}), annotations)
+            result.ranks[arm] = rank(found, "q")
+            if arm == "grounded":
+                result.ranks["graph"] = graph_rerank(found, ctx, "q")
 
         in_vocab = sum(1 for t in result.terms["generic"] if ctx.postings.term_info(t) is not None)
         total = len(result.terms["generic"]) or 1
@@ -249,14 +329,14 @@ def run(args: argparse.Namespace) -> list[Result]:
     return results
 
 
-ARMS = ("literal", "generic", "grounded")
+ARMS = ("literal", "generic", "grounded", "graph")
 
 
 def report(results: Sequence[Result]) -> None:
     for cutoff in CUTOFFS:
-        print(f"\n{'=' * 62}\n召回率 @{cutoff}")
+        print(f"\n{'=' * 74}\n召回率 @{cutoff}")
         print(f"  {'查询':<24}{'gold':>5}" + "".join(f"{a:>11}" for a in ARMS))
-        print("  " + "-" * 58)
+        print("  " + "-" * 70)
         totals: Counter[str] = Counter()
         for result in results:
             row = f"  {result.query_id:<24}{len(result.gold):>5}"
@@ -266,7 +346,7 @@ def report(results: Sequence[Result]) -> None:
                 row += f"{value:>10.0%} "
             print(row)
         n = len(results) or 1
-        print("  " + "-" * 58)
+        print("  " + "-" * 70)
         print(f"  {'平均':<24}{'':>5}" + "".join(f"{totals[a] / n:>10.0%} " for a in ARMS))
     print()
 
@@ -280,6 +360,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument(
         "--vocab-size", type=int, default=VOCAB_SAMPLE, help="放进 prompt 的词表大小，<=0 表示全给"
     )
+    parser.add_argument("--cache", type=Path, help="派生结果缓存目录，让运行可复现")
+    parser.add_argument("--attempt", type=int, default=0, help="第几次采样，用来量化 LLM 方差")
     parser.add_argument("--dump", type=Path, help="把明细写到这里")
     args = parser.parse_args(argv)
 
