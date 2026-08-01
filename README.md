@@ -15,22 +15,26 @@ CodeSense 的做法不是把查询翻译成更多关键词，而是**编译成�
 ## 先跑起来
 
 ```bash
-pip install tree-sitter tree-sitter-languages srctoolkit requests pyyaml
-pip install pytest ruff                    # 开发
+pip install -e .                           # 装上 codesense 命令
+pip install -e ".[dev]"                    # 外加 pytest / ruff
 
-pytest                                     # 468 passed
+pytest                                     # 492 passed
 ```
 
-建索引，然后查：
+**先 init，再 query。** 索引像 `.git` 一样落在仓库里，之后从任何子目录都能找到：
 
 ```bash
-# 建索引：只需要源码，不需要编译、不需要 LSP、不需要模型文件
-python scripts/build_index.py --source ~/src/netty --out ~/.codesense/netty
+cd ~/src/netty
+codesense init                             # 建 ./.codesense/，只需源码
+codesense query "写缓冲积压时的背压与流量控制"    # 不用再指路径
 
-# 查询：没有 API key 也能跑，自动降级到不用模型的 lexical 路径
-python scripts/search.py --index ~/.codesense/netty \
-    --query "写缓冲积压时的背压与流量控制" --show-script
+codesense info                             # 当前作用域下是哪份索引
+codesense query "..." --script             # 连生成的脚本一起打印
+codesense query "..." --why                # 每条结果下面挂上证据
 ```
+
+建索引**不需要**编译目标项目、不需要 LSP、不需要模型文件。
+查询**没有 API key 也能跑**，自动降级到不用模型的 lexical 路径。
 
 用 Python API：
 
@@ -42,16 +46,19 @@ p = Project.open("~/.codesense/netty")          # 之后重开，秒级
 print(p.search("池化缓冲区的分配与回收").explain())
 ```
 
-想用 LLM 路径（召回率更高）需要一个 key：
+想用 LLM 路径（召回率更高）需要一个 key。端点和模型名也走环境变量，
+免得每次查询都重打一遍——**命令行 flag 优先于环境变量**：
 
 ```bash
 export CODESENSE_API_KEY=sk-...
-python scripts/search.py --index ~/.codesense/netty --query "..." \
-    --base-url https://api.openai.com/v1 --model gpt-4o-mini
+export CODESENSE_BASE_URL=https://api.openai.com/v1     # 默认就是它
+export CODESENSE_MODEL=gpt-4o-mini
+
+codesense query "..."                      # 默认走 codegen 路径
 ```
 
-> ⚠️ `LlmConfig` 的默认端点是 dashscope。key 是 OpenAI 的就必须传 `--base-url`，
-> 否则直接 401。
+> ⚠️ key 只从环境变量或**未被跟踪的 `config.yml`** 读，且 `config.yml` 是相对
+> **当前目录**找的。在别的仓库里跑 CLI 时，用环境变量。
 
 ---
 
@@ -93,7 +100,8 @@ codesense/
 ├── llm/               模型适配器（llm → ql 单向依赖）
 ├── index.py           产物"是"什么（存取 + to_context）
 ├── search.py          三条查询路径
-└── project.py         主类
+├── project.py         主类
+└── cli.py             命令行（只解析参数）
 
 legacy/                重写前的实现（只读归档，不参与构建/lint/测试）
 ```

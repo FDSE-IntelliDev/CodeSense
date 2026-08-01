@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "codesense"
 version = "0.1.0"
-description = "基于语义查询语言（SemQL）的代码搜索系统"
+description = "把自然语言查询编译成针对代码库的查询脚本"
 requires-python = ">=3.10"
 
 # 这份列表是按代码里真实的 import 反查出来的，不是历史 requirements.txt 的照抄。
@@ -41,7 +41,7 @@ dev = [
 ]
 
 [project.scripts]
-codesense = "codesense.__main__:main"
+codesense = "codesense.cli:main"
 
 [tool.setuptools.packages.find]
 # 只打包核心实现。evaluation/ 是研究脚手架，刻意不随核心发布，

@@ -17,14 +17,16 @@ p = Project.open("~/.codesense/netty")
 print(p.search("写缓冲积压时的背压").explain())
 ```
 
-CLI 两个，都只做参数解析：
+命令行先 `init` 再 `query`，索引像 `.git` 一样落在仓库里，之后从任何子目录都能找到：
 
 ```bash
-python scripts/build_index.py --source ~/src/netty --out ~/.codesense/netty
-python scripts/search.py --index ~/.codesense/netty --query "..." --show-script
+cd ~/src/netty
+codesense init                          # 建 ./.codesense/
+codesense query "写缓冲积压时的背压"       # 不用再指路径
+codesense info                          # 当前作用域下是哪份索引
 ```
 
-规模：`codesense/` 6 888 行，`tests/` 4 060 行（468 个测试），`scripts/` 1 271 行。
+规模：`codesense/` 6,888 行，`tests/` 4,060 行（492 个测试），`scripts/` 1,122 行（研究脚手架）。
 重写前的实现归档在 `legacy/`（19 935 行），不参与构建、lint、测试。
 
 ---

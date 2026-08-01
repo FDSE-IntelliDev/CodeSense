@@ -39,18 +39,17 @@ export CODESENSE_API_KEY=sk-...
 # 或写进未被跟踪的 config.yml：  LLM: { api-key: sk-... }
 ```
 
-⚠️ `LlmConfig` 的默认端点是 **dashscope**。如果你的 key 是 OpenAI 的，
-不传 `--base-url https://api.openai.com/v1` 会直接 401。
+端点和模型名也可以走环境变量（`CODESENSE_BASE_URL` / `CODESENSE_MODEL`），
+flag 优先。⚠️ `LlmConfig` 自身的默认端点是 **dashscope**，但 CLI 默认用
+OpenAI；直接调库时注意这个差异。
 
 ### 三条命令
 
 ```bash
-# 建索引（lexical 接地，不需要任何模型文件）
-python scripts/build_index.py --source ~/src/netty --out ~/.codesense/netty
-
-# 搜索（没有 key 也能跑，自动降级到 lexical 路径）
-python scripts/search.py --index ~/.codesense/netty \
-    --query "写缓冲积压时的背压" --show-script
+cd ~/src/netty
+codesense init                      # 建 ./.codesense/，不需要任何模型文件
+codesense query "写缓冲积压时的背压"   # 从任何子目录都能找到索引
+codesense info                      # 当前作用域下是哪份索引
 
 # benchmark
 python scripts/run_benchmark.py --index-dir <索引目录> \
@@ -62,8 +61,7 @@ python scripts/run_benchmark.py --index-dir <索引目录> \
 向量接地要一份 fastText `.bin`（如 `cc.en.300.bin`，7 GB）：
 
 ```bash
-python scripts/build_index.py --source ... --out ... \
-    --strategy vectors --model ~/models/cc.en.300.bin
+codesense init --strategy vectors --vectors ~/models/cc.en.300.bin --force
 ```
 
 `vectors` 约需 8 GB 内存、netty 上 47 秒（不含模型加载）；`finetune` 约需 20 GB。
@@ -72,7 +70,7 @@ python scripts/build_index.py --source ... --out ... \
 ### 检查
 
 ```bash
-ruff check . && ruff format --check . && pytest        # 468 passed
+ruff check . && ruff format --check . && pytest        # 492 passed
 ```
 
 ---
@@ -114,7 +112,7 @@ ruff check . && ruff format --check . && pytest        # 468 passed
 分支 `feat/ql-rewrite`，**从未合进 main**。`main` 上还是重写前那套。
 重写前的实现归档在 `legacy/`（19 935 行），不参与构建、lint、测试。
 
-468 个测试全过，ruff 干净。源码全英文，文档全中文（这是刻意的）。
+492 个测试全过，ruff 干净。源码全英文，文档全中文（这是刻意的）。
 
 最近四个 commit：
 
