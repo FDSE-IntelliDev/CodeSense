@@ -1,152 +1,148 @@
 # 架构约定
 
-> **重写进行中。** 现役实现是 `codesense/ql/`（按 `docs/design/` 从头写）；
-> 重写前那套 SemCon → SemQL → 三执行器已归档到 `legacy/`，不参与构建与测试。
-> 本文档描述的多数内容属于归档实现，正在逐步更新。
-
 > 这份文档解释 CodeSense **为什么这样分层**，以及每条规则拦住了哪种常见写法。
 > 通用写法规范见组内 [DEV-COOKBOOK](https://github.com/FDSE-IntelliDev/DEV-COOKBOOK)，
 > 这里只写与本项目结构相关的部分。
+>
+> 想知道「做成了什么、量到了什么」看 [docs/report-pipeline.md](docs/report-pipeline.md)；
+> 想接手看 [HANDOFF.md](HANDOFF.md)。
 
 ---
 
 ## 一张图
 
-系统分两段。离线把源码变成索引，在线把自然语言变成检索条件再执行。
-
 ```
-【离线索引】  目标代码库
-     │
-     ↓  parsers/            按语言解析，产出符号表与依赖图
-     ↓  indexing/code_parser.py
-     ├─ indexing/ngram_split.py    符号名 → 子词 ngram 索引
-     ├─ indexing/invert_index.py   标识符 → 缩写子词倒排索引
-     └─ indexing/codegraph/        落成 SQLite 代码图库（LSP 路线）
-        codeql/                    同一份 schema 的 CodeQL 路线，用于对照
-     │
-     ↓
-   output/<project>/  symbols_index.json / ngramed_symbol.json / invert_index.json / codegraph.sqlite
-
-
-【在线查询】  自然语言查询
-     │
-     ↓  query/llm_semCon_extractor.py     LLM 抽出三类原子条件 SemCon
-     │
-     ↓  query/planners/                   每类条件各自编译成独立执行计划
-     ├─ SurfacePlanner   → surface_semql.json
-     ├─ RelationPlanner  → relation_semql.json
-     └─ IntentionPlanner → intention_semql.json
-     │
-     ↓  executors/                        按计划执行
-     ├─ surface_executor    倒排索引 + 缩写扩展召回，四层集合运算
-     ├─ relation_executor   caller/callee、图角色、路径约束
-     └─ intention_executor  语义意图判定
-     │
-     ↓  filters/                          精排：类型 / 聚类 / embedding / 调用关系
-     │
-   output/<project>/query_<id>/           每次查询独立一个目录
+                 目标代码库
+                     │
+   ┌─────────────────┴─────────────────┐
+   │  lang/       按语言解析成 Declaration        ← 扩展点
+   │  text/       标识符切分（delimiter + Viterbi）
+   │  indexing/   postings / graph / grounding
+   └─────────────────┬─────────────────┘
+                     ↓
+         <index>/  meta.json · index.json · expansion.json
+                     │
+   ┌─────────────────┴─────────────────┐
+   │  自然语言 query                             │
+   │        ↓  llm/     读懂查询（可选）         │
+   │        ↓  ql/compile   规划 + 生成脚本      │
+   │        ↓  ql/script    白名单闸门 + 步数预算 │
+   │        ↓  ql/operators 执行：Frag -> Frag   │
+   └─────────────────┬─────────────────┘
+                     ↓
+              带证据的结果
 ```
 
-三类条件的分工是整个系统的核心抽象，来龙去脉见
-[docs/decisions/0001-semcon-three-condition-split.md](docs/decisions/0001-semcon-three-condition-split.md)。
+两段的分界是**索引产物**。离线那段可以重跑而不影响已有查询，在线那段除了产物什么都不需要。
+
+---
 
 ## 各层职责
 
-> 下表中除入口层外，路径都省略了 `codesense/` 前缀。
+| 层 | 能做 | 不能做 |
+|---|---|---|
+| `lang/` | 解析一门语言，产出 `Declaration`；声明框架关系 | 不知道倒排索引、图、查询的存在 |
+| `text/` | 切标识符、建语料。**语言无关** | 不认识任何具体语言 |
+| `indexing/` | 建符号表 / 倒排 / 边 / 接地表 | 不查询；不认识 LLM |
+| `ql/` | 执行查询算子、编译脚本 | **只用标准库**；不认识 indexing、llm |
+| `llm/` | 调模型：读懂查询、生成脚本、意图判定 | 不定结构、不定顺序（那是统计的事） |
+| `index.py` | 产物的存取与 `to_context()` | 不建产物 |
+| `search.py` / `project.py` | 编排 | 不含算子逻辑 |
 
-| 层 | 位置 | 负责 | 禁止 |
-|---|---|---|---|
-| 配置 | 构造函数注入（`EvalContext` / `LlmConfig`） | 提供参数 | 写业务逻辑 |
-| 数据 | `query/plan_models.py`、`indexing/codegraph/schema.py` | 定义领域概念 | 写业务逻辑 |
-| 解析 | `parsers/` | 源码 → 结构化符号 | 知道谁在检索 |
-| 索引 | `indexing/`、`codeql/` | 建索引、落库 | 参与在线检索决策 |
-| 计划 | `query/planners/` | SemCon → 执行计划 | 执行检索 |
-| 执行 | `executors/` | 按计划取候选 | 解析 SemCon 原始字段 |
-| 精排 | `filters/` | 缩小候选集 | 扩大候选集 |
-| 入口 | `codesense/__main__.py`、`scripts/` | 解析参数、调用 | **写任何业务逻辑** |
+依赖方向单向：`indexing → lang / text / ql`，`llm → ql`。反过来一律不行。
 
-最后一行值得特别留意。把逻辑直接写进脚本当下最省事，但那段代码从此没法被测试、
-也没法被别处复用。判断标准是——**如果这段代码值得测试，它就不该待在 `scripts/` 里。**
+---
 
-## Planner 与 Executor 的契约
+## 模型与统计的分工
 
-这是最容易被违反的一条边界：
+这条是整个系统最容易做错的地方，两个极端都试过：
 
-> **Planner 解析 SemCon 原始字段，Executor 只读计划。**
+| 做法 | R@100 |
+|---|---|
+| 让模型决定一切（分几个单元、什么顺序、偏好什么种类） | 21% |
+| 完全不让模型碰结构 | 47%，但图信息完全用不上 |
+| **模型提议，统计校验，统计参数化** | 50–58% |
 
-三个 Planner 各自只认自己那类条件，互不干涉：
+所以现在是三段而不是二选一：
 
-```text
-SurfaceCon   -> SurfacePlanner   -> surface_semql.json
-RelationCon  -> RelationPlanner  -> relation_semql.json
-IntentionCon -> IntentionPlanner -> intention_semql.json
-```
+- 模型做**阅读理解**：挑词、打分、按语义分组、指出有没有「A 调用 B」这层意思、写判定标准
+- 统计做**校验**：分组要过凝聚度检查，关系要过边密度检查（编造的关系 lift 只有 0–0.03x，
+  真实的有 1.32–4.75x）
+- 统计做**优化**：种类偏好、执行顺序压根不问模型
 
-计划是 `query/plan_models.py` 里 `frozen=True` 的 dataclass，序列化成 JSON 落盘。
-Executor 读回来直接执行，**不要**再去碰原始 SemCon——一旦 Executor 开始解析
-SemCon 字段，改 schema 就得同时改 planner 和 executor 两处，抽象就漏了。
-
-## 核心与脚手架的边界
-
-顶层是两个平级的包，不是一个：
-
-```
-codesense/     核心功能实现  →  研究要做的那件事本身
-evaluation/    研究脚手架    →  指标、评测编排、实验归档，围绕核心转
-```
-
-`pyproject.toml` 里 `include = ["codesense*"]`，所以 `pip install` 出来的只有核心。
-
-依赖方向必须单向：
-
-```
-evaluation  ──依赖──>  codesense          ✅
-codesense   ──依赖──>  evaluation         ❌
-```
-
-同样的分法适用于别的东西：答辩 PPT（`slides/`）、入口脚本（`scripts/`）、
-数据与标注（`data/`）——都属于「围绕核心的脚手架」，各自一个顶层目录，
-不要塞进核心包。
+`codegen` 路径是这条原则的另一种实现：把**带 df 的词表**也给模型，让它自己排顺序——
+它于是拥有和规划器一样的依据。
 
 ---
 
 ## 几条硬约定
 
-### 1. 参数进配置，不写死在代码里
+这些都有测试机械强制，不是口头约定。
 
-阈值、路径、模型名、超参全部作为**流水线参数**：命令行 → 构造函数注入，不落配置文件。
+### 1. `codesense/ql/` 只用标准库，且不导入任何其它 codesense 子包
 
-理由很实际：跑实验要对比不同参数，参数写在代码里就意味着每次对比都要改代码，
-改完还得记得改回去——这是实验结果对不上的头号原因。
+强制：`tests/contract/test_ql_isolation.py`
 
-这个仓库吃过这个亏：`definition.py` 里写死了 `/Users/bytedance/...`，
-`main.py` 甚至把 `parse_args` 的参数写成了固定列表，命令行传什么都没用。
+破坏它的写法看起来都很无害（「从 indexing 借个函数」）。但那一层是纯逻辑，
+一旦引入第三方依赖，「能不能跑测试」就和「装没装齐环境」绑死了。
+需要旧实现的某个能力时，正确做法是**照着设计文档重新实现**，
+或把它明确提升为共享基础设施（那就要先从白名单放行并说明理由）。
 
-### 2. 密钥只从环境变量读
+### 2. import 不产生任何副作用
 
-`codesense/config.py` 里没有 `api_key` 字段，只有 `CODESENSE_API_KEY` 环境变量。
-配置文件会进版本库，密钥不能进。
+强制：同上。
 
-> ⚠️ 历史遗留：`definition.py` 里曾经明文写着 dashscope 的 key，
-> 已经进了 git 历史。代码里已经清掉，但**那个 key 必须去控制台吊销重发**。
+不该读盘、不该读配置、不该连网。破坏它的写法看起来完全无害——模块级常量里塞一个
+`load_config()`、默认参数写成 `def f(m=BASE_MODEL)`——但后果是没有配置文件就连
+import 都失败，于是不需要配置的纯逻辑也跟着没法测。
 
-### 3. 模块顶层不执行任何逻辑
+### 3. 参数走流水线，密钥走环境
 
-模块顶层只有定义，没有执行。`import` 一个模块不该有任何副作用——
-不该读盘、不该起进程、不该 print。
+阈值、路径、模型名、超参全部是**流水线参数**：命令行 → 构造函数注入，不落配置文件。
+配置文件会变成第二处事实来源，「到底生效的是哪个值」就说不清了。
 
-`config.py` 用 PEP 562 的模块级 `__getattr__` 就是为这条：
-旧代码 `from codesense.config import PROJECT_OUTPUT_DIR` 照常能用，
-但 YAML 是第一次访问时才读的，`import codesense.config` 本身不碰磁盘。
+只有 API key 例外：它不能当命令行参数（会进 shell 历史和进程列表），
+所以从 `CODESENSE_API_KEY` 读，回落到未被跟踪的 `config.yml`。
+`LlmConfig.__repr__` 永远不打印它——它会出现在日志、异常栈、`pytest -v` 里，
+而那正是最容易被复制粘贴出去的地方。
 
-### 4. 数据用 dataclass，不要用 dict 传
+> ⚠️ 历史遗留：`652a37f` 里明文写着 dashscope 的 key，**已经在远端**。
+> 代码里清掉了，但那个 key 必须去控制台吊销重发。
+
+### 4. 加一门语言不需要改 `indexing`
+
+强制：`tests/unit/lang/test_registry.py` 在测试文件里现场定义一个玩具语言并索引它。
+
+这条测试哪天要改 `codesense/indexing` 才能过，就说明扩展点失效了。
+
+### 5. 生成的脚本必须与 `Plan` 等价
+
+强制：`tests/unit/ql/compile/test_emit.py` 真跑一遍生成的脚本，断言和执行 `Plan` 结果相同。
+
+一旦分叉，脚本就成了一份看着像那么回事的假文档——比没有更糟，因为人会照着它推断系统行为。
+写这条测试之前踩过两次：`only(kind=...)` 被渲染成硬过滤而计划里是偏好加权，
+`Cohere` 在脚本里当场重排而计划里只标记邻域。两次都是脚本比计划筛得更狠。
+
+### 6. 数据用 dataclass，不要用 dict 传
 
 跨模块流动的数据结构写成 `frozen=True` 的 dataclass。
 拼错 key 的 dict 不会报错，只会返回 `None`，然后在很远的地方炸。
-
 要「改」一个不可变对象，用 `dataclasses.replace(obj, field=新值)` 造新的。
 
-### 5. 什么时候该拆文件
+### 7. 不可靠的信号加权，可靠的信号才过滤
+
+反复吃过亏的一条：
+
+- 模型给的**种类**不可靠——问「实体字段上的校验约束」，它给的 kinds 里偏偏没有 `field`，
+  硬过滤会把答案全删光。所以 `kind` 是**偏好不是过滤**。
+- **图约束**说的是两个单元之间的关系，不是对候选集的过滤。硬过滤会杀掉只命中一侧的答案，
+  而那恰恰是最常见的情形。所以是**加成**。
+- 查询单元之间**取并集不取交集**。「同时含有 performance 和 disk 关键词的元素」几乎不存在；
+  实测 netty 零拷贝查询里 gold 全在一个单元内，交完一个不剩。
+
+---
+
+## 什么时候该拆文件
 
 | 信号 | 处理 |
 |---|---|
@@ -155,46 +151,40 @@ codesense   ──依赖──>  evaluation         ❌
 | 一个文件超过 500 行 | 按职责拆成子模块 |
 | 改一个功能要同时改三个文件 | 抽象错了，重新划分边界 |
 
-按这把尺子，当前这几个文件已经超标，是下一步该拆的：
+按这把尺子，当前有一个超标：
 
 | 文件 | 行数 |
 |---|---|
-| `codesense/executors/surface_executor.py` | 982 |
-| `codesense/expansion/abbreviate.py` | 964 |
-| `codesense/filters/relation_filter.py` | 765 |
-| `codesense/filters/embedding_filter.py` | 738 |
+| `codesense/indexing/grounding.py` | 535 |
+
+它同时装着三件事——lexical 规则、向量空间的加载与微调、两者的合并——
+按职责拆成 `rules.py` / `vectors.py` / `merge.py` 是下一步该做的。
 
 ---
 
-## 待办：这轮整理没做完的事
+## 核心与脚手架的边界
 
-这次只搬了位置、改了导入、补了配套设施，**没碰函数内部逻辑**。以下是明确留下的债：
+`codesense/` 是研究要做的那件事本身。围着它转的东西各自一个顶层目录，
+**刻意不随核心发布**：
 
-### 1. 配置的过渡层要拆掉
+| 目录 | 内容 |
+|---|---|
+| `evaluation/` | benchmark 查询集与 gold |
+| `experiments/` | 每个实验一个目录：配置 + 记录 |
+| `scripts/` | 入口脚本，**只做参数解析和调用** |
+| `data/` | 查询集、标注、prompt（大文件不进版本库） |
+| `legacy/` | 重写前的实现，只读归档，不参与构建 / lint / 测试 |
 
-`config.py` 底部的 `_LEGACY_NAMES` 是给 40 处旧调用点留的兼容层。
-它们现在写的是 `from codesense.config import PROJECT_OUTPUT_DIR`，
-应该逐步改成 `load_config()` 显式传参。迁完就能把整块 `__getattr__` 删掉。
+`pyproject.toml` 里 `include = ["codesense*"]`——其余都不打包。
 
-一次性改要动所有函数签名，所以按模块分批迁——改到哪个模块顺手迁哪个。
+---
 
-### 2. 可替换的组件还没有 ABC 和注册表
+## 待办
 
-`filters/` 下有四个过滤器、`executors/` 下有三个执行器、`parsers/` 下有五个解析器，
-它们各自是「同一件事的不同做法」，但现在没有共同接口，选哪个靠调用方写死。
+见 [HANDOFF.md](HANDOFF.md#5-接着做什么)。摘要：
 
-按 DEV-COOKBOOK 的规则 3 和 4，这类东西应该：定一个 ABC，用注册表选实现，
-再配一套契约测试遍历所有注册实现自动检查。这是下一轮该做的结构性改动。
-
-### 3. ruff 的豁免名单要逐条还
-
-`pyproject.toml` 里给老模块挂了一批具体规则号的豁免，
-其中 UP006/UP035/UP045 共 1355 条是 typing 写法现代化，
-`ruff check --fix --unsafe-fixes` 能一次修完——建议单独开一个 PR，
-别和结构调整混在一起。改到哪个模块就顺手清掉它那条豁免。
-
-### 4. 在线 pipeline 目前是断的
-
-`codesense/__main__.py` 里 Surface 和 Relation Executor 两步被注释掉了，
-只有 Intention Executor 在跑。这是调试时留下的状态，整理时原样保留没动，
-恢复与否由你决定。
+1. 重建 `tests/fixtures/ql/mini_index.json`——它早于注解/修饰符抽取，
+   导致两条缺口测试对着旧产物断言
+2. 查清 netty-backpressure 为什么六条路径全 0%
+3. 收紧接地的 subseq 规则（噪音多过信号）
+4. gap2（字段读写边）要新写；gap4（数据流边）是唯一需要**新建分析能力**的一项
