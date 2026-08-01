@@ -1,1 +1,0 @@
-对比 SemQL 2.0 与 Grep 和 Dense Search。在语义等价召回上，通过 term_embed 膨胀+Intention 验证实现高召回高精度。在硬性排除上，exclude property+NOT-Pushdown 实现确定性硬过滤。在调用图约束上，graph_constraint+BFS/DFS 在 &lt;10ms 内完成结构过滤。在关联节点返回上，Bundle 协同评分将相关代码作为整体返回。在可解释性上，多维证据（surface+relation+intention）+LLM reasoning 给 Agent 提供完整推理依据。LLM 代价受控：前置过滤后候选集 &lt;100。

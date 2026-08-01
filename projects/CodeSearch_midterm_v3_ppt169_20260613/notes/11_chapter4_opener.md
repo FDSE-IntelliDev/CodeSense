@@ -1,1 +1,0 @@
-本页是第四章的过渡页。第四章展示 SemQL 2.0 的端到端方法流程：Query Compiler → Query Optimizer (RBO/CBO) → Executor → Bundle Generator → Grouped Reranker。核心设计思想是先用低成本条件收缩候选集，再把高成本语义判断用于少量候选。

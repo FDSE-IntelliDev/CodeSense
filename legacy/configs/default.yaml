@@ -1,0 +1,40 @@
+# CodeSense 默认配置
+#
+# 所有可调参数都写在这里，不要写死在代码里（见 ARCHITECTURE.md 规则「参数进配置」）。
+# 跑实验时不要改这个文件，复制一份到 experiments/EXP-XXXX/config.yaml 再改，
+# 否则实验记录里的配置和当时真正跑的对不上。
+#
+# 密钥不在这里。LLM 的 key 只从环境变量 CODESENSE_API_KEY 读，见 .env.example。
+
+# ---- 被搜索的目标代码库 ----
+target:
+  # 待检索项目的源码路径。改成你本地的路径。
+  project_path: "~/Workspace/projects/youlai-boot-master"
+  # 项目名，决定离线产物落在 output/<project_name>/ 下。
+  project_name: "youlai-boot-master"
+
+# ---- 产物目录 ----
+# 相对路径按仓库根目录解析。整个 output/ 不进版本库。
+output:
+  dir: "output"
+  # 增强调用链语料的文件名，embedding 训练要用。
+  corpus: "enhanced_call_chain_corpus.json"
+  # 缩写检测（expansion/detect_abbr.py）的中间产物目录。
+  abbr_result_dir: "output/abbr_results"
+
+# ---- LLM ----
+# 用于 SemCon 抽取、意图判定等。key 从 CODESENSE_API_KEY 环境变量读。
+llm:
+  base_url: "https://dashscope.aliyuncs.com/compatible-mode/v1"
+  model: "qwen-plus"
+
+# ---- 外部工具 ----
+tools:
+  # Eclipse JDT.LS 可执行文件，解析 Java 调用链要用。
+  # macOS (brew install jdtls) 一般在 /opt/homebrew/bin/jdtls。
+  jdtls_path: "jdtls"
+
+# ---- 在线查询 ----
+query:
+  # 每次在线查询的产物落在 output/<project_name>/query_<id>/ 下。
+  default_id: 1

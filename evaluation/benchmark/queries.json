@@ -1,0 +1,68 @@
+{
+  "_comment": [
+    "语义检索 benchmark。每条查询的 gold 都在对应项目的索引里核对过存在。",
+    "选题标准：**查询的字面词在目标符号名里基本不出现**——只有这样才能",
+    "区分「关键词匹配」和「语义检索」。gold 不求完备，只求确凿：",
+    "列出的每一个都确实是该查询的正确答案，用来算召回率而非准确率。"
+  ],
+  "queries": [
+    {
+      "id": "netty-pooling",
+      "project": "netty",
+      "query": "对象池化与复用，避免频繁分配带来的 GC 压力",
+      "why_hard": "目标符号名里没有 allocation / GC / 复用，靠的是 Recycler / Arena / Chunk 这些领域词",
+      "gold": ["Recycler", "PooledByteBufAllocator", "PoolArena", "PoolChunk", "PoolThreadCache", "ObjectPool", "PoolSubpage"]
+    },
+    {
+      "id": "netty-zerocopy",
+      "project": "netty",
+      "query": "零拷贝的文件传输，不把文件内容读进用户态内存",
+      "why_hard": "FileRegion 名字里没有 zero / copy，字面查完全落空",
+      "gold": ["FileRegion", "DefaultFileRegion", "transferTo", "transferred"]
+    },
+    {
+      "id": "netty-backpressure",
+      "project": "netty",
+      "query": "写缓冲积压时的背压与流量控制",
+      "why_hard": "背压在 Netty 里叫 watermark / writability，字面词对不上",
+      "gold": ["WriteBufferWaterMark", "ChannelOutboundBuffer", "isWritable", "incrementPendingOutboundBytes", "setUnwritable"]
+    },
+    {
+      "id": "netty-offheap",
+      "project": "netty",
+      "query": "堆外内存的申请与释放",
+      "why_hard": "堆外在代码里是 direct / unsafe / cleaner，且散在多个类",
+      "gold": ["PlatformDependent", "UnpooledDirectByteBuf", "PooledDirectByteBuf", "DirectArena", "freeDirectBuffer"]
+    },
+    {
+      "id": "hikari-eviction",
+      "project": "HikariCP",
+      "query": "后台回收空闲或失效的数据库连接",
+      "why_hard": "回收在这里叫 housekeep / evict / keepalive，且是定时任务",
+      "gold": ["HouseKeeper", "softEvictConnection", "softEvictConnections", "closeConnection", "KeepaliveTask"]
+    },
+    {
+      "id": "hikari-validation",
+      "project": "HikariCP",
+      "query": "借出连接前判断它是否仍然可用",
+      "why_hard": "可用性检查藏在 timeout / validation / failFast 这些词后面",
+      "gold": ["checkFailFast", "setNetworkTimeout", "isUseJdbc4Validation", "getConnection"]
+    },
+    {
+      "id": "petclinic-http",
+      "project": "spring-petclinic",
+      "query": "处理表单提交的 HTTP 入口",
+      "why_hard": "**纯注解驱动**——方法名叫 processCreationForm，靠 @PostMapping 才认得出",
+      "annotation_only": true,
+      "gold": ["processCreationForm", "processUpdateForm", "processFindForm"]
+    },
+    {
+      "id": "petclinic-validation",
+      "project": "spring-petclinic",
+      "query": "实体字段上的输入校验约束",
+      "why_hard": "**纯注解驱动**——字段名是 firstName / lastName，靠 @NotBlank 才认得出",
+      "annotation_only": true,
+      "gold": ["firstName", "lastName", "address", "city", "telephone"]
+    }
+  ]
+}

@@ -1,211 +1,159 @@
 # CodeSense: Intent-Aware Code Search Beyond Keywords
 
-基于语义查询语言（SemQL）的代码搜索系统。给定自然语言查询，通过 LLM 提取结构化语义条件，经由倒排索引 + 缩写扩展 + embedding 匹配生成候选集，再通过类型过滤、聚类过滤、embedding 过滤、调用关系过滤等多阶段精排，返回最相关的代码元素。
+> **重写进行中。** 现役实现是 `codesense/ql/`（按 `docs/design/` 从头写）；
+> 重写前那套 SemCon → SemQL → 三执行器已归档到 `legacy/`，不参与构建与测试。
+> 本文档描述的多数内容属于归档实现，正在逐步更新。
+
+基于语义查询语言（SemQL）的代码搜索系统。给定自然语言查询，通过 LLM 提取结构化
+语义条件，经由倒排索引 + 缩写扩展 + embedding 匹配生成候选集，再通过类型过滤、
+聚类过滤、embedding 过滤、调用关系过滤等多阶段精排，返回最相关的代码元素。
+
+---
+
+## 先跑起来
+
+```bash
+conda activate codesearch
+pip install -e ".[dev]"
+
+cp .env.example .env && $EDITOR .env     # 填 CODESENSE_API_KEY
+# 参数通过命令行传给 scripts/ 下的脚本，不需要改配置文件
+
+pytest                                   # 70 个测试，应该全绿
+python -m codesense --help
+```
+
+离线建索引，再在线查一次：
+
+```bash
+python -m codesense --init                                  # 建索引（慢，几分钟起）
+python -m codesense --query "Find the entry function that handles user login authentication"
+```
+
+> ⚠️ 当前在线 pipeline 只有 Intention Executor 是打开的，Surface 和 Relation
+> 两步在 `codesense/__main__.py` 里被注释掉了。这是调试时留下的状态，
+> 见 [ARCHITECTURE.md 的待办](ARCHITECTURE.md#待办这轮整理没做完的事)。
+
+---
+
+## 阅读顺序
+
+1. **[ARCHITECTURE.md](ARCHITECTURE.md)** —— 离线/在线两段怎么分层、各层能做什么不能做什么。
+   入组第一天读这份。
+2. `codesense/query/plan_models.py` —— planner 和 executor 之间的契约都在这些 dataclass 里。
+3. **[docs/search-pipeline.md](docs/search-pipeline.md)** —— 检索流程的详细设计。
+4. **[docs/decisions/](docs/decisions/)** —— 想知道「为什么当初这么设计」时翻。
+5. **[CONTRIBUTING.md](CONTRIBUTING.md)** —— 提交前要过哪几条。
+
+完整文档索引见 [docs/README.md](docs/README.md)。
+
+---
 
 ## 系统架构
 
-系统分为 **离线索引** 和 **在线查询** 两大阶段：
+### 离线索引
 
-### 离线索引（Offline Indexing）
+把源代码解析成结构化索引：
 
-将源代码解析为结构化索引，供在线检索使用：
-
-1. **代码解析** (`code_parser.py`) — 解析源文件，提取符号表、依赖图
-   - `init/build_code_db.py` — 现有 parser + Java LSP 数据库构建链路
-   - `codeQL/` — CodeQL 批量解析与同 schema 数据库构建链路，用于和 LSP 结果对比
-2. **子词分词** (`ngram_split.py`) — 对符号名进行分词，构建 `子词 -> [代码元素]` 的 ngram 索引
-3. **倒排索引** (`invert_index.py`) — 基于缩写扩展，构建 `标识符 -> [缩写子词]` 的倒排索引
-
-### 在线查询（Online Search）
-
-将自然语言查询转化为结构化检索条件并执行搜索：
-
-1. **查询理解**
-   - `query_processing/llm_keyword_extractor.py` — LLM 提取关键词、意图、目标类型
-   - `query_processing/llm_semCon_extractor.py` — LLM 提取 SemCon 原子条件（surface / intention / relation）
-   - `query_processing/planners/` — 将三类 SemCon 分别编译为独立执行计划
-   - `query_processing/semQL_composer.py` — 迁移期保留的旧版组合 SemQL 兼容层
-2. **候选召回** (`executor/surface_executor.py`)
-   - 倒排索引 + 缩写扩展召回（`search/`）
-   - Planner 类型过滤与四层集合执行：term OR、group AND(n)、condition subtract、跨 condition 合并
-   - call scope 按无向调用链距离补齐 group coverage，并输出 `surface_evidence_hop_0.json`
-   - 在执行 clause 的 identity / OR / AND(n) 前，将各 group 的直接检索结果保存到 `surface_group_search_results.json`
-3. **精排过滤**
-   - 聚类过滤（`filters/cluster_pipeline.py`）— 基于语义向量聚类，按簇相关性分层
-   - Embedding 过滤（`filters/embedding_filter.py`）— 基于训练好的 term embedding 细粒度打分
-   - 调用关系过滤（`filters/relation_filter.py`）— 基于 LSP 查询 caller/callee 约束
-
-## 支持的语言
-
-| 语言 | 解析方式 |
-|------|---------|
-| Python | 内置 `ast` |
-| Java | `javalang` AST + JDT.LS (LSP) |
-| JavaScript / TypeScript | `tree-sitter` |
-| C / C++ | `ctags` |
-
-## 项目结构
-
-```
-CodeSearch/
-├── main.py                    # 主入口（离线 + 在线 pipeline）
-├── code_parser.py             # 代码解析：提取符号表与依赖图
-├── ngram_split.py             # 符号名分词 & ngram 索引构建
-├── invert_index.py            # 倒排索引构建（缩写扩展）
-├── definition.py              # 全局常量与配置
-├── parsers/                   # 多语言代码解析器
-│   ├── registry.py            # 语言注册 & 路由
-│   ├── python_parser.py
-│   ├── java_parser.py
-│   ├── javascript_parser.py
-│   ├── c_cpp_parser.py
-│   ├── ctags_parser.py
-│   ├── java_lsp_client.py     # Java LSP 客户端
-│   ├── parallel_java_lsp_client.py
-│   └── code_element_types.py  # 代码元素类型注册表
-├── codeQL/                    # CodeQL 离线解析与 codegraph.codeql.sqlite 构建
-│   ├── build_code_db.py
-│   ├── runner.py
-│   ├── transform.py
-│   └── queries/java/
-├── query_processing/          # 查询理解
-│   ├── llm_keyword_extractor.py   # LLM 关键词提取
-│   ├── llm_semCon_extractor.py    # LLM SemCon 条件提取
-│   └── semQL_composer.py          # SemQL 组合器
-├── DSL/                       # 查询 DSL 定义
-│   ├── query_dsl.py           # 原始查询 DSL schema
-│   ├── surface_con.py         # Surface 条件 schema
-│   ├── intention_con.py       # Intention 条件 schema
-│   └── relation_con.py        # Relation 条件 schema
-├── search/                    # 候选召回
-│   ├── invert_index_search.py     # 倒排索引搜索入口
-│   ├── full_term_matcher.py       # 关键词 -> 缩写 -> 子词 -> 符号匹配
-│   ├── fuzzy_matcher.py
-│   └── regex_search.py
-├── filters/                   # 精排过滤
-│   ├── type_filter.py         # 代码元素类型过滤
-│   ├── cluster_pipeline.py    # 语义聚类过滤
-│   ├── embedding_filter.py    # Term embedding 过滤
-│   └── relation_filter.py     # 调用关系过滤（LSP）
-├── executor/                  # 执行器
-│   ├── surface_executor.py    # Stage 1: 召回 + 类型过滤
-│   └── relation_engine.py
-├── embedding/                 # Term Embedding 模型
-│   ├── embedding_main.py      # 统一入口（训练 / 查询）
-│   ├── hybrid_term_embedding.py
-│   ├── semantic_term_embedding.py
-│   ├── icf_term_embedding.py
-│   └── pairwise_term_reranker.py
-├── expansion/                 # 缩写扩展
-│   ├── abbreviate.py          # 缩写生成（前缀 / 辅音骨架 / 子序列）
-│   └── NameHandler.py
-├── tokenizer/                 # 分词器
-│   ├── tokenizer_core.py      # 分词入口（camel + BPE / unigram）
-│   ├── sentencepiece_bpe_tokenizer.py
-│   └── sentencepiece_unigram_tokenizer.py
-├── utils/
-│   ├── file_utils.py
-│   └── llm_api.py             # LLM API 调用封装
-└── output/                    # 索引与搜索结果输出
-```
-
-## 安装
-
-```bash
-pip install -r requirements.txt
-```
-
-### 系统依赖 (LSP 支持)
-
-分析 Java 项目调用链需要安装 JDT.LS：
-
-- **macOS (Homebrew)**:
-  ```bash
-  brew install jdtls
-  ```
-- **其他系统**: 参考 [eclipse.jdt.ls](https://github.com/eclipse/eclipse.jdt.ls) 官方页面，将 `jdtls` 添加到环境变量。
-
-### 可选系统依赖（CodeQL 对比链路）
-
-CodeQL 版本默认生成独立的 `codegraph.codeql.sqlite`，不会覆盖 LSP 版本。
-安装方式、构建模式和完整命令见 [`codeQL/README.md`](codeQL/README.md)。
-
-## 运行
-
-### 离线的索引构建
-
-```bash
-python main.py --project_path /path/to/project --output_dir /path/to/output
-```
-
-生成文件：
-- `symbols_index.json` — 代码符号表
-- `dependency_graph.json` — 依赖关系图
-- `ngramed_symbol.json` — 子词 -> 代码元素索引
-- `invert_index.json` — 标识符 -> 缩写子词倒排索引
+1. **代码解析**（`codesense/indexing/code_parser.py`）—— 解析源文件，提取符号表、依赖图
+2. **子词分词**（`indexing/ngram_split.py`）—— 对符号名分词，构建 `子词 → [代码元素]` 索引
+3. **倒排索引**（`indexing/invert_index.py`）—— 基于缩写扩展，构建 `标识符 → [缩写子词]` 倒排索引
+4. **代码图库**（`indexing/codegraph/`）—— 落成 SQLite；`codesense/codeql/` 是同 schema 的
+   CodeQL 路线，用于和 LSP 结果对照
 
 ### 在线查询
 
-```bash
-python main.py --query "Find the entry function that handles user login authentication"
+把自然语言转成结构化检索条件并执行：
+
+1. **查询理解**（`codesense/query/`）—— LLM 抽出三类 SemCon 原子条件，
+   三个 planner 各自编译成独立执行计划
+2. **候选召回**（`codesense/executors/`）—— 倒排索引 + 缩写扩展召回，
+   四层集合运算：term OR、group AND(n)、condition subtract、跨 condition 合并
+3. **精排过滤**（`codesense/filters/`）—— 类型 / 聚类 / embedding / 调用关系
+
+### 支持的语言
+
+| 语言 | 解析方式 |
+|------|---------|
+| Java | `tree-sitter` + JDT.LS (LSP) |
+| Python | 内置 `ast` |
+| JavaScript / TypeScript | `tree-sitter` |
+| C / C++ | `ctags` |
+
+---
+
+## 目录导览
+
+```
+├── codesense/               核心功能实现 —— 研究要做的那件事本身
+│   ├── __main__.py          CLI（只解析参数，不含业务逻辑）
+│   ├── config.py            配置（YAML → frozen dataclass，字段拼错立刻报错）
+│   ├── indexing/            离线索引
+│   │   ├── code_parser.py       源码 → 符号表 + 依赖图
+│   │   ├── ngram_split.py       符号名分词与 ngram 索引
+│   │   ├── invert_index.py      缩写扩展倒排索引
+│   │   └── codegraph/           SQLite 代码图库（LSP 路线）
+│   ├── codeql/              CodeQL 路线，产出同 schema 的库用于对照
+│   ├── parsers/             多语言解析器
+│   ├── dsl/                 SemCon 三类条件的 schema
+│   ├── query/               查询理解
+│   │   ├── llm_semCon_extractor.py   LLM 抽 SemCon
+│   │   ├── planners/                 SemCon → 三份独立执行计划
+│   │   └── plan_models.py       ★ planner 与 executor 的契约
+│   ├── executors/           surface / relation / intention 三个执行器
+│   ├── filters/             类型 / 聚类 / embedding / 调用关系过滤
+│   ├── search/              倒排索引检索、全词匹配、模糊与正则
+│   ├── expansion/           缩写扩展
+│   ├── embedding/           term embedding 训练与查询
+│   ├── tokenizer/           分词器（camel + BPE / unigram，含训好的模型）
+│   └── utils/
+│
+├── evaluation/              研究脚手架 —— 围绕核心转，刻意不随核心发布（骨架待填）
+├── experiments/             每个实验一个目录：配置 + 记录
+├── tests/
+│   ├── unit/                纯逻辑，不碰 IO
+│   ├── integration/         端到端，标 slow
+│   └── fixtures/mini_project/   测试用的最小目标代码库
+│
+├── legacy/                 重写前的实现（只读归档）
+├── data/                    查询集、标注、prompt（大文件不进版本库）
+├── scripts/                 入口脚本（只做参数解析和调用）
+├── docs/                    专题文档与设计决策记录
+├── output/                  索引与检索产物（gitignore）
+├── runs/                    实验归档（gitignore）
+└── slides/                  答辩 PPT 与素材（gitignore）
 ```
 
-每次在线查询会在 `output/<project>/query_<id>/` 下生成独立查询计划：
+---
 
-- `query_plan.json` — 轻量计划清单，只记录三类子计划的位置
-- `surface_semql.json` — Surface keyword groups、组内 OR、group logic、匹配类型和 include/exclude 逻辑
-- `relation_semql.json` — caller/callee、图角色、路径及其他结构约束
-- `intention_semql.json` — 语义 query profile 和 include/exclude 意图要求
-- `surface_group_search_results.json` — term OR 与类型过滤后的逐 group 直接命中，位于 clause 集合运算之前
-- `surface_evidence_hop_0.json` — 最终 Surface 候选的 condition/group、term、matched term 与图距离证据
+## 产物结构
 
-三个 Planner 只解析各自的 SemCon 字段：
+离线产物落在 `output/<project_name>/`：
 
-```text
-SurfaceCon   -> SurfacePlanner   -> surface_semql.json
-RelationCon  -> RelationPlanner  -> relation_semql.json
-IntentionCon -> IntentionPlanner -> intention_semql.json
-```
+| 文件 | 内容 |
+|---|---|
+| `symbols_index.json` | 代码符号表 |
+| `dependency_graph.json` | 依赖关系图 |
+| `ngramed_symbol.json` | 子词 → 代码元素索引 |
+| `invert_index.json` | 标识符 → 缩写子词倒排索引 |
+| `codegraph.sqlite` | 代码图库 |
 
-Surface 与 Relation Executor 已分别直接读取 `surface_semql.json` 和
-`relation_semql.json`；Intention Executor 仍按后续迁移顺序接入独立计划。旧组合
-SemQL 只保留兼容入口，不再作为 Surface/Relation Executor 的输入。
+每次在线查询在 `output/<project_name>/query_<id>/` 下独立成目录：
 
-Surface plan 按层级表达组合逻辑：group 内的 keywords/synonyms 做 OR，同一
-condition 的 include groups 做 AND(n)，exclude groups 构造负向集合并从正向
-结果中减去。多个 SurfaceCon condition 使用 `(match_kind, code_element_types)`
-作为兼容键：兼容键相同的结果取交集，不同兼容组之间取并集。
+| 文件 | 内容 |
+|---|---|
+| `query_plan.json` | 轻量清单，只记录三类子计划的位置 |
+| `surface_semql.json` | keyword groups、组内 OR、group logic、匹配类型、include/exclude |
+| `relation_semql.json` | caller/callee、图角色、路径及其他结构约束 |
+| `intention_semql.json` | 语义 query profile 与 include/exclude 意图要求 |
+| `surface_group_search_results.json` | 逐 group 的直接命中，位于集合运算之前 |
+| `surface_evidence_hop_0.json` | 最终候选的 condition/group、term、matched term 与图距离证据 |
 
-Relation plan 将单个 clause 内的 file、graph role、caller 和 callee 约束按 AND
-执行；多个 include clause 继续做 INTERSECT；多个 exclude
-clause 做 UNION 后从结果中减去。caller/callee 优先查询项目代码关系数据库，无法
-解析时复用 LSP fallback。在线 `code_ql` 执行尚未接入，计划会保留该字段并在执行
-报告中明确标记为未执行。
+---
 
-## 数据结构 (Schema)
+## SemQL 查询结构
 
-### 代码元素 (symbols_index.json)
-
-```json
-{
-  "symbol_id": 1,
-  "name": "YouLaiBootApplication",
-  "type": "class",
-  "file": "/absolute/path/to/file.java",
-  "range": {
-    "start_line": 15,
-    "end_line": 21
-  },
-  "signature": "class YouLaiBootApplication",
-  "language": "java",
-  "doc": "包含的文档注释内容",
-  "container": "com.youlai.boot"
-}
-```
-
-### SemQL 查询结构
-
-SemQL 将自然语言查询分解为三类原子条件：
+SemQL 把自然语言查询分解为三类原子条件：
 
 | 条件类型 | 用途 | 关键字段 |
 |---------|------|---------|
@@ -214,3 +162,48 @@ SemQL 将自然语言查询分解为三类原子条件：
 | **Relation** | 代码结构约束 | caller, callee, graph_constraint, file_path, code_ql |
 
 每条条件通过 `property` 字段标记为 `include` 或 `exclude`。
+
+- Surface plan 按层级表达组合逻辑：group 内 keywords/synonyms 做 OR，同一 condition
+  的 include groups 做 AND(n)，exclude groups 构造负向集合并从正向结果中减去。
+  多个 condition 用 `(match_kind, code_element_types)` 作兼容键：相同取交集，不同取并集。
+- Relation plan 将单个 clause 内的 file、graph role、caller、callee 约束按 AND 执行；
+  多个 include clause 做 INTERSECT，多个 exclude clause 做 UNION 后减去。
+  caller/callee 优先查代码图库，无法解析时回退 LSP。在线 `code_ql` 执行尚未接入，
+  计划会保留该字段并在执行报告中标记为未执行。
+
+为什么这么分，见 [docs/decisions/0001-semcon-three-condition-split.md](docs/decisions/0001-semcon-three-condition-split.md)。
+
+---
+
+## 外部依赖
+
+分析 Java 调用链需要 Eclipse JDT.LS：
+
+```bash
+brew install jdtls                     # macOS
+```
+
+其他系统参考 [eclipse.jdt.ls](https://github.com/eclipse/eclipse.jdt.ls)，
+装好后把路径作为命令行参数传给对应脚本。
+
+CodeQL 对照路线默认生成独立的 `codegraph.codeql.sqlite`，不会覆盖 LSP 版本。
+安装方式与完整命令见 [`codesense/codeql/README.md`](codesense/codeql/README.md)。
+
+---
+
+## 日常命令
+
+```bash
+pytest                          # 全部测试（跳过 slow）
+pytest tests/unit               # 只跑快的
+pytest -m slow                  # 需要重依赖的那些
+ruff check . --fix              # 查 + 自动修
+ruff format .                   # 统一格式
+
+python -m codesense --init                       # 建索引
+python -m codesense --query "..." --query_id 2   # 查询
+python -m scripts.run_regex_search readahead ra  # 单步调试
+```
+
+提交前这三条要过：`ruff check .`、`ruff format --check .`、`pytest`。
+详见 [CONTRIBUTING.md](CONTRIBUTING.md)。

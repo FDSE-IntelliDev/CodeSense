@@ -1,21 +1,46 @@
-# IDE settings
-.idea/
-
-# Python cache directories (all levels)
+# Python
 __pycache__/
-**/__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
 
-# Local history
-.history
+# 测试与工具缓存
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# 实验产物：结果不进版本库，配置进
+output/
+outputs/
+runs/
+*.log
+
+# 环境与密钥：绝对不要提交
+.env
+.env.keys
+*.key
+
+# 大文件：答辩 PPT、素材、模型权重
+# 这些留在本地，需要归档就传共享目录，别塞进 git
+slides/
 models/
-
-# JetBrains IDE
-.idea/
-*.iml
-
-.DS_Store
-
-# Generated embedding/model artifacts
+*.pptx
 *.npz
 *.npy
+
+# sentencepiece 模型是运行时必需的小文件，必须进版本库，
+# 所以要从上面的 *.model 规则里豁免出来
 *.model
+!codesense/tokenizer/*.model
+
+# 编辑器
+.idea/
+*.iml
+.vscode/
+.history
+.DS_Store
+config.yml
