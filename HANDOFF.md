@@ -153,6 +153,23 @@ gap3（修饰符）**代码早就写完了**，`codesense/lang/java/annotations.
 netty 上 8 321 条接地里 4 113 条来自 subseq，是占比最大也最烂的一条：
 `abandoned → add`、`ability → alt`。已经加过一道闸（缩写侧最长 5 字符），还不够。
 
+**真实查询里已经现形**：查「池化缓冲区的分配与回收」，`recycling → ring`
+（r-i-n-g 确实是 r-e-c-y-c-l-i-n-g 的子序列），而 `ring` 在 netty 里是
+io_uring 的 BufferRing——lexical 前 6 条有 3 条是被这条规则拖进来的无关类。
+
+### 中：模型的选词，光给词表不够
+
+查「零拷贝的文件传输」，前 5 条全是 HTTP 的 `setContentTransferEncoding`，
+真正对的 `FileRegion` / `DefaultFileRegion` / `transferTo` 一个没进。
+
+排查过一轮，**不是索引、ICF 或词表截断的问题**：`region` df=224、icf 0.492、
+全表排名 358，**就在送给模型的 1200 词里**，模型看着它仍然选了 `transfer`
+（df=86，本身也是个好词）。它就是不知道 netty 把零拷贝写成 `FileRegion`。
+
+这和 netty-backpressure 全 0% 是同一类：**领域概念到项目命名的那一跳**。
+把词表给模型是必要条件，不充分。这一跳正是接地该解决而现在没解决的——
+没有任何词法规则能把「zero copy」连到「region」，而向量给的是形态变体。
+
 ### 中：合并分支
 
 `feat/ql-rewrite` 从没合过。越拖越难。
@@ -179,6 +196,10 @@ gap2（字段读写边）要新写；gap4（数据流边）是唯一需要**新�
 
 **白名单和执行环境必须同源。** `set` 曾列进白名单却没放进执行环境，
 正确的生成脚本全军覆没，那一路的召回读数是 0%。
+
+**`lexical` 路径是"同语言"路径。** 它用查询自己的词去查，所以中文查询在英文
+代码库上必然 0 命中——这是正确行为，不是 bug，但第一次撞上会以为索引坏了。
+跨语言必须走 LLM 路径。
 
 **模型会把提示词里的占位符原样抄走。** spec 里写 `intent(frag, "the criterion", ...)`，
 生成的脚本里就真的是 `"the criterion"`。占位符要写成明显是槽位的样子。

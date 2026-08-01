@@ -210,7 +210,15 @@ ruff format .
 - `tests/fixtures/ql/mini_index.json` 早于注解/修饰符抽取，导致 gap1 / gap3
   两条缺口测试对着旧产物断言——实际上这两项**已经进索引了**（netty 上
   34 228 条 annotation posting、54 546 条 modifier posting）。
+- **`lexical` 路径只能处理与代码库同语言的查询。** 它匹配的是查询自己的词，
+  中文查询在英文代码库词表里一个词都命中不了（会明确报 `no word in the query
+  appears in this project's vocabulary`）。跨语言那一跳必须走 LLM 路径。
 - benchmark 里 netty-backpressure 六条路径、三次采样全 0%。
-- 接地的 subseq 规则噪音多过信号（`abandoned → add`）。
+- 接地的 subseq 规则噪音多过信号。netty 实测：`recycling → ring`
+  （`ring` 是 io_uring 的 BufferRing），把无关的类拖进前 6。
+- **给模型词表是必要条件，不是充分条件。** 查「零拷贝的文件传输」时，`region`
+  （df=224，排名 358）就在送给模型的 1200 词里，模型仍然选了 `transfer`，
+  于是前 5 条全是 HTTP 的 `setContentTransferEncoding`——它不知道 netty
+  把零拷贝写成 `FileRegion`。
 
 完整清单见 [HANDOFF.md](HANDOFF.md#5-接着做什么)。

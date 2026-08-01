@@ -292,9 +292,31 @@ netty 管这个叫 **watermark / writability**，字面词一个都对不上。�
 
 gap1 / gap3 是接线不是实现，性价比最高。
 
+### 领域概念 → 项目命名，这一跳还是断的
+
+和上一条同源，CLI 上跑 netty 又撞到一次。查「零拷贝的文件传输」，
+前 5 条全是 HTTP 的 `setContentTransferEncoding`，真正对的
+`FileRegion` / `DefaultFileRegion` / `transferTo` 一个没进。
+
+排查结论：**不是索引、ICF 或词表截断的问题**。
+
+| 词 | df | icf | 全表排名 | 是否送给模型 |
+|---|---|---|---|---|
+| `region` | 224 | 0.492 | 358 | **是** |
+| `transfer` | 86 | 0.582 | 711 | 是 |
+| `sendfile` | 2 | 0.935 | 4824 | 否（超出 1200 截断） |
+
+`region` 就在模型眼前，连同它的 df，模型仍然选了 `transfer`。
+**把词表给模型是必要条件，不充分**——它还得知道这个项目把这个概念叫什么。
+没有任何词法规则能把「zero copy」连到「region」，而向量给的是形态变体。
+
 ### 其它
 
-- `subseq` 接地规则噪音多过信号，该再收紧
+- `subseq` 接地规则噪音多过信号，该再收紧。真实查询里已经现形：
+  `recycling → ring`（`ring` 是 io_uring 的 BufferRing），lexical 前 6 条
+  有 3 条被它拖进无关的 io_uring 类
+- `lexical` 路径只能处理与代码库同语言的查询——中文查询必然 0 命中，
+  这是正确行为，但要写在文档里
 - ICF 门禁把领域核心词挡在扩展目标外（小项目尤甚），这个张力还没有好答案
 - `LlmConfig` 默认端点是 dashscope，而常用的是 OpenAI key，不传 `--base-url` 会 401
 
