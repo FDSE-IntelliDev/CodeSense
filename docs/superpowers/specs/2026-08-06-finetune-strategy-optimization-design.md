@@ -81,22 +81,28 @@ compact-base 或 cc.en.300 + 当前项目词表/语料
 index + expansion.json（不加载 embedding）
 ```
 
-建议将当前过于集中的 `grounding.py` 拆成边界清晰的组件：
+现阶段不拆分现有 `grounding.py`。它继续保留 lexical/vectors 的现役逻辑和
+grounding 对外入口；本次新增的 finetune 优化实现放入独立子包：
 
 ```text
-codesense/indexing/embedding/
-├── config.py       profile、资源预算和训练参数
-├── vocabulary.py   基础词表和项目词表规划
-├── providers.py    紧凑模型、完整模型和危险完整训练的统一接口
-├── initializers.py 项目词初始化
-├── trainer.py      Word2Vec 项目适配
-├── corpus.py       流式语料与增量状态
-├── artifacts.py    manifest、模型和原子持久化
-└── expansion.py    基础/适配空间的 expansion 生成与合并
+codesense/indexing/
+├── grounding.py        保留现役入口、lexical/vectors 逻辑和 finetune 调度
+└── finetune/
+    ├── config.py       profile、资源预算和训练参数
+    ├── vocabulary.py   基础词表和项目词表规划
+    ├── providers.py    紧凑模型、完整模型和危险完整训练的统一接口
+    ├── initializers.py 项目词初始化
+    ├── trainer.py      Word2Vec 项目适配
+    ├── corpus.py       流式语料与增量状态
+    ├── artifacts.py    manifest、模型和原子持久化
+    └── expansion.py    基础/适配空间的 expansion 生成与合并
 ```
 
-各 profile 通过共同的 provider/trainer 接口接入，避免在业务流程中堆叠大量
-`if/elif` 分支。现有 lexical 规则和 expansion 对外结构保持不变。
+`grounding.py` 只负责调用 finetune 子包提供的统一入口，不吸收新增的模型制备、
+训练和持久化细节。各 profile 通过共同的 provider/trainer 接口接入，避免在业务
+流程中堆叠大量 `if/elif` 分支。`finetune/expansion.py` 只负责合并基础空间与适配
+空间的向量结果；现有 `codesense/indexing/expansion.py`、lexical 规则和 expansion
+对外结构保持不变。
 
 ## 5. 基础词表如何生成
 
