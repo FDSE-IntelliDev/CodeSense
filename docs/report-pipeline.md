@@ -148,8 +148,13 @@ posting 而不是删掉，代价是噪音不是丢答案。
 
 ## 5. Embedding：做了，但要如实说
 
-三档策略：`lexical`（无依赖，默认）/ `vectors` / `finetune`。
-**构建期产物**，输出几百 KB；查询期只读接地表，永远不加载 7GB 模型。
+三档策略：`lexical`（无依赖，默认）/ `vectors` / `finetune`。`finetune` 又分为
+默认的 `lightweight`、子进程加载完整模型的 `full_force`，以及需要危险确认的
+`warn_full`。前两种最终训练紧凑 Word2Vec，保存到 `.codesense/embedding/`；查询期
+只读接地表，永远不加载 embedding 模型。
+
+本节后面的 FastText 近邻数字来自轻量化改造前的实验，保留作为算法判断依据，不代表
+当前默认部署成本。
 
 ### 第一次跑出来是垃圾
 

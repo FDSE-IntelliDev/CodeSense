@@ -171,6 +171,52 @@ class TestLlmConfiguration:
 
 
 class TestInitBuilds:
+    def test_forwards_finetune_profile_options(self, tmp_path: Path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+        from codesense.project import Project
+
+        captured: dict[str, object] = {}
+
+        class Built:
+            def describe(self) -> str:
+                return "demo"
+
+        def build(_source, **options):  # type: ignore[no-untyped-def]
+            captured.update(options)
+            return Built()
+
+        monkeypatch.setattr(Project, "build", build)
+        model = tmp_path / "cc.en.bin"
+        model.write_bytes(b"fixture")
+
+        assert (
+            main(
+                [
+                    "init",
+                    str(tmp_path),
+                    "--strategy",
+                    "finetune",
+                    "--vectors",
+                    str(model),
+                    "--finetune-profile",
+                    "warn_full",
+                    "--memory-budget-mb",
+                    "512",
+                    "--epochs",
+                    "3",
+                    "--allow-unsafe-full",
+                    "--preserve-full-model",
+                    "--strict-profile",
+                ]
+            )
+            == 0
+        )
+        assert captured["finetune_profile"] == "warn_full"
+        assert captured["memory_budget_mb"] == 512
+        assert captured["epochs"] == 3
+        assert captured["allow_unsafe_full"] is True
+        assert captured["preserve_full_model"] is True
+        assert captured["strict_profile"] is True
+
     def test_indexes_a_repository_and_makes_it_queryable(self, tmp_path: Path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
         """The whole point of the CLI: init once, then query."""
         from codesense.lang import LANGUAGES

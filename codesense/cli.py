@@ -30,6 +30,7 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from codesense.index import Index
+from codesense.indexing.finetune import FINETUNE_PROFILES
 from codesense.indexing.grounding import STRATEGIES
 from codesense.search import ROUTES
 
@@ -90,7 +91,7 @@ def _init(args: argparse.Namespace) -> int:
         return 1
     if args.strategy != "lexical" and args.vectors is None:
         print(
-            f"--strategy {args.strategy} needs --vectors pointing at a fastText .bin",
+            f"--strategy {args.strategy} needs --vectors pointing at its vector source",
             file=sys.stderr,
         )
         return 2
@@ -101,7 +102,12 @@ def _init(args: argparse.Namespace) -> int:
         name=args.name,
         strategy=args.strategy,
         model_path=args.vectors,
+        finetune_profile=args.finetune_profile,
+        memory_budget_mb=args.memory_budget_mb,
         epochs=args.epochs,
+        allow_unsafe_full=args.allow_unsafe_full,
+        preserve_full_model=args.preserve_full_model,
+        strict_profile=args.strict_profile,
     )
     print(f"\n{project.describe()}")
     print('\nnow try:  codesense query "..."')
@@ -220,10 +226,39 @@ def _parser() -> argparse.ArgumentParser:
         help="how to ground general vocabulary (default: lexical, needs nothing)",
     )
     init.add_argument(
-        "--vectors", type=Path, help="fastText .bin, required by --strategy vectors/finetune"
+        "--vectors",
+        type=Path,
+        help="compact model directory or fastText .bin, depending on the strategy/profile",
     )
     init.add_argument(
-        "--epochs", type=int, default=5, help="training passes over the repo corpus (finetune only)"
+        "--epochs", type=int, default=2, help="training passes over the repo corpus (finetune only)"
+    )
+    init.add_argument(
+        "--finetune-profile",
+        choices=FINETUNE_PROFILES,
+        default="lightweight",
+        help="finetune resource profile (default: lightweight)",
+    )
+    init.add_argument(
+        "--memory-budget-mb",
+        type=int,
+        default=2048,
+        help="finetune compact model memory budget (default: 2048)",
+    )
+    init.add_argument(
+        "--allow-unsafe-full",
+        action="store_true",
+        help="confirm warn_full may require 15-25GB RAM",
+    )
+    init.add_argument(
+        "--preserve-full-model",
+        action="store_true",
+        help="save the adapted full model (warn_full only)",
+    )
+    init.add_argument(
+        "--strict-profile",
+        action="store_true",
+        help="fail the build instead of degrading to lexical grounding",
     )
     init.add_argument("--force", action="store_true", help="rebuild over an existing index")
     init.add_argument("--verbose", action="store_true")

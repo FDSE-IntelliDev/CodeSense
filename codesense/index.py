@@ -56,6 +56,9 @@ class IndexMeta:
     postings: int = 0
     edges: int = 0
     grounded_terms: int = 0
+    grounding_profile: str = "lexical"
+    grounding_status: str = "ready"
+    grounding_reason: str = ""
     #: Languages this index was built from. Recorded because framework
     #: relations enter the expansion table at query time and depend on it.
     language: str = "java"

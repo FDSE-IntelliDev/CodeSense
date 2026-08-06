@@ -1,5 +1,16 @@
 # CodeSense Changelog
 
+## 2026-08-06 — finetune 轻量化 Demo
+
+- 新增 `lightweight`、`full_force`、`warn_full` 三种 finetune profile；默认使用
+  100～300MB 紧凑基础包和 2GB 内存预算。
+- 项目语料改为扫描时写入临时 JSONL，训练紧凑 Word2Vec，并把模型保存到
+  `.codesense/embedding/project.model`。
+- expansion 同时比较基础空间与项目适配空间，同一映射保留较高分；搜索阶段仍只加载
+  索引和 `expansion.json`。
+- `full_force` 在 spawn 子进程提取向量；`warn_full` 需要显式设置
+  `allow_unsafe_full`，避免意外占用 15～25GB 内存。
+
 ## 2026-07-30 — 仓库结构按 DEV-COOKBOOK 整理
 
 只搬位置、改名、补配套设施，**没有改动任何函数内部逻辑**。

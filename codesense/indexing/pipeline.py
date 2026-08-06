@@ -78,6 +78,7 @@ def build_index(
     languages: Sequence[Language] | None = None,
     segment: bool = True,
     progress: Callable[[int, int], None] | None = None,
+    corpus_observer: Callable[[str, Sequence[Sequence[str]]], None] | None = None,
 ) -> BuildResult:
     """Scan a repository into an index payload and a training corpus.
 
@@ -103,7 +104,15 @@ def build_index(
 
     for language in languages:
         _scan_language(
-            root, language, symbols, sentences, postings, graphs[language.name], stats, progress
+            root,
+            language,
+            symbols,
+            sentences,
+            postings,
+            graphs[language.name],
+            stats,
+            progress,
+            corpus_observer,
         )
 
     stats.symbols = len(symbols)
@@ -139,6 +148,7 @@ def _scan_language(
     graph: GraphBuilder,
     stats: Stats,
     progress: Callable[[int, int], None] | None,
+    corpus_observer: Callable[[str, Sequence[Sequence[str]]], None] | None,
 ) -> None:
     for path in source_files(root, language):
         stats.files += 1
@@ -150,7 +160,11 @@ def _scan_language(
             continue
 
         kept = [d for d in declarations if d.kind in language.indexed_kinds and d.name]
-        sentences.extend(corpus_sentences(kept))
+        file_sentences = list(corpus_sentences(kept))
+        if corpus_observer is None:
+            sentences.extend(file_sentences)
+        else:
+            corpus_observer(str(path.relative_to(root)), file_sentences)
         for declaration in kept:
             symbol_id = len(symbols) + 1
             symbols.append(_symbol_row(symbol_id, declaration, path, root, language.name))

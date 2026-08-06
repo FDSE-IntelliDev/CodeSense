@@ -16,10 +16,10 @@ detail:
                space restricted to the project's vocabulary. Catches
                semantic neighbours that share no orthography. Needs the model
                file and roughly 8GB of RAM.
-    finetune   the above, plus continuing training on the repository's own
-               corpus so that words the pretrained model never saw get
-               vectors, and words it saw in a different sense get pulled
-               toward this project's usage. Needs roughly 20GB.
+    finetune   the above, plus a compact project Word2Vec trained from the
+               repository corpus. The default lightweight profile uses a
+               compact base package and a 2GB budget; full FastText loading is
+               opt-in through full_force or warn_full.
 
 **We are not asking embeddings for synonyms.** They do not deliver them --
 measured, the neighbours of `pool` in cc.en.300 are morphological variants
@@ -47,6 +47,7 @@ from pathlib import Path
 
 __all__ = [
     "GroundingConfig",
+    "GroundingOutcome",
     "STRATEGIES",
     "VectorSpace",
     "ground_lexically",
@@ -132,7 +133,15 @@ class GroundingConfig:
         if self.strategy not in STRATEGIES:
             raise ValueError(f"strategy must be one of {STRATEGIES}, got {self.strategy!r}")
         if self.strategy != "lexical" and self.model_path is None:
-            raise ValueError(f"strategy {self.strategy!r} needs model_path (a fastText .bin)")
+            raise ValueError(f"strategy {self.strategy!r} needs model_path")
+
+
+@dataclass(frozen=True, slots=True)
+class GroundingOutcome:
+    table: dict[str, list[tuple[str, float, str]]]
+    profile: str
+    status: str = "ready"
+    reason: str = ""
 
 
 def ground_vocabulary(
@@ -142,6 +151,7 @@ def ground_vocabulary(
     config: GroundingConfig,
     sentences: Sequence[Sequence[str]] | None = None,
     space: VectorSpace | None = None,
+    finetune_config: object | None = None,
 ) -> dict[str, list[tuple[str, float, str]]]:
     """Build the expansion table: general word -> project spellings.
 
@@ -155,23 +165,66 @@ def ground_vocabulary(
     fails -- an index without grounding is worse than one with, but far better
     than no index at all.
     """
+    return ground_vocabulary_result(
+        project_terms,
+        total_symbols,
+        config=config,
+        sentences=sentences,
+        space=space,
+        finetune_config=finetune_config,
+    ).table
+
+
+def ground_vocabulary_result(
+    project_terms: Mapping[str, int],
+    total_symbols: int,
+    *,
+    config: GroundingConfig,
+    sentences: Iterable[Sequence[str]] | None = None,
+    space: VectorSpace | None = None,
+    finetune_config: object | None = None,
+) -> GroundingOutcome:
+    """Build grounding and expose whether optional finetuning degraded."""
     targets = discriminating_targets(project_terms, total_symbols, config)
     if not targets:
-        return {}
+        return GroundingOutcome({}, config.strategy)
 
     table = ground_lexically(targets, config=config)
     if config.strategy == "lexical":
-        return table
+        return GroundingOutcome(table, "lexical")
+
+    if config.strategy == "finetune" and finetune_config is not None:
+        from codesense.indexing.finetune import run_finetune
+
+        try:
+            result = run_finetune(
+                project_terms=project_terms,
+                targets=targets,
+                lexical=table,
+                corpus=sentences or (),
+                config=finetune_config,
+                min_cosine=config.min_cosine,
+                max_targets=config.max_targets,
+            )
+        except Exception as exc:  # noqa: BLE001 -- optional grounding may degrade
+            if finetune_config.strict_profile:
+                raise
+            _log.exception("finetune grounding failed; falling back to lexical rules only")
+            return GroundingOutcome(table, finetune_config.profile, "degraded", str(exc))
+        return GroundingOutcome(
+            _merge(table, result.expansion, config.max_targets), finetune_config.profile
+        )
 
     try:
         space = space or VectorSpace.load(config.model_path, config=config)
         if config.strategy == "finetune":
-            space.finetune(sentences or (), config=config)
+            legacy_sentences = list(sentences or ())
+            space.finetune(legacy_sentences, config=config)
         vectors = space.ground(targets, config=config)
     except Exception:  # noqa: BLE001 -- grounding is an enhancement, not a gate
         _log.exception("vector grounding failed; falling back to lexical rules only")
-        return table
-    return _merge(table, vectors, config.max_targets)
+        return GroundingOutcome(table, config.strategy, "degraded", "vector grounding failed")
+    return GroundingOutcome(_merge(table, vectors, config.max_targets), config.strategy)
 
 
 def discriminating_targets(
@@ -318,6 +371,15 @@ class VectorSpace:
     def __init__(self, model: object, vectors: object) -> None:
         self._model = model
         self._vectors = vectors
+
+    @property
+    def vectors(self):  # type: ignore[no-untyped-def]
+        return self._vectors
+
+    def save_full(self, path: Path | str) -> None:
+        if self._model is None:
+            raise RuntimeError("no full model is loaded")
+        self._model.save(str(path))  # type: ignore[attr-defined]
 
     @classmethod
     def load(cls, path: Path | str | None, *, config: GroundingConfig) -> VectorSpace:

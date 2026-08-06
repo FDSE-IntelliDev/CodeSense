@@ -181,9 +181,12 @@ netty 实测：**21 秒**，42 221 符号、603 733 posting、120 322 边。
 |---|---|
 | LLM 查询路径（codegen / planned / intent） | 一个 OpenAI 兼容端点 + key |
 | 向量接地（`--strategy vectors`） | `gensim` + 一份 fastText `.bin`（如 `cc.en.300.bin`，7 GB，约 8 GB 内存） |
-| 微调接地（`--strategy finetune`） | 同上，约 20 GB 内存 |
+| 轻量微调（`--strategy finetune`） | 100～300MB 紧凑基础包，默认 2GB 内存预算 |
+| 完整初始化（`--finetune-profile full_force`） | 完整 fastText 只在子进程加载，导出后训练紧凑 Word2Vec |
+| 危险完整续训（`--finetune-profile warn_full`） | 约 15～25GB 内存，必须显式确认 |
 
-**向量只在构建期用**，查询时只读几百 KB 的接地表，永远不加载模型。
+三种微调 profile 都把项目模型保存到 `.codesense/embedding/project.model`。
+**查询时只读接地表，不加载 embedding 模型。**
 
 ---
 

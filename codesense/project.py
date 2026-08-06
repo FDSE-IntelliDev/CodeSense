@@ -29,6 +29,7 @@ from __future__ import annotations
 import logging
 from datetime import datetime, timezone
 from pathlib import Path
+from tempfile import TemporaryDirectory
 from typing import Any
 
 from codesense.index import Index, IndexMeta
@@ -82,6 +83,13 @@ class Project:
         index_dir: Path | str | None | _Default = DEFAULT,
         strategy: str = "lexical",
         model_path: Path | str | None = None,
+        finetune_profile: str = "lightweight",
+        memory_budget_mb: int = 2048,
+        epochs: int = 2,
+        workers: int = 8,
+        allow_unsafe_full: bool = False,
+        preserve_full_model: bool = False,
+        strict_profile: bool = False,
         llm: Any = None,
         name: str = "",
         verbose: bool = True,
@@ -89,27 +97,52 @@ class Project:
     ) -> Project:
         """Scan a repository and build an index.
 
-        ``strategy`` selects grounding: ``lexical`` needs nothing, ``vectors``
-        and ``finetune`` need ``model_path`` pointing at a fastText ``.bin``.
-        See `codesense.indexing.grounding` for what each buys.
+        ``strategy`` selects grounding. ``finetune`` defaults to a compact
+        model directory; ``full_force`` and ``warn_full`` take a FastText
+        ``.bin`` instead. See `codesense.indexing.grounding` for the trade-offs.
 
         ``index_dir`` defaults to ``<root>/.codesense``. Passing None for it
         explicitly is not the same as omitting it -- None means build in memory
         and save nothing.
         """
-        from codesense.indexing.grounding import GroundingConfig, ground_vocabulary
+        from codesense.indexing.finetune import FinetuneConfig
+        from codesense.indexing.finetune.corpus import CorpusStore
+        from codesense.indexing.grounding import GroundingConfig, ground_vocabulary_result
         from codesense.indexing.pipeline import build_index
 
         source = Path(root).expanduser().resolve()
         if not source.is_dir():
             raise NotADirectoryError(f"{source} is not a directory")
         project_name = name or source.name
+        target = _default_dir(source) if isinstance(index_dir, _Default) else index_dir
+        destination = Path(target).expanduser() if target is not None else None
+
+        temporary: TemporaryDirectory[str] | None = None
+        corpus: CorpusStore | None = None
+        finetune: FinetuneConfig | None = None
+        if strategy == "finetune":
+            if finetune_profile == "warn_full":
+                _log.warning("warn_full may require 15-25GB RAM")
+            temporary = TemporaryDirectory(prefix="codesense-finetune-")
+            corpus = CorpusStore(Path(temporary.name) / "corpus.jsonl")
+            finetune = FinetuneConfig(
+                profile=finetune_profile,
+                model_path=Path(model_path).expanduser() if model_path else None,
+                artifact_dir=destination or Path(temporary.name) / "index",
+                memory_budget_mb=memory_budget_mb,
+                epochs=epochs,
+                workers=workers,
+                allow_unsafe_full=allow_unsafe_full,
+                preserve_full_model=preserve_full_model,
+                strict_profile=strict_profile,
+            )
 
         report = _reporter(verbose)
         report(f"scanning {source} ...")
         result = build_index(
             source,
             progress=lambda files, symbols: report(f"  {files} files, {symbols} symbols ..."),
+            corpus_observer=corpus.append if corpus is not None else None,
         )
         stats = result.stats
         report(
@@ -135,20 +168,25 @@ class Project:
         config = GroundingConfig(
             strategy=strategy,
             model_path=Path(model_path).expanduser() if model_path else None,
+            epochs=epochs,
+            workers=workers,
             **grounding,
         )
-        index.expansion = ground_vocabulary(
+        outcome = ground_vocabulary_result(
             dict(index.vocabulary()),
             stats.symbols,
             config=config,
-            sentences=result.sentences,
+            sentences=corpus or result.sentences,
+            finetune_config=finetune,
         )
-        index.meta = _with_grounding(index.meta, len(index.expansion))
+        index.expansion = outcome.table
+        index.meta = _with_grounding(index.meta, len(index.expansion), outcome)
         report(f"  {len(index.expansion):,} general words mapped onto project spellings")
+        if temporary is not None:
+            temporary.cleanup()
 
-        target = _default_dir(source) if isinstance(index_dir, _Default) else index_dir
-        if target is not None:
-            saved = index.save(Path(target).expanduser())
+        if destination is not None:
+            saved = index.save(destination)
             report(f"saved to {saved}")
         return cls(index, llm=llm)
 
@@ -221,10 +259,16 @@ def _default_dir(source: Path) -> Path:
     return source / ".codesense"
 
 
-def _with_grounding(meta: IndexMeta, grounded: int) -> IndexMeta:
+def _with_grounding(meta: IndexMeta, grounded: int, outcome: Any) -> IndexMeta:
     from dataclasses import replace
 
-    return replace(meta, grounded_terms=grounded)
+    return replace(
+        meta,
+        grounded_terms=grounded,
+        grounding_profile=outcome.profile,
+        grounding_status=outcome.status,
+        grounding_reason=outcome.reason,
+    )
 
 
 def _reporter(verbose: bool):  # type: ignore[no-untyped-def]

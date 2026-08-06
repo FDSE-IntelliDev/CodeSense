@@ -64,8 +64,14 @@ python scripts/run_benchmark.py --index-dir <索引目录> \
 codesense init --strategy vectors --vectors ~/models/cc.en.300.bin --force
 ```
 
-`vectors` 约需 8 GB 内存、netty 上 47 秒（不含模型加载）；`finetune` 约需 20 GB。
-**两者都是构建期**，查询时不加载模型。
+`finetune` 默认改用 100～300MB 紧凑基础包，内存预算 2GB：
+
+```bash
+codesense init --strategy finetune --vectors ~/models/compact-base --force
+```
+
+`full_force` 只在子进程加载完整模型；`warn_full` 保留原先约 15～25GB 的完整续训，
+并要求 `--allow-unsafe-full`。这些操作都只发生在构建期，查询时不加载模型。
 
 ### 检查
 
