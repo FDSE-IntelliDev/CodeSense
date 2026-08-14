@@ -27,6 +27,7 @@ runs/
 # 大文件：答辩 PPT、素材、模型权重
 # 这些留在本地，需要归档就传共享目录，别塞进 git
 slides/
+model/
 models/
 *.pptx
 *.npz

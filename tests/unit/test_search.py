@@ -11,7 +11,9 @@ from __future__ import annotations
 import pytest
 
 from codesense.index import Index
-from codesense.search import ROUTES, Hit, SearchResult, search
+from codesense.ql.frag import Evidence, Frag, UnitHit
+from codesense.ql.operators import score_of
+from codesense.search import ROUTES, Hit, SearchResult, _cohere, _rank, search
 from tests.unit.test_index import make_index
 
 #: Filler symbols, so ICF means something.
@@ -109,6 +111,41 @@ class TestLexicalRoute:
     def test_is_reproducible(self, ctx) -> None:  # type: ignore[no-untyped-def]
         first = [h.symbol_id for h in search("alloc", ctx, route="lexical")]
         assert first == [h.symbol_id for h in search("alloc", ctx, route="lexical")]
+
+
+class TestStructuralCoherence:
+    def test_boosts_existing_candidate_near_the_strongest_hit(self, ctx) -> None:  # type: ignore[no-untyped-def]
+        def scored(value: float) -> Evidence:
+            return Evidence(
+                unit_hits=(
+                    UnitHit(
+                        unit="query",
+                        signal=Evidence.COMBINED,
+                        detail="query score",
+                        score=value,
+                    ),
+                )
+            )
+
+        frag = Frag(
+            nodes=ctx.symbols.get_many((1, 2, 3)),
+            evidence={1: scored(0.9), 2: scored(0.7), 3: scored(0.8)},
+        )
+
+        result = _cohere(frag, ctx, seeds=1, boost=0.6)
+
+        assert set(result.nodes) == {1, 2, 3}
+        assert score_of(result, 1) == pytest.approx(0.9)
+        assert score_of(result, 2) == pytest.approx(1.12)
+        assert score_of(result, 3) == pytest.approx(0.8)
+        ranked = _rank(result, 3)
+        assert [hit.symbol_id for hit in ranked] == [2, 1, 3]
+        assert ranked[0].score == pytest.approx(1.12)
+        assert "calls/contains" in ranked[0].why
+        assert "@graph" in ranked[0].why
+        structural = [hit for hit in result.evidence_for(2).unit_hits if hit.signal == "structural"]
+        assert len(structural) == 1
+        assert structural[0].field == "graph"
 
 
 class TestHits:

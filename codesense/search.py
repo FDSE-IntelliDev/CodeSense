@@ -30,7 +30,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from codesense.ql.context import EvalContext
-from codesense.ql.frag import Evidence, Frag
+from codesense.ql.frag import Evidence, Frag, UnitHit
 from codesense.ql.operators import degree, eval_unit, hop, intent, reach, score_of, top
 from codesense.ql.operators.select import only
 from codesense.ql.satisfiers import AnnotationSatisfier, LexicalSatisfier, ModifierSatisfier
@@ -383,17 +383,34 @@ def _cohere(frag: Frag, ctx: EvalContext, seeds: int = 20, boost: float = 0.6) -
     """Weight up candidates structurally near the strongest hits.
 
     Weighting, not filtering -- `reach` produces no scores, so replacing the
-    fragment with its neighbourhood would throw away every lexical score.
+    fragment with its neighbourhood would throw away every lexical score. The
+    increment is evidence rather than temporary ordering so the final rank,
+    displayed score and explanation all observe the same boost.
     """
     near = reach(top(frag, seeds), ctx, edge=["calls", "contains"], direction="any", hops=(1, 2))
     boosted = set(near.nodes) & set(frag.nodes)
     if not boosted:
         return frag
-    return frag.induced(
-        sorted(
-            frag.nodes,
-            key=lambda s: (-score_of(frag, s) * (1 + boost * (s in boosted)), s),
+
+    # Persist the multiplier as structural evidence. `score_of` sums scores
+    # across units, so adding `base * boost` makes the final score exactly
+    # `base * (1 + boost)` while preserving every original lexical reason.
+    evidence = dict(frag.evidence)
+    for symbol_id in boosted:
+        structural = UnitHit(
+            unit="coherence",
+            signal="structural",
+            detail=f"within 1-2 calls/contains hops of a top-{seeds} hit",
+            field="graph",
+            score=score_of(frag, symbol_id) * boost,
         )
+        evidence[symbol_id] = frag.evidence_for(symbol_id).merge(Evidence(unit_hits=(structural,)))
+
+    return Frag(
+        nodes=frag.nodes,
+        edges=frag.edges,
+        evidence=evidence,
+        witnesses=frag.witnesses,
     )
 
 
