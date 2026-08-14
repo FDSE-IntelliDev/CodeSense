@@ -1,6 +1,20 @@
 # evaluation/
 
-研究脚手架：指标、评测编排、实验归档。**目前是空的骨架，等你按自己的评测口径填。**
+研究脚手架：trace 适配、query mining、指标、评测编排和实验归档。
+
+当前已经落地 Open-SWE-Traces Java trace → query 的最小路径。先用 dry-run 检查 LLM 将看到
+的 prefix-only prompt：
+
+```bash
+python scripts/mine_trace_queries.py \
+  --input open_swe_java.jsonl \
+  --output /tmp/codesense-query-prompts.jsonl \
+  --dry-run --limit 3
+```
+
+确认 prompt 后，去掉 `--dry-run` 并设置 `CODESENSE_API_KEY`，即可生成最终 query JSONL。
+输出中的 `strategy`、`raw_action`、`source_events` 和 `provenance.prompt` 用于人工检查
+query 是否泄露路径、工具输出或未来 trace。
 
 ## 为什么和 `codesense/` 分开
 
