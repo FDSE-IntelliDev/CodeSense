@@ -25,6 +25,7 @@ class EvalContext:
     postings: PostingIndex
     expansion: ExpansionTable
     edges: EdgeStore
+    declaration_count: int | None = None
     field_weights: FieldWeights = field(default=DEFAULT_FIELD_WEIGHTS)
 
     #: Intent judge. Defaults to a null implementation that decides nothing,
@@ -42,3 +43,12 @@ class EvalContext:
     #: Minimum score for a single piece of evidence. Anything below is
     #: dropped so the evidence trail does not drown in noise.
     min_hit_score: float = 1e-6
+
+    @property
+    def population(self) -> int:
+        """Declaration population used by scoring and selectivity statistics.
+
+        Contexts constructed by callers predating file Elements omit the
+        injected count, so they retain their original all-elements behavior.
+        """
+        return self.symbols.count() if self.declaration_count is None else self.declaration_count

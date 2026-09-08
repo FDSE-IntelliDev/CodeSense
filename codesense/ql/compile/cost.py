@@ -61,7 +61,7 @@ def estimate_unit(unit: QueryUnit, ctx: EvalContext) -> Estimate:
     `buffer` and `buf` are highly correlated -- but it yields an upper bound,
     and ordering only needs that bound to separate magnitudes.
     """
-    total = max(ctx.symbols.count(), 1)
+    total = max(ctx.population, 1)
     miss = 1.0
     cost = 0.0
     terms = 0

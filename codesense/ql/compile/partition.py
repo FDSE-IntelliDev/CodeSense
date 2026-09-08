@@ -59,7 +59,7 @@ def partition(terms: Sequence[str], ctx: EvalContext) -> list[Cluster]:
     if len(usable) < 4:
         return [Cluster(tuple(usable), "too few terms to split")]
 
-    total = max(ctx.symbols.count(), 1)
+    total = max(ctx.population, 1)
     postings = {term: {p.symbol_id for p in ctx.postings.lookup(term)} for term in usable}
     hubs = {term for term, ids in postings.items() if len(ids) > total * HUB_RATIO}
 

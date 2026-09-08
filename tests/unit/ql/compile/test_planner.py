@@ -5,11 +5,16 @@ The focus is **ordering** -- the one place the compiler optimises.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
+
 import pytest
 
 from codesense.ql import Edge, Element, IndexField
 from codesense.ql.compile import Boost, EvalUnit, Intent, Narrow, QuerySpec, estimate_unit, plan
+from codesense.ql.compile.partition import partition
+from codesense.ql.compile.plan import State
 from codesense.ql.compile.spec import normalise_hops, normalise_kinds
+from codesense.ql.compile.validate import relation_lift
 from codesense.ql.context import EvalContext
 from codesense.ql.store import (
     InMemoryEdgeStore,
@@ -22,21 +27,39 @@ from codesense.ql.store import (
 TOTAL = 1000
 
 
-def make_context(postings: dict[str, int], edges: tuple[Edge, ...] = ()) -> EvalContext:
+def make_context(
+    postings: dict[str, int | Sequence[int]],
+    edges: tuple[Edge, ...] = (),
+    *,
+    file_count: int = 0,
+    declaration_count: int | None = None,
+) -> EvalContext:
     """``postings`` gives how many symbols each term matches."""
     built: dict[str, list[Posting]] = {}
-    for term, count in postings.items():
-        built[term] = [Posting(i, IndexField.NAME) for i in range(1, count + 1)]
+    for term, count_or_ids in postings.items():
+        symbol_ids = range(1, count_or_ids + 1) if isinstance(count_or_ids, int) else count_or_ids
+        built[term] = [Posting(i, IndexField.NAME) for i in symbol_ids]
+    declarations = [
+        Element(symbol_id=i, name=f"s{i}", kind="method", file="A.java", span=(1, 2))
+        for i in range(1, TOTAL + 1)
+    ]
+    files = [
+        Element(
+            symbol_id=TOTAL + i,
+            name=f"F{i}.java",
+            kind="file",
+            file=f"F{i}.java",
+            span=(1, 2),
+        )
+        for i in range(1, file_count + 1)
+    ]
+    population = TOTAL if declaration_count is None else declaration_count
     return EvalContext(
-        symbols=InMemorySymbolStore(
-            [
-                Element(symbol_id=i, name=f"s{i}", kind="method", file="A.java", span=(1, 2))
-                for i in range(1, TOTAL + 1)
-            ]
-        ),
-        postings=InMemoryPostingIndex(built, total_symbols=TOTAL),
+        symbols=InMemorySymbolStore([*declarations, *files]),
+        postings=InMemoryPostingIndex(built, total_symbols=population),
         expansion=InMemoryExpansionTable({}),
         edges=InMemoryEdgeStore(edges),
+        declaration_count=declaration_count,
     )
 
 
@@ -73,6 +96,37 @@ class TestEstimate:
         unit = spec().units[0]
         assert estimate_unit(unit, ctx).rows == 0
 
+    def test_context_without_an_injected_declaration_count_counts_all_elements(self) -> None:
+        assert make_context({}).population == TOTAL
+
+    def test_union_estimate_uses_declaration_population(self) -> None:
+        ctx = make_context({"common": 100}, file_count=200, declaration_count=TOTAL)
+        state = State(projected=500)
+        assert EvalUnit(spec().units[0]).estimate(ctx, state).rows == 550
+
+    def test_multi_term_estimate_uses_declaration_population(self) -> None:
+        ctx = make_context({"a": 100, "b": 100}, file_count=200, declaration_count=TOTAL)
+        unit = QuerySpec.from_dict(
+            {"query": "q", "units": [{"name": "u", "terms": ["a", "b"]}]}
+        ).units[0]
+
+        assert estimate_unit(unit, ctx).rows == 190
+
+    def test_partition_hub_ratio_uses_declaration_population(self) -> None:
+        ctx = make_context(
+            {
+                "hub": tuple(range(1, 261)),
+                "a1": tuple(range(1, 31)),
+                "a2": tuple(range(1, 31)),
+                "b1": tuple(range(100, 131)),
+                "b2": tuple(range(100, 131)),
+            },
+            file_count=200,
+            declaration_count=TOTAL,
+        )
+
+        assert len(partition(["hub", "a1", "a2", "b1", "b2"], ctx)) == 2
+
 
 class TestOrdering:
     def test_the_narrowest_unit_goes_first(self) -> None:
@@ -104,6 +158,13 @@ class TestOrdering:
         ctx = make_context({"common": 900, "rare": 800})
         planned = plan(spec(), ctx)
         assert any(isinstance(s, EvalUnit) for s in planned.steps)
+
+    def test_file_nodes_do_not_dilute_planner_specificity(self) -> None:
+        ctx = make_context({"common": 900, "rare": 10}, file_count=200, declaration_count=TOTAL)
+        planned = plan(spec(), ctx)
+
+        assert ctx.symbols.count() == 1200
+        assert any("'wide' (est. 900 rows, 90%" in why for why in planned.reasoning)
 
     def test_intent_always_comes_last(self) -> None:
         ctx = make_context({"common": 100, "rare": 10})
@@ -143,6 +204,18 @@ class TestGraphDirection:
         planned = plan(spec(graph=[{"src": "wide", "dst": "narrow"}]), ctx)
         assert not any(isinstance(s, Boost) for s in planned.steps)
         assert any("skipping constraint" in why for why in planned.reasoning)
+
+    def test_relation_validation_uses_declaration_population(self) -> None:
+        ctx = make_context(
+            {"left": 1, "right": 2},
+            (Edge(1, 2, "calls"),),
+            file_count=200,
+            declaration_count=TOTAL,
+        )
+
+        lift, _ = relation_lift(["left"], ["right"], ctx)
+
+        assert lift == pytest.approx(500_000)
 
 
 class TestExecution:

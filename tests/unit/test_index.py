@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -42,6 +43,18 @@ def payload() -> dict:
                 "language": "java",
                 "modifiers": [],
             },
+            {
+                "symbol_id": 3,
+                "name": "Pooled.java",
+                "kind": "file",
+                "file": "a/Pooled.java",
+                "span": [1, 40],
+                "signature": "",
+                "container": "",
+                "doc": "",
+                "language": "java",
+                "modifiers": [],
+            },
         ],
         "postings": {
             "pooled": [{"symbol_id": 1, "field": "name", "tf": 1}],
@@ -56,22 +69,27 @@ def payload() -> dict:
                 "source_id": 1,
                 "target_id": 2,
                 "kind": "contains",
+                "site": [20, 8],
                 "confidence": 1.0,
                 "provenance": "derived_container",
             }
         ],
+        "declaration_count": 2,
     }
 
 
 def make_index(**meta: object) -> Index:
     base = {"project": "demo", "root": "/src/demo", "built_at": "2026-01-01T00:00:00+00:00"}
-    return Index(meta=IndexMeta(**{**base, "symbols": 2, "edges": 1, **meta}), payload=payload())
+    return Index(
+        meta=IndexMeta(**{**base, "symbols": 3, "declarations": 2, "files": 1, "edges": 1, **meta}),
+        payload=payload(),
+    )
 
 
 class TestRoundTrip:
     def test_saves_and_reloads(self, tmp_path: Path) -> None:
         make_index().save(tmp_path)
-        assert len(Index.load(tmp_path)) == 2
+        assert len(Index.load(tmp_path)) == 3
 
     def test_keeps_the_grounding_table(self, tmp_path: Path) -> None:
         index = make_index()
@@ -93,6 +111,9 @@ class TestRoundTrip:
 
 
 class TestLoadFailures:
+    def test_current_format_is_v2(self) -> None:
+        assert FORMAT_VERSION == 2
+
     def test_a_directory_without_meta_is_not_an_index(self, tmp_path: Path) -> None:
         with pytest.raises(FileNotFoundError, match="not an index directory"):
             Index.load(tmp_path)
@@ -138,8 +159,23 @@ class TestVocabulary:
 class TestToContext:
     def test_builds_a_queryable_context(self) -> None:
         ctx = make_index().to_context()
-        assert ctx.symbols.count() == 2
+        assert ctx.symbols.count() == 3
         assert len(ctx.postings.lookup("alloc")) == 2
+
+    def test_edges_keep_their_site(self) -> None:
+        edge = make_index().to_context().edges.out_edges(1)[0]
+        assert edge.site == (20, 8)
+
+    def test_context_separates_element_count_from_scoring_population(self) -> None:
+        ctx = make_index().to_context()
+        assert ctx.symbols.count() == 3
+        assert ctx.population == 2
+        assert ctx.postings.term_info("alloc").total_symbols == 2
+
+    def test_context_infers_declarations_when_payload_has_no_count(self) -> None:
+        index = make_index()
+        del index.payload["declaration_count"]
+        assert index.to_context().population == 2
 
     def test_carries_the_grounding_into_the_expansion_table(self) -> None:
         index = make_index()
@@ -163,7 +199,7 @@ class TestToContext:
 
 class TestProject:
     def test_wraps_an_index(self) -> None:
-        assert len(Project(make_index())) == 2
+        assert len(Project(make_index())) == 3
 
     def test_describes_itself(self) -> None:
         assert "demo" in Project(make_index()).describe()
@@ -194,3 +230,37 @@ class TestProject:
         target.write_text("x")
         with pytest.raises(NotADirectoryError):
             Project.build(target, verbose=False)
+
+    def test_build_grounds_against_declarations_and_records_both_populations(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from codesense.indexing.pipeline import BuildResult, Stats
+
+        result = BuildResult(
+            payload=payload(),
+            stats=Stats(
+                files=1,
+                declarations=2,
+                symbols=3,
+                postings=3,
+                edges=1,
+                languages=("java",),
+            ),
+        )
+        seen: dict[str, int] = {}
+
+        monkeypatch.setattr(
+            "codesense.indexing.pipeline.build_index", lambda *args, **kwargs: result
+        )
+
+        def ground(project_terms: object, total_symbols: int, **kwargs: object) -> SimpleNamespace:
+            seen["total_symbols"] = total_symbols
+            return SimpleNamespace(table={}, profile="lexical", status="ready", reason="")
+
+        monkeypatch.setattr("codesense.indexing.grounding.ground_vocabulary_result", ground)
+
+        project = Project.build(tmp_path, index_dir=None, verbose=False)
+
+        assert seen["total_symbols"] == 2
+        assert project.index.meta.declarations == 2
+        assert project.index.meta.files == 1

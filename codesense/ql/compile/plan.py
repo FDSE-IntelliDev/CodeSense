@@ -151,7 +151,7 @@ class EvalUnit(Step):
         if self.seed:
             return guess
         # Union under independence: |A or B| = N*(1 - (1-|A|/N)(1-|B|/N))
-        total = max(ctx.symbols.count(), 1)
+        total = max(ctx.population, 1)
         merged = total * (1 - (1 - state.rows / total) * (1 - guess.rows / total))
         return Estimate(rows=round(merged), cost=guess.cost, detail=guess.detail)
 

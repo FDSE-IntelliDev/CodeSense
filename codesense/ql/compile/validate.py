@@ -60,7 +60,7 @@ def relation_lift(
     with the same edge count. It is a crude baseline, but ample for telling
     4.75x from 0.
     """
-    total = ctx.symbols.count()
+    total = ctx.population
     if total < 2:
         return 0.0, "too few symbols"
     left = {p.symbol_id for term in src_terms for p in ctx.postings.lookup(term)}

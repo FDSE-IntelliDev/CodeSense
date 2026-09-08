@@ -157,6 +157,8 @@ class Project:
                 root=str(source),
                 built_at=datetime.now(timezone.utc).isoformat(timespec="seconds"),
                 symbols=stats.symbols,
+                declarations=stats.declarations,
+                files=stats.files,
                 postings=stats.postings,
                 edges=stats.edges,
                 language=", ".join(stats.languages),
@@ -174,7 +176,7 @@ class Project:
         )
         outcome = ground_vocabulary_result(
             dict(index.vocabulary()),
-            stats.symbols,
+            stats.declarations,
             config=config,
             sentences=corpus or result.sentences,
             finetune_config=finetune,

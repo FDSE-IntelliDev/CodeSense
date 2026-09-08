@@ -29,7 +29,8 @@ def make_searchable_index() -> Index:
     index = make_index()
     symbols = index.payload["symbols"]
     postings = index.payload["postings"]
-    for i in range(3, 3 + FILLER):
+    first_filler_id = max(symbol["symbol_id"] for symbol in symbols) + 1
+    for i in range(first_filler_id, first_filler_id + FILLER):
         symbols.append(
             {
                 "symbol_id": i,
@@ -45,6 +46,7 @@ def make_searchable_index() -> Index:
             }
         )
         postings.setdefault("unrelated", []).append({"symbol_id": i, "field": "name", "tf": 1})
+    index.payload["declaration_count"] += FILLER
     return index
 
 

@@ -107,7 +107,7 @@ def plan(spec: QuerySpec, ctx: EvalContext) -> Plan:
         ),
         key=lambda item: item.rows,
     )
-    total = max(ctx.symbols.count(), 1)
+    total = max(ctx.population, 1)
     why: list[str] = []
     steps: list[Step] = []
 
