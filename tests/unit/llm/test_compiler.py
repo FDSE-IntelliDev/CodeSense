@@ -10,9 +10,15 @@ from codesense.llm.config import LlmConfig
 
 def test_prompt_allows_all_explicit_supported_relation_kinds() -> None:
     prompt = " ".join(PROMPT.lower().split())
+    relation_rule = prompt[
+        prompt.index("- propose relations whenever") : prompt.index("- valid edge names")
+    ]
 
-    assert "explicitly expresses a relation between groups" in prompt
-    assert all(edge in prompt for edge in ("calls", "contains", "references", "imports", "in_file"))
+    assert "explicitly expresses a relation between groups" in relation_rule
+    assert all(
+        edge in relation_rule for edge in ("calls", "contains", "references", "imports", "in_file")
+    )
+    assert "otherwise give an empty list" in relation_rule
     assert "relation verb" in prompt and "does not imply a file" in prompt
 
 
