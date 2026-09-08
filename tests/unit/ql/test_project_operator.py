@@ -69,19 +69,28 @@ def test_same_unit_uses_strongest_contained_match_not_file_size(ctx: EvalContext
     assert score_of(result, 10) == pytest.approx(0.8)
 
 
-def test_backward_projection_filters_by_kind_and_confidence(ctx: EvalContext) -> None:
+def test_backward_projection_follows_incoming_edges(ctx: EvalContext) -> None:
     page_request = Frag(nodes=ctx.symbols.get_many((20,)))
 
-    result = project(
-        page_request,
-        ctx,
-        edge="references",
-        direction="backward",
-        kind="method",
-        min_confidence=0.8,
-    )
+    result = project(page_request, ctx, edge="references", direction="backward")
 
     assert set(result.nodes) == {1}
+
+
+def test_min_confidence_filters_low_confidence_edges(ctx: EvalContext) -> None:
+    source = Frag(nodes=ctx.symbols.get_many((3,)))
+
+    result = project(source, ctx, edge="in_file", kind="file", min_confidence=0.5)
+
+    assert not result
+
+
+def test_kind_filter_excludes_disallowed_targets(ctx: EvalContext) -> None:
+    source = Frag(nodes=ctx.symbols.get_many((1,)))
+
+    result = project(source, ctx, edge=["in_file", "references"], kind="file")
+
+    assert set(result.nodes) == {10}
 
 
 def test_projection_accepts_several_edge_kinds(ctx: EvalContext) -> None:
