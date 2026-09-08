@@ -6,6 +6,7 @@ import pytest
 
 from codesense.indexing import GraphBuilder
 from codesense.lang import Declaration, Invocation, ReferenceUse
+from codesense.lang.java import JavaDeclarationScanner
 
 
 def edge_keys(edges: list[dict[str, object]]) -> set[tuple[int, int, str]]:
@@ -157,7 +158,7 @@ def test_simple_name_ambiguity_splits_confidence_between_candidates() -> None:
     assert {item["provenance"] for item in references} == {"simple_name"}
 
 
-def test_missing_qualified_name_falls_back_to_a_unique_simple_name() -> None:
+def test_unmatched_qualified_name_does_not_fall_back_to_a_local_simple_name() -> None:
     builder = GraphBuilder(frozenset({"class"}), frozenset({"method"}))
     builder.observe(Declaration("PageRequest", "class", line=1, end_line=2), 1)
     builder.observe_file(
@@ -175,10 +176,154 @@ def test_missing_qualified_name_falls_back_to_a_unique_simple_name() -> None:
         ),
     )
 
-    imported = edge(builder.build(), 10, 1, "imports")
+    edges = builder.build()
 
-    assert imported["confidence"] == 0.8
-    assert imported["provenance"] == "simple_name"
+    assert not [item for item in edges if item["kind"] in {"imports", "references"}]
+    assert builder.stats.reference_unresolved == 1
+
+
+@pytest.mark.slow
+def test_real_packages_give_same_named_types_distinct_qualified_identities() -> None:
+    pytest.importorskip("tree_sitter_languages")
+    scanner = JavaDeclarationScanner.for_java()
+    builder = GraphBuilder(frozenset({"class"}), frozenset({"method", "constructor"}))
+    alpha = scanner.scan("package a; class Foo {}")
+    beta = scanner.scan("package b; class Foo {}")
+    client = scanner.scan("package client; import b.Foo; class Client { Foo value; }")
+    declarations = (
+        (alpha.declarations[0], 1),
+        (beta.declarations[0], 2),
+        *((declaration, index + 3) for index, declaration in enumerate(client.declarations)),
+    )
+    for declaration, symbol_id in declarations:
+        builder.observe(declaration, symbol_id)
+    builder.observe_file("Client.java", 20, declarations[2:], client.references)
+
+    edges = builder.build()
+    imported_targets = {item["target_id"] for item in edges if item["kind"] == "imports"}
+
+    assert alpha.declarations[0].qualified_name == "a.Foo"
+    assert beta.declarations[0].qualified_name == "b.Foo"
+    assert imported_targets == {2}
+
+
+def test_type_references_never_target_same_named_constructor() -> None:
+    builder = GraphBuilder(frozenset({"class"}), frozenset({"method", "constructor"}))
+    target_type = Declaration("Foo", "class", container="a", line=1, end_line=4)
+    constructor = Declaration("Foo", "constructor", container="a.Foo", line=2, end_line=3)
+    builder.observe(target_type, 1)
+    builder.observe(constructor, 2)
+    builder.observe_file(
+        "Client.java",
+        10,
+        (),
+        (
+            ReferenceUse(
+                "Foo",
+                line=1,
+                column=7,
+                relation="imports",
+                target_kind="type",
+                qualified_name="a.Foo",
+            ),
+            ReferenceUse("Foo", line=3, column=4, target_kind="type"),
+        ),
+    )
+
+    edges = builder.build()
+    reference_targets = {item["target_id"] for item in edges if item["kind"] == "references"}
+
+    assert reference_targets == {1}
+    assert not [
+        item
+        for item in edges
+        if item["target_id"] == 2 and item["kind"] in {"imports", "references"}
+    ]
+
+
+def test_static_member_import_is_conservatively_unresolved_as_a_type() -> None:
+    builder = GraphBuilder(frozenset({"class"}), frozenset({"method", "constructor"}))
+    builder.observe(Declaration("Foo", "class", container="a"), 1)
+    builder.observe(Declaration("make", "method", container="a.Foo"), 2)
+    builder.observe_file(
+        "Client.java",
+        10,
+        (),
+        (
+            ReferenceUse(
+                "make",
+                line=1,
+                column=14,
+                relation="imports",
+                target_kind="type",
+                qualified_name="a.Foo.make",
+            ),
+        ),
+    )
+
+    assert not [item for item in builder.build() if item["kind"] == "imports"]
+    assert builder.stats.reference_unresolved == 1
+
+
+@pytest.mark.slow
+def test_one_line_reference_is_owned_by_the_smallest_point_span() -> None:
+    pytest.importorskip("tree_sitter_languages")
+    scanner = JavaDeclarationScanner.for_java()
+    builder = GraphBuilder(frozenset({"class"}), frozenset({"method", "constructor"}))
+    target = scanner.scan("package target; class Foo {}")
+    source = scanner.scan(
+        "package client; class Outer { class Inner { void run() { Foo value; } } }"
+    )
+    builder.observe(target.declarations[0], 1)
+    observed = tuple(
+        (declaration, index + 2) for index, declaration in enumerate(source.declarations)
+    )
+    for declaration, symbol_id in observed:
+        builder.observe(declaration, symbol_id)
+    builder.observe_file("Outer.java", 20, observed, source.references)
+    method_id = next(symbol_id for declaration, symbol_id in observed if declaration.name == "run")
+
+    edges = builder.build()
+
+    assert (method_id, 1, "references") in edge_keys(edges)
+    assert (2, 1, "references") not in edge_keys(edges)
+
+
+def test_owner_resolution_does_not_compare_every_declaration_for_every_use() -> None:
+    class CountingInt(int):
+        comparisons = 0
+
+        def __lt__(self, other: object) -> bool:
+            type(self).comparisons += 1
+            return int(self) < int(other)  # type: ignore[arg-type]
+
+        def __le__(self, other: object) -> bool:
+            type(self).comparisons += 1
+            return int(self) <= int(other)  # type: ignore[arg-type]
+
+    builder = GraphBuilder(frozenset({"class"}), frozenset({"method"}))
+    declarations = tuple(
+        (
+            Declaration(
+                f"Owner{index}",
+                "method",
+                line=CountingInt(1),
+                end_line=CountingInt(3),
+            ),
+            index + 1,
+        )
+        for index in range(64)
+    )
+    for declaration, symbol_id in declarations:
+        builder.observe(declaration, symbol_id)
+    references = tuple(
+        ReferenceUse(f"Missing{index}", line=CountingInt(2), column=index) for index in range(64)
+    )
+    builder.observe_file("Owners.java", 100, declarations, references)
+
+    builder.build()
+
+    assert CountingInt.comparisons < 3_000
 
 
 def test_ambiguous_reference_above_the_cap_is_not_materialized() -> None:

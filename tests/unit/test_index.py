@@ -260,7 +260,8 @@ class TestProject:
         result = BuildResult(
             payload=payload(),
             stats=Stats(
-                files=1,
+                files=2,
+                failed=1,
                 declarations=2,
                 symbols=3,
                 postings=3,

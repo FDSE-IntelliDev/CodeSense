@@ -49,7 +49,17 @@ class ReferenceLanguage(ToyLanguage):
 
     def scan(self, source: str) -> ScanResult:
         if source == "target":
-            return ScanResult((Declaration("PageRequest", "class", line=1, end_line=2),))
+            return ScanResult(
+                (
+                    Declaration(
+                        "PageRequest",
+                        "class",
+                        line=1,
+                        end_line=2,
+                        qualified_name="org.example.PageRequest",
+                    ),
+                )
+            )
         return ScanResult(
             declarations=(Declaration("run", "method", line=2, end_line=4),),
             references=(
@@ -137,7 +147,10 @@ def test_parse_failed_file_has_no_file_element(tmp_path: Path) -> None:
 
     result = build_index(tmp_path, languages=[ToyLanguage()])
 
-    assert [row["file"] for row in result.payload["symbols"] if row["kind"] == "file"] == ["ok.toy"]
+    files = [row for row in result.payload["symbols"] if row["kind"] == "file"]
+
+    assert [row["file"] for row in files] == ["ok.toy"]
+    assert len(files) == result.stats.symbols - result.stats.declarations == 1
     assert result.stats.files == 2
     assert result.stats.failed == 1
 

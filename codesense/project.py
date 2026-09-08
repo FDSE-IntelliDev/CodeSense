@@ -159,7 +159,7 @@ class Project:
                 built_at=datetime.now(timezone.utc).isoformat(timespec="seconds"),
                 symbols=stats.symbols,
                 declarations=stats.declarations,
-                files=stats.files,
+                files=stats.symbols - stats.declarations,
                 postings=stats.postings,
                 edges=stats.edges,
                 language=", ".join(stats.languages),

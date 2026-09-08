@@ -15,6 +15,11 @@
   可索引元素：方法体中的引用属于方法，import、package 或声明外引用属于文件节点。
 - `imports` 等精确边可与通用 `references` 并存。Java scanner 在同一次 AST 扫描中提取
   引用事实，等项目符号表完整后再解析项目内目标；不为外部或无法可靠解析的名称制造节点。
+- Java 声明的引用身份包含真实 package 和结构路径，但 `container` 仍只表达声明嵌套。
+  显式全限定名只做精确匹配，未命中时不退回同名声明；`target_kind="type"` 只接受语言
+  配置的容器类型。静态成员 import 因此保守地保持 unresolved，而不会误指向同名方法或字段。
+- 引用归属使用同一次扫描得到的行列范围，并按文件预计算 sweep/heap 索引；对一个文件的
+  `D` 个声明和 `R` 个引用，归属解析为 `O((D + R) log D)`，不逐引用重扫全部声明。
 - `project()` 使用边存储的方向索引做证据保留的一跳转换，复杂度为
   `O(input_nodes + traversed_edges)`；`in_file` / `references` 均不加入默认 coherence。
 

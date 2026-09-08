@@ -135,6 +135,38 @@ class TestJavaDeclarationScanner:
         assert imported.qualified_name == "org.springframework.data.domain.PageRequest"
         assert imported.target_kind == "type"
 
+    def test_package_qualifies_identity_without_changing_structural_container(
+        self, scanner: JavaDeclarationScanner
+    ) -> None:
+        result = scanner.scan("package alpha.beta; class Outer { class Inner { void run() {} } }")
+        declarations = {declaration.name: declaration for declaration in result.declarations}
+
+        assert declarations["Outer"].qualified_name == "alpha.beta.Outer"
+        assert declarations["Outer"].container == ""
+        assert declarations["Inner"].qualified_name == "alpha.beta.Outer.Inner"
+        assert declarations["Inner"].container == "Outer"
+        assert declarations["run"].qualified_name == "alpha.beta.Outer.Inner.run"
+        assert declarations["run"].container == "Outer.Inner"
+
+    def test_declarations_keep_point_precise_source_ranges(
+        self, scanner: JavaDeclarationScanner
+    ) -> None:
+        result = scanner.scan("package a; class Outer { void run() { String value; } }")
+        declarations = {declaration.name: declaration for declaration in result.declarations}
+
+        assert (
+            declarations["Outer"].line,
+            declarations["Outer"].column,
+            declarations["Outer"].end_line,
+            declarations["Outer"].end_column,
+        ) == (1, 11, 1, 55)
+        assert (
+            declarations["run"].line,
+            declarations["run"].column,
+            declarations["run"].end_line,
+            declarations["run"].end_column,
+        ) == (1, 25, 1, 53)
+
     def test_type_and_static_receiver_references_keep_source_order_and_sites(
         self, scanner: JavaDeclarationScanner
     ) -> None:

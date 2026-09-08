@@ -97,8 +97,9 @@ class JavaDeclarationScanner:
         data = source.encode("utf-8")
         tree = self._parser.parse(data)  # type: ignore[attr-defined]
         root = tree.root_node
+        package = _package_name(root, data)
         return ScanResult(
-            declarations=tuple(self._walk(root, data)),
+            declarations=tuple(self._walk(root, data, package=package)),
             references=_reference_uses(root, data),
         )
 
@@ -108,20 +109,26 @@ class JavaDeclarationScanner:
             use for declaration in self.scan(source).declarations for use in declaration.annotations
         ]
 
-    def _walk(self, node: object, data: bytes, container: str = "") -> Iterator[Declaration]:
+    def _walk(
+        self, node: object, data: bytes, container: str = "", package: str = ""
+    ) -> Iterator[Declaration]:
         kind = _DECLARATIONS.get(node.type)  # type: ignore[attr-defined]
         inner = container
         if kind is not None:
-            declaration = self._declaration(node, kind, data, container)
+            declaration = self._declaration(node, kind, data, container, package)
             yield declaration
             if kind in _TYPE_KINDS and declaration.name:
                 # Nested classes carry the outer name: `Outer.Inner`, not a bare `Inner`
                 inner = f"{container}.{declaration.name}" if container else declaration.name
         for child in node.children:  # type: ignore[attr-defined]
-            yield from self._walk(child, data, inner)
+            yield from self._walk(child, data, inner, package)
 
-    def _declaration(self, node: object, kind: str, data: bytes, container: str) -> Declaration:
+    def _declaration(
+        self, node: object, kind: str, data: bytes, container: str, package: str
+    ) -> Declaration:
         name = _text(node.child_by_field_name("name"), data) or _declared_name(node, data)  # type: ignore[attr-defined]
+        structural_name = f"{container}.{name}" if container else name
+        qualified_name = f"{package}.{structural_name}" if package else structural_name
         modifiers: set[str] = set()
         uses: list[AnnotationUse] = []
         modifier_node = _child_of_type(node, "modifiers")
@@ -137,8 +144,11 @@ class JavaDeclarationScanner:
             kind=kind,
             name=name,
             line=node.start_point[0] + 1,  # type: ignore[attr-defined]
+            column=node.start_point[1],  # type: ignore[attr-defined]
             end_line=node.end_point[0] + 1,  # type: ignore[attr-defined]
+            end_column=node.end_point[1],  # type: ignore[attr-defined]
             container=container,
+            qualified_name=qualified_name,
             signature=_signature(node, kind, data),
             doc=_javadoc(node, data),
             modifiers=frozenset(modifiers),
@@ -147,6 +157,29 @@ class JavaDeclarationScanner:
             local_types=_local_types(node, data) if kind in _CALLABLE_KINDS else (),
             supertypes=_supertypes(node, data) if kind in _TYPE_KINDS else (),
         )
+
+
+def _package_name(root: object, data: bytes) -> str:
+    """Read the Java package from the already parsed compilation unit."""
+    package = next(
+        (
+            child
+            for child in root.children  # type: ignore[attr-defined]
+            if child.type == "package_declaration"
+        ),
+        None,
+    )
+    if package is None:
+        return ""
+    target = next(
+        (
+            child
+            for child in package.children  # type: ignore[attr-defined]
+            if child.type in {"identifier", "scoped_identifier"}
+        ),
+        None,
+    )
+    return _text(target, data)
 
 
 def _invocations(node: object, data: bytes) -> tuple[Invocation, ...]:

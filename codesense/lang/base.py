@@ -95,6 +95,15 @@ class Declaration:
     #: What this type extends or implements. Method lookup walks up it.
     supertypes: tuple[str, ...] = ()
 
+    #: Zero-based columns complete the existing one-based line range. Keeping
+    #: these after the original fields preserves positional construction.
+    column: int = 0
+    end_column: int = 0
+
+    #: Project-language identity used for exact reference resolution. This is
+    #: separate from ``container``, whose value remains purely structural.
+    qualified_name: str = ""
+
 
 @dataclass(frozen=True, slots=True)
 class ReferenceUse:

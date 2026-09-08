@@ -21,6 +21,7 @@ and cross-library calls stay out of reach -- those genuinely need CodeQL.
 
 from __future__ import annotations
 
+import heapq
 from collections import defaultdict
 from collections.abc import Sequence
 from dataclasses import dataclass, field
@@ -106,6 +107,7 @@ class _FileReferences:
     file_id: int
     declarations: tuple[tuple[Declaration, int], ...]
     references: tuple[ReferenceUse, ...]
+    owners: tuple[int, ...]
 
 
 class GraphBuilder:
@@ -120,6 +122,7 @@ class GraphBuilder:
         self._by_simple_name: dict[str, list[int]] = defaultdict(list)
         self._references_by_qualified: dict[str, list[int]] = defaultdict(list)
         self._references_by_simple_name: dict[str, list[int]] = defaultdict(list)
+        self._reference_target_kinds: dict[int, str] = {}
         self._containers: list[tuple[int, str]] = []
         self._invocations: list[tuple[int, str, dict[str, str], Sequence[Any]]] = []
         self._file_references: list[_FileReferences] = []
@@ -132,8 +135,10 @@ class GraphBuilder:
             if declaration.container
             else declaration.name
         )
-        self._references_by_qualified[qualified].append(symbol_id)
+        reference_identity = declaration.qualified_name or qualified
+        self._references_by_qualified[reference_identity].append(symbol_id)
         self._references_by_simple_name[declaration.name].append(symbol_id)
+        self._reference_target_kinds[symbol_id] = declaration.kind
         if declaration.kind in self._callable_kinds:
             self._by_simple_name[declaration.name].append(symbol_id)
             self.types.methods[owner][declaration.name].append(symbol_id)
@@ -164,6 +169,7 @@ class GraphBuilder:
                 file_id=file_id,
                 declarations=tuple(declarations),
                 references=tuple(references),
+                owners=_reference_owners(references, declarations, file_id),
             )
         )
 
@@ -225,21 +231,25 @@ class GraphBuilder:
         """Resolve every recorded use through precomputed project name maps."""
         edges: list[dict[str, Any]] = []
         for record in self._file_references:
-            intervals = tuple(
-                (declaration.line, declaration.end_line, symbol_id)
-                for declaration, symbol_id in record.declarations
-            )
-            for use in record.references:
-                owner_id = _reference_owner(use.line, intervals, record.file_id)
+            for use, owner_id in zip(record.references, record.owners, strict=True):
                 targets: Sequence[int] = ()
                 if use.qualified_name:
                     targets = self._references_by_qualified.get(use.qualified_name, ())
                     provenance = "qualified_name"
                     ceiling = QUALIFIED_REFERENCE_CONFIDENCE
-                if not targets:
+                else:
                     targets = self._references_by_simple_name.get(use.name, ())
                     provenance = "simple_name"
                     ceiling = SIMPLE_REFERENCE_CONFIDENCE
+                targets = tuple(
+                    target_id
+                    for target_id in targets
+                    if _target_kind_matches(
+                        self._reference_target_kinds[target_id],
+                        use.target_kind,
+                        self._container_kinds,
+                    )
+                )
                 if not targets:
                     self.stats.reference_unresolved += 1
                     continue
@@ -272,14 +282,68 @@ class GraphBuilder:
         return edges
 
 
-def _reference_owner(line: int, intervals: Sequence[tuple[int, int, int]], file_id: int) -> int:
-    """Choose the smallest indexed declaration containing a reference site."""
-    containing = [
-        (end_line - start_line, symbol_id)
-        for start_line, end_line, symbol_id in intervals
-        if start_line <= line <= end_line
-    ]
-    return min(containing)[1] if containing else file_id
+def _target_kind_matches(
+    declaration_kind: str, target_kind: str, container_kinds: frozenset[str]
+) -> bool:
+    """Apply a language-neutral reference kind hint to one candidate."""
+    if not target_kind:
+        return True
+    if target_kind == "type":
+        return declaration_kind in container_kinds
+    return declaration_kind == target_kind
+
+
+def _reference_owners(
+    references: Sequence[ReferenceUse],
+    declarations: Sequence[tuple[Declaration, int]],
+    file_id: int,
+) -> tuple[int, ...]:
+    """Resolve all owners with one point-aware sweep over a source file.
+
+    Java declaration ranges are nested or disjoint. At each reference point,
+    the active declaration with the latest start (then earliest end) is the
+    smallest containing declaration. Two heaps make each interval enter and
+    leave once, avoiding a declaration scan for every reference.
+    """
+    if not references or not declarations:
+        return tuple(file_id for _ in references)
+
+    intervals = sorted(
+        (
+            (declaration.line, declaration.column),
+            (declaration.end_line, declaration.end_column),
+            symbol_id,
+        )
+        for declaration, symbol_id in declarations
+    )
+    ordered_references = sorted(
+        enumerate(references), key=lambda item: (item[1].line, item[1].column, item[0])
+    )
+    owners = [file_id] * len(references)
+    active: list[tuple[int, int, int, int, int]] = []
+    endings: list[tuple[tuple[int, int], int]] = []
+    expired: set[int] = set()
+    interval_index = 0
+
+    for reference_index, use in ordered_references:
+        point = (use.line, use.column)
+        while interval_index < len(intervals) and intervals[interval_index][0] <= point:
+            start, end, symbol_id = intervals[interval_index]
+            heapq.heappush(
+                active,
+                (-start[0], -start[1], end[0], end[1], symbol_id),
+            )
+            heapq.heappush(endings, (end, symbol_id))
+            interval_index += 1
+        while endings and endings[0][0] <= point:
+            _, symbol_id = heapq.heappop(endings)
+            expired.add(symbol_id)
+        while active and active[0][4] in expired:
+            heapq.heappop(active)
+        if active:
+            owners[reference_index] = active[0][4]
+
+    return tuple(owners)
 
 
 def _reference_edge(
