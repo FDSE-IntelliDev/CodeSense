@@ -1,5 +1,15 @@
 # CodeSense Changelog
 
+## 2026-09-09 — 文件结果目标与项目内引用图
+
+- 源文件成为真实的 `Element(kind="file")` 图节点，声明通过 `in_file` 物理归属边投影到
+  文件；`target=("file",)` 作为跨 route 的硬输出契约，普通声明查询保持原结果类型。
+- Java 单次扫描提取项目内 `references` / `imports`，并按最小可索引引用方建立带位置、
+  置信度和来源的边；新增保留 Evidence 的一跳 `project()` 算子。
+- codegen、planned 与 lexical 路由接入文件目标契约，新增 PageRequest 真实 Java 项目的
+  图直查、references 脚本和 imports 脚本端到端验收。
+- 直接路径/glob postings 与任意文件内容正则仍不在本次支持范围内。
+
 ## 2026-08-06 — finetune 轻量化 Demo
 
 - 新增 `lightweight`、`full_force`、`warn_full` 三种 finetune profile；默认使用
