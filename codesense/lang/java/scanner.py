@@ -15,9 +15,13 @@ from __future__ import annotations
 import re
 from collections.abc import Iterator, Sequence
 
-from codesense.lang.base import AnnotationUse, Declaration, Invocation
+from codesense.lang.base import AnnotationUse, Declaration, Invocation, ReferenceUse, ScanResult
 
-__all__ = ["Declaration", "Invocation", "JavaDeclarationScanner"]
+__all__ = [
+    "Declaration",
+    "Invocation",
+    "JavaDeclarationScanner",
+]
 
 #: Declarations carrying a ``modifiers`` child. Annotations and modifiers
 #: both hang off it.
@@ -89,14 +93,20 @@ class JavaDeclarationScanner:
 
         return cls(get_parser("java"))
 
-    def scan(self, source: str) -> list[Declaration]:
+    def scan(self, source: str) -> ScanResult:
         data = source.encode("utf-8")
         tree = self._parser.parse(data)  # type: ignore[attr-defined]
-        return list(self._walk(tree.root_node, data))
+        root = tree.root_node
+        return ScanResult(
+            declarations=tuple(self._walk(root, data)),
+            references=_reference_uses(root, data),
+        )
 
     def annotations(self, source: str) -> list[AnnotationUse]:
         """Convenience entry point when only annotations are wanted."""
-        return [use for declaration in self.scan(source) for use in declaration.annotations]
+        return [
+            use for declaration in self.scan(source).declarations for use in declaration.annotations
+        ]
 
     def _walk(self, node: object, data: bytes, container: str = "") -> Iterator[Declaration]:
         kind = _DECLARATIONS.get(node.type)  # type: ignore[attr-defined]
@@ -153,8 +163,86 @@ def _invocations(node: object, data: bytes) -> tuple[Invocation, ...]:
         name = _text(current.child_by_field_name("name"), data)
         if name:
             receiver = _text(current.child_by_field_name("object"), data)
-            found.setdefault(Invocation(name=name, receiver=receiver), None)
+            found.setdefault(
+                Invocation(
+                    name=name,
+                    receiver=receiver,
+                    line=current.start_point[0] + 1,
+                ),
+                None,
+            )
     return tuple(found)
+
+
+def _reference_uses(root: object, data: bytes) -> tuple[ReferenceUse, ...]:
+    """Collect conservative type and import facts in source traversal order.
+
+    These are deliberately unresolved syntax observations. The graph builder
+    owns project-wide name resolution, where all declarations are available.
+    """
+    found: dict[tuple[str, int, int, str, str], ReferenceUse] = {}
+
+    def add(use: ReferenceUse | None) -> None:
+        if use is None or not use.name:
+            return
+        key = (use.name, use.line, use.column, use.relation, use.qualified_name)
+        found.setdefault(key, use)
+
+    def visit(node: object) -> None:
+        node_type = node.type  # type: ignore[attr-defined]
+        if node_type == "import_declaration":
+            add(_import_use(node, data))
+        elif node_type == "type_identifier":
+            add(_type_use(node, data))
+        elif node_type == "method_invocation":
+            receiver = node.child_by_field_name("object")  # type: ignore[attr-defined]
+            receiver_name = _text(receiver, data)
+            if receiver_name.isidentifier() and receiver_name[:1].isupper():
+                add(_type_use(receiver, data))
+        for child in node.children:  # type: ignore[attr-defined]
+            visit(child)
+
+    visit(root)
+    return tuple(found.values())
+
+
+def _import_use(node: object, data: bytes) -> ReferenceUse | None:
+    """Return the import target, excluding wildcard packages."""
+    if any(child.type == "asterisk" for child in node.children):  # type: ignore[attr-defined]
+        return None
+    target = next(
+        (
+            child
+            for child in node.children  # type: ignore[attr-defined]
+            if child.type in {"identifier", "scoped_identifier"}
+        ),
+        None,
+    )
+    qualified_name = _text(target, data)
+    name = qualified_name.rsplit(".", 1)[-1]
+    if not name or name == "*":
+        return None
+    return ReferenceUse(
+        name=name,
+        line=target.start_point[0] + 1,  # type: ignore[union-attr]
+        column=target.start_point[1],  # type: ignore[union-attr]
+        relation="imports",
+        target_kind="type",
+        qualified_name=qualified_name,
+    )
+
+
+def _type_use(node: object | None, data: bytes) -> ReferenceUse | None:
+    """Convert a type-shaped AST occurrence to a language-neutral use."""
+    name = _text(node, data)
+    if node is None or not name:
+        return None
+    return ReferenceUse(
+        name=name,
+        line=node.start_point[0] + 1,  # type: ignore[attr-defined]
+        column=node.start_point[1],  # type: ignore[attr-defined]
+        target_kind="type",
+    )
 
 
 def _local_types(node: object, data: bytes) -> tuple[tuple[str, str], ...]:

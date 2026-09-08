@@ -2,7 +2,7 @@
 
 Adding a language means writing one `Language` adapter -- everything above
 this layer (postings, graph construction, grounding, search) is written
-against `Declaration` and never against Java.
+against these scan facts and never against Java.
 
 The types here are the negotiated middle ground. They are deliberately not
 "the union of every language's AST": that would make the adapter trivial and
@@ -28,6 +28,8 @@ __all__ = [
     "Declaration",
     "Invocation",
     "Language",
+    "ReferenceUse",
+    "ScanResult",
 ]
 
 
@@ -94,6 +96,31 @@ class Declaration:
     supertypes: tuple[str, ...] = ()
 
 
+@dataclass(frozen=True, slots=True)
+class ReferenceUse:
+    """One syntactic use of a potentially indexable target.
+
+    The language adapter records source facts only. Resolving ``name`` or
+    ``qualified_name`` against project declarations belongs to the indexing
+    graph, after every file has been scanned.
+    """
+
+    name: str
+    line: int
+    column: int = 0
+    relation: str = "references"
+    target_kind: str = ""
+    qualified_name: str = ""
+
+
+@dataclass(frozen=True, slots=True)
+class ScanResult:
+    """All declaration and reference facts produced by one source parse."""
+
+    declarations: tuple[Declaration, ...]
+    references: tuple[ReferenceUse, ...] = ()
+
+
 @runtime_checkable
 class Language(Protocol):
     """The adapter one language needs to supply.
@@ -120,11 +147,12 @@ class Language(Protocol):
     #: derived from the container field.
     container_kinds: frozenset[str]
 
-    def scan(self, source: str) -> Sequence[Declaration]:
-        """Parse one file into declarations.
+    def scan(self, source: str) -> ScanResult:
+        """Parse one file into declarations and syntactic reference uses.
 
         Must not raise on malformed input if it can avoid it: one unparseable
-        file should cost that file, not the build.
+        file should cost that file, not the build. Adapters should derive both
+        result collections from the same parse tree.
         """
         ...
 

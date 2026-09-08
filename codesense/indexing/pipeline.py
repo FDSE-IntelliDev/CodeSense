@@ -205,13 +205,17 @@ def _scan_language(
         stats.files += 1
         try:
             source = path.read_text(encoding="utf-8", errors="replace")
-            declarations = language.scan(source)
+            scan_result = language.scan(source)
         except Exception as exc:  # noqa: BLE001 -- one bad file must not halt the build
             stats.failed += 1
             _log.warning("skipped %s: %s", path, exc)
             continue
 
-        kept = [d for d in declarations if d.kind in language.indexed_kinds and d.name]
+        kept = [
+            declaration
+            for declaration in scan_result.declarations
+            if declaration.kind in language.indexed_kinds and declaration.name
+        ]
         file_sentences = list(corpus_sentences(kept))
         if corpus_observer is None:
             sentences.extend(file_sentences)

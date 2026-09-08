@@ -10,7 +10,14 @@ from __future__ import annotations
 
 import pytest
 
-from codesense.lang import LANGUAGES, Declaration, Language, LanguageRegistry
+from codesense.lang import (
+    LANGUAGES,
+    Declaration,
+    Language,
+    LanguageRegistry,
+    ReferenceUse,
+    ScanResult,
+)
 
 
 class ToyLanguage:
@@ -22,18 +29,24 @@ class ToyLanguage:
     indexed_kinds = frozenset({"function"})
     container_kinds = frozenset({"module"})
 
-    def scan(self, source: str) -> list[Declaration]:
-        return [
-            Declaration(name=line.strip(), kind="function", line=n)
-            for n, line in enumerate(source.splitlines(), 1)
-            if line.strip()
-        ]
+    def scan(self, source: str) -> ScanResult:
+        return ScanResult(
+            declarations=tuple(
+                Declaration(name=line.strip(), kind="function", line=n)
+                for n, line in enumerate(source.splitlines(), 1)
+                if line.strip()
+            )
+        )
 
     def expansions(self) -> dict:
         return {}
 
 
 class TestProtocol:
+    def test_scan_fact_types_are_language_neutral(self) -> None:
+        use = ReferenceUse(name="Widget", line=3, target_kind="type")
+        assert ScanResult(declarations=(), references=(use,)).references == (use,)
+
     def test_a_minimal_adapter_satisfies_the_protocol(self) -> None:
         assert isinstance(ToyLanguage(), Language)
 

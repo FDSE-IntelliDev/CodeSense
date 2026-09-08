@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from codesense.indexing import build_index
-from codesense.lang import Declaration
+from codesense.lang import Declaration, ScanResult
 
 
 class ToyLanguage:
@@ -17,14 +17,16 @@ class ToyLanguage:
     indexed_kinds = frozenset({"function"})
     container_kinds: frozenset[str] = frozenset()
 
-    def scan(self, source: str) -> list[Declaration]:
+    def scan(self, source: str) -> ScanResult:
         if source == "parse failure":
             raise ValueError("invalid toy source")
-        return [
-            Declaration(name=line, kind="function", line=line_number)
-            for line_number, line in enumerate(source.splitlines(), 1)
-            if line
-        ]
+        return ScanResult(
+            declarations=tuple(
+                Declaration(name=line, kind="function", line=line_number)
+                for line_number, line in enumerate(source.splitlines(), 1)
+                if line
+            )
+        )
 
     def expansions(self) -> dict:
         return {}
