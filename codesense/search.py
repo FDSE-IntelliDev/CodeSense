@@ -318,6 +318,7 @@ def _namespace(ctx: EvalContext, judge: bool = False) -> dict[str, Any]:
         "eval_unit": eval_unit,
         "hop": hop,
         "reach": reach,
+        "project": project_frag,
         "degree": degree,
         "only": only,
         "top": top,

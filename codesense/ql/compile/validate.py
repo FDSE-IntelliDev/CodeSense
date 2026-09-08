@@ -49,10 +49,15 @@ class Relation:
     dst: str
     lift: float
     detail: str = ""
+    edge: tuple[str, ...] = ("calls", "contains")
 
 
 def relation_lift(
-    src_terms: Sequence[str], dst_terms: Sequence[str], ctx: EvalContext
+    src_terms: Sequence[str],
+    dst_terms: Sequence[str],
+    ctx: EvalContext,
+    *,
+    edge: Sequence[str] = ("calls", "contains"),
 ) -> tuple[float, str]:
     """How many times denser the edges between two term groups are than chance.
 
@@ -68,12 +73,16 @@ def relation_lift(
     if not left or not right:
         return 0.0, "one side matched nothing"
 
+    kinds = tuple(edge) or ("calls", "contains")
     sampled = sorted(left)[:SAMPLE_CAP]
     scale = len(left) / len(sampled)
     crossing = scale * sum(
-        1 for node in sampled for edge in ctx.edges.out_edges(node) if edge.target_id in right
+        1
+        for node in sampled
+        for relation in ctx.edges.out_edges(node, kinds=kinds)
+        if relation.target_id in right
     )
-    edges = sum(ctx.edges.degree(node) for node in sampled) * scale
+    edges = sum(ctx.edges.degree(node, kinds=kinds) for node in sampled) * scale
     expected = len(left) * len(right) * edges / (total * total) if total else 0.0
     if expected <= 0:
         return 0.0, "the graph has no edges"
@@ -82,7 +91,7 @@ def relation_lift(
 
 
 def validate_relations(
-    proposed: Sequence[tuple[str, str]],
+    proposed: Sequence[tuple[str, str] | tuple[str, str, Sequence[str]]],
     groups: dict[str, Sequence[str]],
     ctx: EvalContext,
     *,
@@ -95,13 +104,16 @@ def validate_relations(
     """
     kept: list[Relation] = []
     rejected: list[str] = []
-    for src, dst in proposed:
+    for proposal in proposed:
+        src, dst = proposal[:2]
+        edge = tuple(proposal[2]) if len(proposal) >= 3 else ("calls", "contains")
+        edge = edge or ("calls", "contains")
         if src not in groups or dst not in groups or src == dst:
             rejected.append(f"{src}->{dst}: names a group that does not exist")
             continue
-        lift, detail = relation_lift(groups[src], groups[dst], ctx)
+        lift, detail = relation_lift(groups[src], groups[dst], ctx, edge=edge)
         if lift >= floor:
-            kept.append(Relation(src=src, dst=dst, lift=lift, detail=detail))
+            kept.append(Relation(src=src, dst=dst, lift=lift, edge=edge, detail=detail))
         else:
             rejected.append(
                 f"{src}->{dst}: {detail}, below {floor}x -- the relation does not "
