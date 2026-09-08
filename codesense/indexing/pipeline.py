@@ -27,7 +27,7 @@ from typing import Any
 
 from codesense.indexing.graph import GraphBuilder
 from codesense.indexing.postings import PostingTable, declaration_terms
-from codesense.lang.base import Declaration, Language
+from codesense.lang.base import Declaration, Language, ReferenceUse
 from codesense.text.corpus import corpus_sentences, source_files
 from codesense.text.split import Splitter, split_identifier
 
@@ -60,6 +60,10 @@ class Stats:
     typed: int = 0
     ambiguous: int = 0
     unresolved: int = 0
+    references: int = 0
+    imports: int = 0
+    reference_ambiguous: int = 0
+    reference_unresolved: int = 0
     segmented: int = 0
     languages: tuple[str, ...] = ()
 
@@ -80,7 +84,8 @@ class _IndexedFile:
     path: str
     language: str
     lines: int
-    declaration_ids: tuple[int, ...]
+    declarations: tuple[tuple[Declaration, int], ...]
+    references: tuple[ReferenceUse, ...]
 
 
 def build_index(
@@ -157,7 +162,13 @@ def build_index(
                 "confidence": 1.0,
                 "provenance": "source_path",
             }
-            for declaration_id in record.declaration_ids
+            for _, declaration_id in record.declarations
+        )
+        graphs[record.language].observe_file(
+            record.path,
+            file_id,
+            record.declarations,
+            record.references,
         )
     stats.symbols = len(symbols)
     if segment:
@@ -172,6 +183,10 @@ def build_index(
         stats.typed += builder.stats.typed
         stats.ambiguous += builder.stats.ambiguous
         stats.unresolved += builder.stats.unresolved
+        stats.references += builder.stats.references
+        stats.imports += builder.stats.imports
+        stats.reference_ambiguous += builder.stats.reference_ambiguous
+        stats.reference_unresolved += builder.stats.reference_unresolved
     edges += in_file_edges
     stats.edges = len(edges)
 
@@ -221,11 +236,11 @@ def _scan_language(
             sentences.extend(file_sentences)
         else:
             corpus_observer(str(path.relative_to(root)), file_sentences)
-        declaration_ids: list[int] = []
+        declarations: list[tuple[Declaration, int]] = []
         for declaration in kept:
             symbol_id = len(symbols) + 1
             symbols.append(_symbol_row(symbol_id, declaration, path, root, language.name))
-            declaration_ids.append(symbol_id)
+            declarations.append((declaration, symbol_id))
             stats.annotations += len(declaration.annotations)
             postings.add_all(declaration_terms(declaration, split_identifier, language), symbol_id)
             graph.observe(declaration, symbol_id)
@@ -234,7 +249,8 @@ def _scan_language(
                 path=path.relative_to(root).as_posix(),
                 language=language.name,
                 lines=max(1, len(source.splitlines())),
-                declaration_ids=tuple(declaration_ids),
+                declarations=tuple(declarations),
+                references=scan_result.references,
             )
         )
         if progress is not None and stats.files % 200 == 0:
