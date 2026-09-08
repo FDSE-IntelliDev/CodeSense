@@ -4,8 +4,16 @@ from __future__ import annotations
 
 from typing import Any
 
-from codesense.llm.compiler import QueryUnderstanding
+from codesense.llm.compiler import PROMPT, QueryUnderstanding
 from codesense.llm.config import LlmConfig
+
+
+def test_prompt_allows_all_explicit_supported_relation_kinds() -> None:
+    prompt = " ".join(PROMPT.lower().split())
+
+    assert "explicitly expresses a relation between groups" in prompt
+    assert all(edge in prompt for edge in ("calls", "contains", "references", "imports", "in_file"))
+    assert "relation verb" in prompt and "does not imply a file" in prompt
 
 
 class FakeResponse:

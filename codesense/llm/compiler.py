@@ -66,10 +66,11 @@ Requirements:
 - group the terms by meaning. **If the query is about one thing, give one
   group**; split only when the query really is about two different things
   (for instance "performance" and "disk" are two things)
-- give relations only when the query really means "A-related code
-  calls/contains B-related code", otherwise give an empty list. **These
-  proposals are checked against the codebase's actual edges and fabricated
-  ones are discarded**
+- propose relations whenever the query explicitly expresses a relation
+  between groups (for example, A-related code calls, contains, references,
+  imports, or in_file B-related code); use one or more supported edge kinds.
+  Otherwise give an empty list. **These proposals are checked against the
+  codebase's actual edges and fabricated ones are discarded**
 - valid edge names are calls, contains, references, imports, and in_file;
   use the exact edge kind requested by the query
 - set target to ["file"] only when the query explicitly asks for files. A
