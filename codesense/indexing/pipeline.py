@@ -50,6 +50,7 @@ class Stats:
 
     files: int = 0
     failed: int = 0
+    declarations: int = 0
     symbols: int = 0
     annotations: int = 0
     postings: int = 0
@@ -70,6 +71,16 @@ class BuildResult:
     payload: dict[str, Any]
     sentences: list[list[str]] = field(default_factory=list)
     stats: Stats = field(default_factory=Stats)
+
+
+@dataclass(frozen=True, slots=True)
+class _IndexedFile:
+    """A successfully scanned file awaiting its stable Element ID."""
+
+    path: str
+    language: str
+    lines: int
+    declaration_ids: tuple[int, ...]
 
 
 def build_index(
@@ -95,6 +106,7 @@ def build_index(
 
     stats = Stats(languages=tuple(language.name for language in languages))
     symbols: list[dict[str, Any]] = []
+    indexed_files: list[_IndexedFile] = []
     sentences: list[list[str]] = []
     postings = PostingTable()
     graphs = {
@@ -107,6 +119,7 @@ def build_index(
             root,
             language,
             symbols,
+            indexed_files,
             sentences,
             postings,
             graphs[language.name],
@@ -115,6 +128,37 @@ def build_index(
             corpus_observer,
         )
 
+    # File Elements follow every declaration so existing declaration IDs stay
+    # stable. Their own order is language-independent and reproducible.
+    stats.declarations = len(symbols)
+    in_file_edges: list[dict[str, Any]] = []
+    for record in sorted(indexed_files, key=lambda item: (item.path, item.language)):
+        file_id = len(symbols) + 1
+        symbols.append(
+            {
+                "symbol_id": file_id,
+                "name": Path(record.path).name,
+                "kind": "file",
+                "file": record.path,
+                "span": [1, record.lines],
+                "signature": "",
+                "container": "",
+                "doc": "",
+                "language": record.language,
+                "modifiers": [],
+            }
+        )
+        in_file_edges.extend(
+            {
+                "source_id": declaration_id,
+                "target_id": file_id,
+                "kind": "in_file",
+                "site": None,
+                "confidence": 1.0,
+                "provenance": "source_path",
+            }
+            for declaration_id in record.declaration_ids
+        )
     stats.symbols = len(symbols)
     if segment:
         stats.segmented = _segment_compounds(postings)
@@ -128,12 +172,18 @@ def build_index(
         stats.typed += builder.stats.typed
         stats.ambiguous += builder.stats.ambiguous
         stats.unresolved += builder.stats.unresolved
+    edges += in_file_edges
     stats.edges = len(edges)
 
     flat = postings.flatten()
     stats.postings = postings.count()
     return BuildResult(
-        payload={"symbols": symbols, "postings": flat, "edges": edges},
+        payload={
+            "symbols": symbols,
+            "postings": flat,
+            "edges": edges,
+            "declaration_count": stats.declarations,
+        },
         sentences=sentences,
         stats=stats,
     )
@@ -143,6 +193,7 @@ def _scan_language(
     root: Path,
     language: Language,
     symbols: list[dict[str, Any]],
+    indexed_files: list[_IndexedFile],
     sentences: list[list[str]],
     postings: PostingTable,
     graph: GraphBuilder,
@@ -153,7 +204,8 @@ def _scan_language(
     for path in source_files(root, language):
         stats.files += 1
         try:
-            declarations = language.scan(path.read_text(encoding="utf-8", errors="replace"))
+            source = path.read_text(encoding="utf-8", errors="replace")
+            declarations = language.scan(source)
         except Exception as exc:  # noqa: BLE001 -- one bad file must not halt the build
             stats.failed += 1
             _log.warning("skipped %s: %s", path, exc)
@@ -165,12 +217,22 @@ def _scan_language(
             sentences.extend(file_sentences)
         else:
             corpus_observer(str(path.relative_to(root)), file_sentences)
+        declaration_ids: list[int] = []
         for declaration in kept:
             symbol_id = len(symbols) + 1
             symbols.append(_symbol_row(symbol_id, declaration, path, root, language.name))
+            declaration_ids.append(symbol_id)
             stats.annotations += len(declaration.annotations)
             postings.add_all(declaration_terms(declaration, split_identifier, language), symbol_id)
             graph.observe(declaration, symbol_id)
+        indexed_files.append(
+            _IndexedFile(
+                path=path.relative_to(root).as_posix(),
+                language=language.name,
+                lines=max(1, len(source.splitlines())),
+                declaration_ids=tuple(declaration_ids),
+            )
+        )
         if progress is not None and stats.files % 200 == 0:
             progress(stats.files, len(symbols))
 

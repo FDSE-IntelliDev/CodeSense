@@ -108,7 +108,9 @@ class TestIndexingIsLanguageAgnostic:
 
         (tmp_path / "a.toy").write_text("readBuffer\nwriteBuffer\n")
         result = build_index(tmp_path, languages=[ToyLanguage()])
-        assert result.stats.symbols == 2
+        assert result.stats.symbols == 3
+        assert result.stats.declarations == 2
+        assert result.payload["declaration_count"] == 2
         assert "buffer" in result.payload["postings"]
 
     def test_records_which_language_each_symbol_came_from(self, tmp_path) -> None:  # type: ignore[no-untyped-def]
@@ -128,7 +130,7 @@ class TestIndexingIsLanguageAgnostic:
         (vendor / "b.toy").write_text("skipMe\n")
         (tmp_path / "a.toy").write_text("keepMe\n")
         result = build_index(tmp_path, languages=[ToyLanguage()])
-        assert [s["name"] for s in result.payload["symbols"]] == ["keepMe"]
+        assert [s["name"] for s in result.payload["symbols"]] == ["keepMe", "a.toy"]
 
     def test_refuses_to_build_with_no_adapter(self, tmp_path) -> None:  # type: ignore[no-untyped-def]
         from codesense.indexing import build_index
