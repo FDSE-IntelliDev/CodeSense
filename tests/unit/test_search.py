@@ -8,6 +8,8 @@ worse than one that quietly does less.
 
 from __future__ import annotations
 
+import importlib
+
 import pytest
 
 from codesense.index import Index
@@ -25,10 +27,39 @@ from tests.unit.test_index import make_index
 FILLER = 30
 
 
+class Exploding:
+    """LLM-shaped object whose first endpoint access fails."""
+
+    model = "boom"
+
+    def __getattr__(self, name: str) -> object:
+        raise RuntimeError("endpoint is down")
+
+
 def make_searchable_index() -> Index:
     index = make_index()
     symbols = index.payload["symbols"]
     postings = index.payload["postings"]
+    index.payload["edges"].extend(
+        [
+            {
+                "source_id": 1,
+                "target_id": 3,
+                "kind": "in_file",
+                "site": [10, 1],
+                "confidence": 1.0,
+                "provenance": "source_path",
+            },
+            {
+                "source_id": 2,
+                "target_id": 3,
+                "kind": "in_file",
+                "site": [20, 1],
+                "confidence": 1.0,
+                "provenance": "source_path",
+            },
+        ]
+    )
     first_filler_id = max(symbol["symbol_id"] for symbol in symbols) + 1
     for i in range(first_filler_id, first_filler_id + FILLER):
         symbols.append(
@@ -66,18 +97,92 @@ class TestRouting:
         assert search("alloc", ctx, route="codegen").route == "lexical"
 
     def test_a_failing_route_degrades_rather_than_raising(self, ctx) -> None:  # type: ignore[no-untyped-def]
-        class Exploding:
-            model = "boom"
-
-            def __getattr__(self, name: str):  # type: ignore[no-untyped-def]
-                raise RuntimeError("endpoint is down")
-
         result = search("alloc", ctx, route="codegen", llm=Exploding())
         assert result.route == "lexical"
         assert any("fell back" in note for note in result.notes)
 
     def test_every_route_is_reachable(self) -> None:
         assert set(ROUTES) == {"codegen", "planned", "lexical"}
+
+    def test_planned_route_executes_the_validated_spec(
+        self, ctx, monkeypatch: pytest.MonkeyPatch
+    ) -> None:  # type: ignore[no-untyped-def]
+        monkeypatch.setattr(
+            "codesense.llm.QueryUnderstanding.understand",
+            lambda *args: {
+                "terms": {"alloc": 1.0},
+                "groups": {},
+                "relations": (),
+                "annotations": (),
+                "concept": "",
+            },
+        )
+
+        result = search(
+            "alloc",
+            ctx,
+            route="planned",
+            llm=object(),
+            vocabulary=(("alloc", 2),),
+        )
+
+        assert result.route == "planned"
+        assert result.hits
+
+    def test_planned_target_is_used_when_the_caller_did_not_supply_one(
+        self, ctx, monkeypatch: pytest.MonkeyPatch
+    ) -> None:  # type: ignore[no-untyped-def]
+        monkeypatch.setattr(
+            "codesense.llm.QueryUnderstanding.understand",
+            lambda *args: {
+                "terms": {"alloc": 1.0},
+                "groups": {},
+                "relations": (),
+                "annotations": (),
+                "concept": "",
+                "target": ["file"],
+            },
+        )
+
+        result = search(
+            "alloc",
+            ctx,
+            route="planned",
+            llm=object(),
+            vocabulary=(("alloc", 2),),
+        )
+
+        assert result.route == "planned"
+        assert result.target == ("file",)
+        assert {hit.kind for hit in result.hits} == {"file"}
+
+    def test_explicit_empty_target_overrides_the_planned_target(
+        self, ctx, monkeypatch: pytest.MonkeyPatch
+    ) -> None:  # type: ignore[no-untyped-def]
+        monkeypatch.setattr(
+            "codesense.llm.QueryUnderstanding.understand",
+            lambda *args: {
+                "terms": {"alloc": 1.0},
+                "groups": {},
+                "relations": (),
+                "annotations": (),
+                "concept": "",
+                "target": ["file"],
+            },
+        )
+
+        result = search(
+            "alloc",
+            ctx,
+            route="planned",
+            llm=object(),
+            vocabulary=(("alloc", 2),),
+            target=(),
+        )
+
+        assert result.route == "planned"
+        assert result.target == ()
+        assert {hit.kind for hit in result.hits} == {"class", "method"}
 
 
 class TestLexicalRoute:
@@ -113,6 +218,59 @@ class TestLexicalRoute:
     def test_is_reproducible(self, ctx) -> None:  # type: ignore[no-untyped-def]
         first = [h.symbol_id for h in search("alloc", ctx, route="lexical")]
         assert first == [h.symbol_id for h in search("alloc", ctx, route="lexical")]
+
+
+class TestResultTarget:
+    def test_explicit_file_target_returns_only_files(self, ctx) -> None:  # type: ignore[no-untyped-def]
+        result = search("alloc", ctx, route="lexical", target="file")
+
+        assert result.target == ("file",)
+        assert {hit.kind for hit in result.hits} == {"file"}
+        assert [hit.file for hit in result.hits] == ["a/Pooled.java"]
+
+    @pytest.mark.parametrize("query", ["alloc file", "alloc files", "alloc 文件"])
+    def test_file_nouns_infer_the_file_target(self, ctx, query: str) -> None:  # type: ignore[no-untyped-def]
+        result = search(query, ctx, route="lexical")
+
+        assert result.target == ("file",)
+        assert {hit.kind for hit in result.hits} == {"file"}
+
+    @pytest.mark.parametrize("query", ["alloc import", "alloc reference", "alloc references"])
+    def test_relation_words_do_not_infer_a_file_target(self, ctx, query: str) -> None:  # type: ignore[no-untyped-def]
+        result = search(query, ctx, route="lexical")
+
+        assert result.target == ()
+        assert all(hit.kind != "file" for hit in result.hits)
+
+    def test_explicit_target_wins_over_query_inference(self, ctx) -> None:  # type: ignore[no-untyped-def]
+        result = search("alloc files", ctx, route="lexical", target="unknown")
+
+        assert result.target == ()
+        assert {hit.kind for hit in result.hits} == {"class", "method"}
+
+    def test_default_search_never_leaks_file_nodes(
+        self, ctx, monkeypatch: pytest.MonkeyPatch
+    ) -> None:  # type: ignore[no-untyped-def]
+        file_frag = Frag(nodes=ctx.symbols.get_many((3,)))
+        search_module = importlib.import_module("codesense.search")
+        monkeypatch.setattr(
+            search_module,
+            "_codegen",
+            lambda *args: (file_frag, "", [], ()),
+        )
+
+        result = search("alloc", ctx, route="codegen", llm=object())
+
+        assert result.target == ()
+        assert not result.hits
+
+    def test_fallback_preserves_file_target(self, ctx) -> None:  # type: ignore[no-untyped-def]
+        result = search("alloc files", ctx, route="codegen", llm=Exploding())
+
+        assert result.route == "lexical"
+        assert result.target == ("file",)
+        assert {hit.kind for hit in result.hits} == {"file"}
+        assert any("lexical approximation" in note for note in result.notes)
 
 
 class TestStructuralCoherence:
@@ -176,6 +334,10 @@ class TestSearchResult:
     def test_reports_the_route_and_timing(self, ctx) -> None:  # type: ignore[no-untyped-def]
         text = search("alloc", ctx, route="lexical").explain()
         assert "lexical" in text and "hits in" in text
+
+    def test_reports_the_effective_target(self, ctx) -> None:  # type: ignore[no-untyped-def]
+        text = search("alloc", ctx, route="lexical", target="file").explain()
+        assert "target: file" in text
 
     def test_explain_includes_the_script_when_there_is_one(self) -> None:
         """The artifact is the point: a result you cannot re-run is not much

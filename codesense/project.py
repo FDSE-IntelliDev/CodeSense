@@ -27,6 +27,7 @@ command-line argument without landing in shell history.
 from __future__ import annotations
 
 import logging
+from collections.abc import Sequence
 from datetime import datetime, timezone
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -200,7 +201,13 @@ class Project:
     # -- querying --------------------------------------------------------
 
     def search(
-        self, query: str, *, route: str = "codegen", limit: int = 30, **kwargs: Any
+        self,
+        query: str,
+        *,
+        route: str = "codegen",
+        limit: int = 30,
+        target: str | Sequence[str] | None = None,
+        **kwargs: Any,
     ) -> SearchResult:
         """Run a query. See `codesense.search.search` for the routes."""
         return search(
@@ -211,6 +218,7 @@ class Project:
             llm=self.llm,
             route=route,
             limit=limit,
+            target=target,
             **kwargs,
         )
 

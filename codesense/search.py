@@ -29,9 +29,11 @@ from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
+from codesense.ql.compile.spec import normalise_target
 from codesense.ql.context import EvalContext
 from codesense.ql.frag import Evidence, Frag, UnitHit
 from codesense.ql.operators import degree, eval_unit, hop, intent, reach, score_of, top
+from codesense.ql.operators import project as project_frag
 from codesense.ql.operators.select import only
 from codesense.ql.satisfiers import AnnotationSatisfier, LexicalSatisfier, ModifierSatisfier
 from codesense.ql.unit import QueryUnit, Term
@@ -143,6 +145,7 @@ class SearchResult:
     route: str = ""
     script: str = ""
     notes: list[str] = field(default_factory=list)
+    target: tuple[str, ...] = ()
     elapsed: float = 0.0
 
     def __len__(self) -> int:
@@ -156,6 +159,7 @@ class SearchResult:
         lines = [
             f"query : {self.query}",
             f"route : {self.route}   {len(self.hits)} hits in {self.elapsed:.2f}s",
+            f"target: {'/'.join(self.target) if self.target else 'default (non-file)'}",
         ]
         lines += [f"note  : {n}" for n in self.notes]
         if self.script:
@@ -174,6 +178,7 @@ def search(
     route: str = "codegen",
     limit: int = 30,
     judge: bool = False,
+    target: str | Sequence[str] | None = None,
 ) -> SearchResult:
     """Run a query.
 
@@ -188,21 +193,46 @@ def search(
     if route not in ROUTES:
         raise ValueError(f"route must be one of {ROUTES}, got {route!r}")
     started = time.perf_counter()
+    target_was_explicit = target is not None
+    requested_target = normalise_target(target) if target_was_explicit else _query_target(query)
     if llm is None and route != "lexical":
         _log.info("no LLM configured; falling back to the lexical route")
         route = "lexical"
 
     runner = {"codegen": _codegen, "planned": _planned, "lexical": _lexical}[route]
     try:
-        frag, script, notes = runner(query, ctx, project, vocabulary, llm)
+        frag, script, notes, route_target = runner(
+            query,
+            ctx,
+            project,
+            vocabulary,
+            llm,
+            requested_target,
+            target_was_explicit,
+        )
     except Exception as exc:  # noqa: BLE001 -- a failed route degrades, never crashes
         _log.exception("route %s failed", route)
-        frag, script, notes = _lexical(query, ctx, project, vocabulary, None)
+        frag, script, notes, route_target = _lexical(
+            query,
+            ctx,
+            project,
+            vocabulary,
+            None,
+            requested_target,
+            target_was_explicit,
+        )
         notes = [f"{route} failed ({type(exc).__name__}: {exc}); fell back to lexical", *notes]
         route = "lexical"
 
+    effective_target = requested_target if target_was_explicit else route_target
     if judge and len(frag) and ctx.judge is not None:
         frag, notes = _judge(frag, query, ctx, notes)
+    frag = _enforce_target(frag, ctx, effective_target)
+    if route == "lexical" and effective_target:
+        notes = [
+            *notes,
+            "file target is a lexical approximation; relation semantics were not verified",
+        ]
 
     return SearchResult(
         query=query,
@@ -210,8 +240,30 @@ def search(
         route=route,
         script=script,
         notes=notes,
+        target=effective_target,
         elapsed=time.perf_counter() - started,
     )
+
+
+def _query_target(query: str) -> tuple[str, ...]:
+    """Infer only explicit file nouns; relation verbs do not imply a target."""
+    return ("file",) if re.search(r"\bfiles?\b|文件", query, re.IGNORECASE) else ()
+
+
+def _enforce_target(frag: Frag, ctx: EvalContext, target: tuple[str, ...]) -> Frag:
+    """Apply the same hard output contract after every route and fallback."""
+    if not target:
+        return frag.induced(sid for sid, element in frag.nodes.items() if element.kind != "file")
+    if all(element.kind in target for element in frag.nodes.values()):
+        return frag
+    return project_frag(frag, ctx, edge="in_file", kind=target, include_self=True)
+
+
+def _returned_target(frag: Frag) -> tuple[str, ...]:
+    """Recognise a generated script that explicitly returned only file nodes."""
+    if frag and all(element.kind == "file" for element in frag.nodes.values()):
+        return ("file",)
+    return ()
 
 
 def _rank(frag: Frag, limit: int) -> list[Hit]:
@@ -285,7 +337,9 @@ def _codegen(
     project: str,
     vocabulary: Sequence[tuple[str, int]],
     llm: Any,
-) -> tuple[Frag, str, list[str]]:
+    target: tuple[str, ...],
+    _target_was_explicit: bool,
+) -> tuple[Frag, str, list[str], tuple[str, ...]]:
     """Have the model write the script, then run it behind the whitelist."""
     from codesense.llm import ScriptGenerator
     from codesense.ql import ScriptError, run_script
@@ -306,7 +360,12 @@ def _codegen(
         raise RuntimeError(f"generated script rejected: {exc}") from exc
     if not isinstance(answer, Frag):
         raise TypeError(f"the script produced a {type(answer).__name__}, not a Frag")
-    return answer, source, [f"{source.count(chr(10)) + 1}-line generated script"]
+    return (
+        answer,
+        source,
+        [f"{source.count(chr(10)) + 1}-line generated script"],
+        target or _returned_target(answer),
+    )
 
 
 def _planned(
@@ -315,7 +374,9 @@ def _planned(
     project: str,
     vocabulary: Sequence[tuple[str, int]],
     llm: Any,
-) -> tuple[Frag, str, list[str]]:
+    target: tuple[str, ...],
+    target_was_explicit: bool,
+) -> tuple[Frag, str, list[str], tuple[str, ...]]:
     """Model proposes, statistics validate, the planner orders."""
     from codesense.llm import QueryUnderstanding
     from codesense.ql.compile import build_spec, plan, to_script
@@ -324,10 +385,25 @@ def _planned(
     understood = QueryUnderstanding(llm).understand(query, project or "the project", vocab)
     if understood is None:
         raise RuntimeError("the model could not interpret the query")
-    spec = build_spec(understood, ctx, query=query)
+    understood_target = None if target_was_explicit else understood.get("target")
+    spec, validation_notes = build_spec(
+        query,
+        understood["terms"],
+        ctx,
+        concept=understood.get("concept", ""),
+        annotations=understood.get("annotations", ()),
+        groups=understood.get("groups"),
+        relations=understood.get("relations", ()),
+        target=target or understood_target,
+    )
     execution = plan(spec, ctx)
     state = execution.run(ctx)
-    return state.current, to_script(execution, spec), list(execution.reasoning)
+    return (
+        state.current,
+        to_script(execution, spec),
+        [*validation_notes, *execution.reasoning],
+        spec.target,
+    )
 
 
 def _lexical(
@@ -336,7 +412,9 @@ def _lexical(
     project: str,
     vocabulary: Sequence[tuple[str, int]],
     llm: Any,
-) -> tuple[Frag, str, list[str]]:
+    target: tuple[str, ...],
+    _target_was_explicit: bool,
+) -> tuple[Frag, str, list[str], tuple[str, ...]]:
     """The query's own words, grounded through the expansion table.
 
     No model, so nothing translates `backpressure` into `watermark`. What it
@@ -349,7 +427,7 @@ def _lexical(
     """
     words = _query_terms(query, ctx)
     if not words:
-        return Frag(), "", ["no word in the query appears in this project's vocabulary"]
+        return Frag(), "", ["no word in the query appears in this project's vocabulary"], target
     unit = QueryUnit(
         "query",
         concept=query,
@@ -357,9 +435,9 @@ def _lexical(
     )
     frag = eval_unit(unit, ctx)
     if not len(frag):
-        return frag, "", [f"no hits for {', '.join(words)}"]
+        return frag, "", [f"no hits for {', '.join(words)}"], target
     frag = _cohere(frag, ctx)
-    return frag, "", [f"matched on {', '.join(words)}"]
+    return frag, "", [f"matched on {', '.join(words)}"], target
 
 
 def _query_terms(query: str, ctx: EvalContext) -> list[str]:

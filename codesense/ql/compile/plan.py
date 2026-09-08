@@ -19,7 +19,7 @@ from dataclasses import dataclass, field
 from codesense.ql.compile.cost import Estimate, estimate_hop, estimate_intent, estimate_unit
 from codesense.ql.context import EvalContext
 from codesense.ql.frag import Frag
-from codesense.ql.operators import eval_unit, intent, reach, score_of, top
+from codesense.ql.operators import eval_unit, intent, project, reach, score_of, top
 from codesense.ql.unit import QueryUnit
 
 __all__ = [
@@ -29,6 +29,7 @@ __all__ = [
     "Intent",
     "Narrow",
     "Plan",
+    "ProjectTarget",
     "State",
     "Step",
     "Trace",
@@ -301,6 +302,29 @@ class Narrow(Step):
         if self.limit:
             found = _top_with_boost(found, self.limit, state.boosted, preferred)
         state.current = found
+
+
+@dataclass(slots=True)
+class ProjectTarget(Step):
+    """Project candidates to the element kind promised by the result contract."""
+
+    target: tuple[str, ...]
+    label: str = ""
+
+    def __post_init__(self) -> None:
+        self.label = f"target({'/'.join(self.target)})"
+
+    def estimate(self, ctx: EvalContext, state: State) -> Estimate:
+        return Estimate(rows=state.rows, cost=float(state.rows), detail="one graph hop")
+
+    def apply(self, ctx: EvalContext, state: State) -> None:
+        state.current = project(
+            state.current,
+            ctx,
+            edge="in_file",
+            kind=self.target,
+            include_self=True,
+        )
 
 
 @dataclass(slots=True)

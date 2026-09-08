@@ -18,7 +18,16 @@ from __future__ import annotations
 import textwrap
 from collections.abc import Sequence
 
-from codesense.ql.compile.plan import Boost, Cohere, EvalUnit, Intent, Narrow, Plan, Step
+from codesense.ql.compile.plan import (
+    Boost,
+    Cohere,
+    EvalUnit,
+    Intent,
+    Narrow,
+    Plan,
+    ProjectTarget,
+    Step,
+)
 from codesense.ql.compile.spec import QuerySpec
 from codesense.ql.satisfiers.lexical import AnnotationSatisfier, LexicalSatisfier, ModifierSatisfier
 from codesense.ql.unit import QueryUnit
@@ -31,7 +40,7 @@ compiled from: {query}
 index: {index}
 """
 from codesense.ql.compile import Intent
-from codesense.ql.operators import eval_unit, intent, reach, score_of, top
+from codesense.ql.operators import eval_unit, intent, project, reach, score_of, top
 from codesense.ql.satisfiers import AnnotationSatisfier, LexicalSatisfier, ModifierSatisfier
 from codesense.ql.unit import QueryUnit, Term
 '''
@@ -176,6 +185,8 @@ def _step_source(step: Step) -> str:
             f'frag = intent(frag, "{_escape(step.concept)}", ctx,\n'
             f"              threshold={step.threshold:g}, max_items={step.max_items})"
         )
+    if isinstance(step, ProjectTarget):
+        return f'frag = project(frag, ctx, edge="in_file", kind={step.target!r}, include_self=True)'
     return f"# unknown step: {step.label}"
 
 

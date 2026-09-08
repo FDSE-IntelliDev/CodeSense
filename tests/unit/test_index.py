@@ -221,6 +221,27 @@ class TestProject:
 
         assert isinstance(Project(make_index()).context.judge, NullJudge)
 
+    def test_search_forwards_the_file_target(self) -> None:
+        index = make_index()
+        index.payload["edges"].extend(
+            [
+                {
+                    "source_id": symbol_id,
+                    "target_id": 3,
+                    "kind": "in_file",
+                    "site": [line, 1],
+                    "confidence": 1.0,
+                    "provenance": "source_path",
+                }
+                for symbol_id, line in ((1, 10), (2, 20))
+            ]
+        )
+
+        result = Project(index).search("pooled", route="lexical", target="file")
+
+        assert result.target == ("file",)
+        assert [hit.kind for hit in result.hits] == ["file"]
+
     def test_open_rejects_a_missing_directory(self, tmp_path: Path) -> None:
         with pytest.raises(FileNotFoundError):
             Project.open(tmp_path / "nothing")

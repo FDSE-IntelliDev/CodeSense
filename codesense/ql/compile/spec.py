@@ -15,7 +15,13 @@ from typing import Any
 from codesense.ql.satisfiers import AnnotationSatisfier, LexicalSatisfier, ModifierSatisfier
 from codesense.ql.unit import QueryUnit, Term
 
-__all__ = ["GraphConstraint", "QuerySpec", "normalise_hops", "normalise_kinds"]
+__all__ = [
+    "GraphConstraint",
+    "QuerySpec",
+    "normalise_hops",
+    "normalise_kinds",
+    "normalise_target",
+]
 
 #: Default hop range for a graph constraint. The more hops, the weaker the
 #: conclusion that two things are related.
@@ -55,6 +61,17 @@ def normalise_kinds(raw: object) -> tuple[str, ...]:
         for kind in KIND_ALIASES.get(item.strip().lower(), (item.strip().lower(),)):
             found.setdefault(kind, None)
     return tuple(found)
+
+
+def normalise_target(raw: object) -> tuple[str, ...]:
+    """Accept only the result target implemented by the current index."""
+    if isinstance(raw, str):
+        values = [raw]
+    elif isinstance(raw, (list, tuple, set, frozenset)):
+        values = list(raw)
+    else:
+        values = []
+    return ("file",) if any(str(value).strip().lower() == "file" for value in values) else ()
 
 
 def normalise_hops(raw: object) -> tuple[int, int]:
@@ -107,9 +124,11 @@ class QuerySpec:
     graph: tuple[GraphConstraint, ...] = ()
     concept: str = ""
     kinds: tuple[str, ...] = ()
+    target: tuple[str, ...] = ()
     limit: int | None = None
 
     def __post_init__(self) -> None:
+        object.__setattr__(self, "target", normalise_target(self.target))
         if not self.units:
             raise ValueError("a query spec needs at least one unit")
         names = [unit.name for unit in self.units]
@@ -142,6 +161,7 @@ class QuerySpec:
             graph=graph,
             concept=str(payload.get("concept") or ""),
             kinds=normalise_kinds(payload.get("kinds")),
+            target=normalise_target(payload.get("target")),
             limit=payload.get("limit"),
         )
 

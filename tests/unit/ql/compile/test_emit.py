@@ -27,32 +27,37 @@ from codesense.ql.store import (
 TOTAL = 400
 
 
-def make_context() -> EvalContext:
+def make_context(*, with_file_target: bool = False) -> EvalContext:
     postings = {
         "rare": [Posting(i, IndexField.NAME) for i in range(1, 30)],
         "common": [Posting(i, IndexField.NAME) for i in range(1, 160)],
         "@Cacheable": [Posting(i, IndexField.ANNOTATION) for i in range(1, 12)],
         "static": [Posting(i, IndexField.MODIFIER) for i in range(1, 8)],
     }
+    declarations = [
+        Element(
+            symbol_id=i,
+            name=f"s{i}",
+            kind="method" if i % 3 else "class",
+            file="A.java",
+            span=(1, 2),
+        )
+        for i in range(1, TOTAL + 1)
+    ]
+    files = [Element(TOTAL + 1, "A.java", "file", "A.java", (1, 400))] if with_file_target else []
+    target_edges = (
+        [Edge(i, TOTAL + 1, "in_file") for i in range(1, TOTAL + 1)] if with_file_target else []
+    )
     return EvalContext(
-        symbols=InMemorySymbolStore(
-            [
-                Element(
-                    symbol_id=i,
-                    name=f"s{i}",
-                    kind="method" if i % 3 else "class",
-                    file="A.java",
-                    span=(1, 2),
-                )
-                for i in range(1, TOTAL + 1)
-            ]
-        ),
+        symbols=InMemorySymbolStore([*declarations, *files]),
         postings=InMemoryPostingIndex(postings, total_symbols=TOTAL),
         expansion=InMemoryExpansionTable({}),
         edges=InMemoryEdgeStore(
             [Edge(i, i + 1, "calls") for i in range(1, 120)]
             + [Edge(i, i + 2, "contains") for i in range(1, 60)]
+            + target_edges
         ),
+        declaration_count=TOTAL,
     )
 
 
@@ -103,6 +108,15 @@ class TestEquivalence:
         spec = QuerySpec.from_dict({"query": "q", "units": [{"name": "only", "terms": ["rare"]}]})
         execution = plan(spec, ctx)
         assert run_script(to_script(execution, spec), ctx) == set(execution.run(ctx).current.nodes)
+
+    def test_with_a_file_result_target(self) -> None:
+        ctx = make_context(with_file_target=True)
+        spec = make_spec(target=["file"])
+        execution = plan(spec, ctx)
+        source = to_script(execution, spec)
+
+        assert "project(" in source
+        assert run_script(source, ctx) == set(execution.run(ctx).current.nodes)
 
 
 class TestReadability:

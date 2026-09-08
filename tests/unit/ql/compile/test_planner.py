@@ -10,7 +10,16 @@ from collections.abc import Sequence
 import pytest
 
 from codesense.ql import Edge, Element, IndexField
-from codesense.ql.compile import Boost, EvalUnit, Intent, Narrow, QuerySpec, estimate_unit, plan
+from codesense.ql.compile import (
+    Boost,
+    EvalUnit,
+    Intent,
+    Narrow,
+    ProjectTarget,
+    QuerySpec,
+    estimate_unit,
+    plan,
+)
 from codesense.ql.compile.partition import partition
 from codesense.ql.compile.plan import State
 from codesense.ql.compile.spec import normalise_hops, normalise_kinds
@@ -183,6 +192,46 @@ class TestOrdering:
         ctx = make_context({"common": 100, "rare": 10})
         assert not any(isinstance(s, Intent) for s in plan(spec(), ctx).steps)
 
+    def test_file_target_projects_before_the_public_result_limit(self) -> None:
+        ctx = make_context(
+            {"rare": (1,)},
+            (Edge(1, TOTAL + 1, "in_file"),),
+            file_count=1,
+        )
+
+        steps = plan(spec(target=["file"], limit=1), ctx).steps
+
+        assert isinstance(steps[-2], ProjectTarget)
+        assert isinstance(steps[-1], Narrow)
+        assert steps[-1].limit == 1
+
+    def test_file_target_follows_intent_and_precedes_the_public_limit(self) -> None:
+        ctx = make_context(
+            {"rare": (1,)},
+            (Edge(1, TOTAL + 1, "in_file"),),
+            file_count=1,
+        )
+
+        steps = plan(spec(target="file", concept="judge", limit=1), ctx).steps
+
+        assert isinstance(steps[-4], Narrow)
+        assert steps[-4].limit == 60
+        assert isinstance(steps[-3], Intent)
+        assert isinstance(steps[-2], ProjectTarget)
+        assert isinstance(steps[-1], Narrow)
+        assert steps[-1].limit == 1
+
+    def test_file_target_execution_returns_only_files(self) -> None:
+        ctx = make_context(
+            {"rare": (1,)},
+            (Edge(1, TOTAL + 1, "in_file"),),
+            file_count=1,
+        )
+
+        current = plan(spec(target=["file"]), ctx).run(ctx).current
+
+        assert {element.kind for element in current} == {"file"}
+
 
 class TestGraphDirection:
     def test_starts_from_the_smaller_side(self) -> None:
@@ -267,6 +316,26 @@ class TestSpecRobustness:
 
     def test_an_unknown_kind_is_kept_as_is(self) -> None:
         assert normalise_kinds(["widget"]) == ("widget",)
+
+    @pytest.mark.parametrize(
+        ("raw", "expected"),
+        [
+            ("file", ("file",)),
+            (["FILE", "unknown"], ("file",)),
+            (None, ()),
+        ],
+    )
+    def test_target_accepts_only_the_supported_file_contract(
+        self, raw: object, expected: tuple[str, ...]
+    ) -> None:
+        payload = {
+            "query": "q",
+            "units": [{"name": "a", "terms": ["x"]}],
+        }
+        if raw is not None:
+            payload["target"] = raw
+
+        assert QuerySpec.from_dict(payload).target == expected
 
     def test_duplicate_unit_names_raise(self) -> None:
         with pytest.raises(ValueError, match="duplicate"):

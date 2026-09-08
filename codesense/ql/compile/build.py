@@ -20,7 +20,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 
 from codesense.ql.compile.partition import Cluster, partition
-from codesense.ql.compile.spec import GraphConstraint, QuerySpec
+from codesense.ql.compile.spec import GraphConstraint, QuerySpec, normalise_target
 from codesense.ql.compile.validate import validate_groups, validate_relations
 from codesense.ql.context import EvalContext
 from codesense.ql.fields import IndexField
@@ -94,6 +94,7 @@ def build_spec(
     annotations: Sequence[str] = (),
     groups: Mapping[str, Sequence[str]] | None = None,
     relations: Sequence[tuple[str, str]] = (),
+    target: object = None,
 ) -> tuple[QuerySpec, list[str]]:
     """Assemble the model's proposals into a spec, returning the validation
     record alongside it.
@@ -156,6 +157,7 @@ def build_spec(
             graph=constraints if len(units) > 1 else (),
             concept=concept,
             kinds=infer_kinds(values, ctx),
+            target=normalise_target(target),
         ),
         notes,
     )
