@@ -212,6 +212,35 @@ class TestEquivalence:
 
         assert run_script(to_script(execution, spec), ctx) == set(execution.run(ctx).current.nodes)
 
+    def test_nfkc_equivalent_builtin_name_is_reserved(self) -> None:
+        ctx = relation_context(())
+        unit = weighted_unit("ｓｅｔ", "source", 1.0)
+        execution = Plan(steps=(EvalUnit(unit, seed=True), Narrow(limit=1)))
+        spec = QuerySpec(query="fullwidth builtin", units=(unit,), limit=1)
+        source = to_script(execution, spec)
+
+        assert "set_2 = QueryUnit(" in source
+        assert run_script(source, ctx) == set(execution.run(ctx).current.nodes)
+
+    def test_nfkc_equivalent_unit_names_receive_distinct_identifiers(self) -> None:
+        ctx = relation_context(())
+        ascii_unit = weighted_unit("K", "source", 1.0)
+        kelvin_unit = weighted_unit("K", "related", 0.7)
+        execution = Plan(
+            steps=(
+                EvalUnit(ascii_unit, seed=True),
+                EvalUnit(kelvin_unit),
+                Narrow(limit=2),
+            )
+        )
+        spec = QuerySpec(query="NFKC collision", units=(ascii_unit, kelvin_unit), limit=2)
+        source = to_script(execution, spec)
+
+        assert set(execution.run(ctx).current.nodes) == {1, 2}
+        assert "K = QueryUnit(" in source and "K_2 = QueryUnit(" in source
+        assert source == to_script(execution, spec)
+        assert run_script(source, ctx) == {1, 2}
+
     def test_with_a_file_result_target(self) -> None:
         ctx = make_context(with_file_target=True)
         spec = make_spec(target=["file"])

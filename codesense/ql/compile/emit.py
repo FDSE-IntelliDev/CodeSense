@@ -18,6 +18,7 @@ from __future__ import annotations
 import builtins
 import keyword
 import textwrap
+import unicodedata
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 
@@ -68,12 +69,15 @@ _IMPORTED_NAMES = frozenset(
         "top",
     )
 )
-_RESERVED_NAMES = (
-    frozenset(dir(builtins))
-    | frozenset(keyword.kwlist)
-    | frozenset(keyword.softkwlist)
-    | _ORCHESTRATION_NAMES
-    | _IMPORTED_NAMES
+_RESERVED_NAMES = frozenset(
+    unicodedata.normalize("NFKC", name)
+    for name in (
+        *dir(builtins),
+        *keyword.kwlist,
+        *keyword.softkwlist,
+        *_ORCHESTRATION_NAMES,
+        *_IMPORTED_NAMES,
+    )
 )
 
 
@@ -249,7 +253,8 @@ def _allocate_identifiers(plan: Plan) -> _Identifiers:
 
 def _identifier_base(name: str) -> str:
     """Keep readable Unicode identifiers while replacing punctuation safely."""
-    cleaned = "".join(ch if ch == "_" or ch.isalnum() else "_" for ch in name) or "unit"
+    normalized = unicodedata.normalize("NFKC", name)
+    cleaned = "".join(ch if ch == "_" or ch.isalnum() else "_" for ch in normalized) or "unit"
     if cleaned[:1].isdigit():
         cleaned = f"unit_{cleaned}"
     if not cleaned.isidentifier():
@@ -261,10 +266,11 @@ def _identifier_base(name: str) -> str:
 
 def _claim_identifier(base: str, used: set[str]) -> str:
     """Reserve one unique name in the script's shared global namespace."""
-    candidate = base
+    normalized = unicodedata.normalize("NFKC", base)
+    candidate = normalized
     suffix = 2
     while candidate in used:
-        candidate = f"{base}_{suffix}"
+        candidate = f"{normalized}_{suffix}"
         suffix += 1
     used.add(candidate)
     return candidate
