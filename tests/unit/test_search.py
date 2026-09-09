@@ -243,6 +243,32 @@ class TestRouting:
         assert result.target == ("file",)
         assert {hit.kind for hit in result.hits} == {"file"}
 
+    def test_planned_missing_target_defers_to_lexical_output_inference(
+        self, ctx, monkeypatch: pytest.MonkeyPatch
+    ) -> None:  # type: ignore[no-untyped-def]
+        monkeypatch.setattr(
+            "codesense.llm.QueryUnderstanding.understand",
+            lambda *args: {
+                "terms": {"alloc": 1.0},
+                "groups": {},
+                "relations": (),
+                "annotations": (),
+                "concept": "",
+            },
+        )
+
+        result = search(
+            "Find Java files containing alloc",
+            ctx,
+            route="planned",
+            llm=object(),
+            vocabulary=(("alloc", 2),),
+        )
+
+        assert result.route == "planned"
+        assert result.target == ("file",)
+        assert {hit.kind for hit in result.hits} == {"file"}
+
     def test_explicit_empty_target_overrides_the_planned_target(
         self, ctx, monkeypatch: pytest.MonkeyPatch
     ) -> None:  # type: ignore[no-untyped-def]
@@ -409,6 +435,38 @@ class TestRouting:
         else:
             assert judge.items == []
 
+    def test_planned_late_failure_does_not_judge_fallback_twice(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        judge = CountingJudge()
+        ctx = make_searchable_index().to_context(judge=judge)
+        monkeypatch.setattr(
+            "codesense.llm.QueryUnderstanding.understand",
+            lambda *args: planned_understanding(
+                target=("file",), concept="declarations that allocate buffers"
+            ),
+        )
+        plan_module = importlib.import_module("codesense.ql.compile.plan")
+
+        def fail(*args: object, **kwargs: object) -> None:
+            raise RuntimeError("forced projection failure")
+
+        monkeypatch.setattr(plan_module.ProjectTarget, "apply", fail)
+
+        result = search(
+            "alloc",
+            ctx,
+            route="planned",
+            llm=object(),
+            vocabulary=(("alloc", 2),),
+            judge=True,
+        )
+
+        assert result.route == "lexical"
+        assert result.target == ("file",)
+        assert {hit.kind for hit in result.hits} == {"file"}
+        assert [item.symbol_id for item in judge.items] == [1, 2]
+
 
 class TestLexicalRoute:
     def test_matches_the_querys_own_words(self, ctx) -> None:  # type: ignore[no-untyped-def]
@@ -476,6 +534,9 @@ class TestResultTarget:
         [
             "find methods that write a file using alloc",
             "find methods that write files using alloc",
+            "find methods that return a file using alloc",
+            "find methods that list files using alloc",
+            "查找返回文件的 alloc 方法",
         ],
     )
     def test_file_in_object_position_does_not_infer_a_file_target(self, ctx, query: str) -> None:  # type: ignore[no-untyped-def]
@@ -524,12 +585,14 @@ class TestResultTarget:
     def test_codegen_returned_files_override_object_position_text(
         self, ctx, monkeypatch: pytest.MonkeyPatch
     ) -> None:  # type: ignore[no-untyped-def]
-        file_frag = Frag(nodes=ctx.symbols.get_many((3,)))
-        search_module = importlib.import_module("codesense.search")
+        source = (
+            'unit = QueryUnit("q", satisfiers=(LexicalSatisfier(terms=(Term("alloc"),)),))\n'
+            'answer = project(eval_unit(unit, ctx), ctx, edge="in_file", '
+            'kind=("file",), include_self=True)\n'
+        )
         monkeypatch.setattr(
-            search_module,
-            "_codegen",
-            lambda *args: (file_frag, "answer = files", [], ("file",)),
+            "codesense.llm.ScriptGenerator.generate",
+            lambda *args, **kwargs: source,
         )
 
         result = search(

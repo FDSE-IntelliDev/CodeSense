@@ -13,7 +13,7 @@ from __future__ import annotations
 import logging
 import time
 from abc import ABC, abstractmethod
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 
 from codesense.ql.compile.cost import Estimate, estimate_hop, estimate_intent, estimate_unit
@@ -364,7 +364,13 @@ class Plan:
     steps: tuple[Step, ...]
     reasoning: tuple[str, ...] = ()
 
-    def run(self, ctx: EvalContext, *, skip: tuple[type[Step], ...] = ()) -> State:
+    def run(
+        self,
+        ctx: EvalContext,
+        *,
+        skip: tuple[type[Step], ...] = (),
+        after_step: Callable[[Step], None] | None = None,
+    ) -> State:
         """Execute. ``skip`` omits expensive steps on a dry run, usually
         `Intent`.
 
@@ -387,6 +393,8 @@ class Plan:
             state.trace.append(
                 Trace(step.label, predicted, len(state.current), time.perf_counter() - started)
             )
+            if after_step is not None:
+                after_step(step)
         return state
 
     def explain(self, ctx: EvalContext) -> str:

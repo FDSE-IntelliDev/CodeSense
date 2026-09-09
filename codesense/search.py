@@ -58,12 +58,12 @@ _WORD = re.compile(r"[A-Za-z][A-Za-z0-9]*")
 # forms. A broad ``file`` noun match misreads object-position prose such as
 # "methods that write a file" as a request to return files.
 _FILE_OUTPUT_REQUEST = re.compile(
-    r"\b(?:find|list|show|return)\s+(?:(?:a|an|the|java|source)\s+)*files?\b",
+    r"^\s*(?:find|list|show|return)\s+(?:(?:a|an|the|java|source)\s+)*files?\b",
     re.IGNORECASE,
 )
-_WHICH_FILES_REQUEST = re.compile(r"\bwhich\s+files?\b", re.IGNORECASE)
+_WHICH_FILES_REQUEST = re.compile(r"^\s*which\s+files?\b", re.IGNORECASE)
 _CHINESE_FILE_OUTPUT_REQUEST = re.compile(
-    r"(?:哪些|列出|查找|找出|显示|返回)\s*(?:[A-Za-z][A-Za-z0-9._-]*\s*)?文件"
+    r"^\s*(?:哪些|列出|查找|找出|显示|返回)\s*(?:[A-Za-z][A-Za-z0-9._-]*\s*)?文件"
 )
 
 #: Words dropped from a query before lexical matching. Kept deliberately tiny:
@@ -133,10 +133,13 @@ _STOPWORDS = frozenset(
 class _PlannedFailure(RuntimeError):
     """Carry a structured target through planned-route degradation."""
 
-    def __init__(self, target: tuple[str, ...] | None, cause: Exception) -> None:
+    def __init__(
+        self, target: tuple[str, ...] | None, cause: Exception, judge_ran: bool = False
+    ) -> None:
         super().__init__(str(cause))
         self.target = target
         self.cause = cause
+        self.judge_ran = judge_ran
 
 
 @dataclass(frozen=True, slots=True)
@@ -214,6 +217,7 @@ def search(
     if route not in ROUTES:
         raise ValueError(f"route must be one of {ROUTES}, got {route!r}")
     started = time.perf_counter()
+    route_judge_ran = False
     target_was_explicit = target is not None
     # ``None`` means no route has decided yet; ``()`` is a deliberate empty
     # target and must not be replaced by lexical inference later.
@@ -237,6 +241,7 @@ def search(
         )
     except _PlannedFailure as exc:
         _log.exception("route %s failed", route)
+        route_judge_ran = exc.judge_ran
         fallback_target = requested_target if target_was_explicit else exc.target
         frag, script, notes, route_target = _lexical(
             query,
@@ -277,7 +282,7 @@ def search(
         if route_target is not None
         else _query_target(query)
     )
-    if judge and route != "planned" and len(frag) and ctx.judge is not None:
+    if judge and not route_judge_ran and route != "planned" and len(frag) and ctx.judge is not None:
         frag, notes = _judge(frag, query, ctx, notes)
     frag = _enforce_target(frag, ctx, effective_target)
     if route == "lexical" and effective_target:
@@ -442,7 +447,7 @@ def _planned(
 ) -> tuple[Frag, str, list[str], tuple[str, ...] | None]:
     """Model proposes, statistics validate, the planner orders."""
     from codesense.llm import QueryUnderstanding
-    from codesense.ql.compile import build_spec, plan, to_script
+    from codesense.ql.compile import Intent, build_spec, plan, to_script
 
     vocab = [term for term, _ in list(vocabulary)[:VOCAB_FOR_PROMPT]]
     understood = QueryUnderstanding(llm).understand(query, project or "the project", vocab)
@@ -454,6 +459,13 @@ def _planned(
         route_target = normalise_target(understood["target"])
     else:
         route_target = None
+    judge_ran = False
+
+    def record_step(step: object) -> None:
+        nonlocal judge_ran
+        if isinstance(step, Intent):
+            judge_ran = True
+
     try:
         # Planned intent is the sole judging layer for this route. Disabling
         # it here keeps judge=False from silently invoking the model.
@@ -472,15 +484,15 @@ def _planned(
             limit=limit,
         )
         execution = plan(spec, ctx)
-        state = execution.run(ctx)
+        state = execution.run(ctx, after_step=record_step)
         return (
             state.current,
             to_script(execution, spec),
             [*validation_notes, *execution.reasoning],
-            spec.target,
+            route_target,
         )
     except Exception as exc:
-        raise _PlannedFailure(route_target, exc) from exc
+        raise _PlannedFailure(route_target, exc, judge_ran) from exc
 
 
 def _lexical(
