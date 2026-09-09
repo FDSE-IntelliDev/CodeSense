@@ -333,7 +333,7 @@ class TestRouting:
         )
 
         result = search(
-            "find methods that write a file using alloc",
+            "Find Java files containing alloc",
             ctx,
             route="planned",
             llm=object(),
@@ -388,7 +388,7 @@ class TestRouting:
         monkeypatch.setattr("codesense.ql.compile.plan", fail)
 
         result = search(
-            "find methods that write a file using alloc",
+            "Find Java files containing alloc",
             ctx,
             route="planned",
             llm=object(),
