@@ -9,7 +9,7 @@ from collections.abc import Sequence
 
 import pytest
 
-from codesense.ql import Edge, Element, IndexField
+from codesense.ql import Edge, Element, Frag, IndexField
 from codesense.ql.compile import (
     Boost,
     EvalUnit,
@@ -23,7 +23,7 @@ from codesense.ql.compile import (
 from codesense.ql.compile.partition import partition
 from codesense.ql.compile.plan import State
 from codesense.ql.compile.spec import normalise_hops, normalise_kinds
-from codesense.ql.compile.validate import relation_lift
+from codesense.ql.compile.validate import relation_lift, validate_relations
 from codesense.ql.context import EvalContext
 from codesense.ql.store import (
     InMemoryEdgeStore,
@@ -248,6 +248,30 @@ class TestGraphDirection:
         boosts = [s for s in planned.steps if isinstance(s, Boost)]
         assert boosts[0].src_name == "wide"
 
+    @pytest.mark.parametrize(
+        "edge",
+        [
+            ["imports"],
+            ["in_file"],
+            ["references"],
+            ["calls", "imports"],
+        ],
+    )
+    def test_typed_endpoint_roles_are_not_reversed_for_asymmetric_units(
+        self, edge: list[str]
+    ) -> None:
+        ctx = make_context({"common": 400, "rare": 10})
+
+        planned = plan(
+            spec(graph=[{"src": "wide", "dst": "narrow", "edge": edge}]),
+            ctx,
+        )
+        boost = next(step for step in planned.steps if isinstance(step, Boost))
+
+        assert boost.src_name == "wide"
+        assert boost.dst_name == "narrow"
+        assert not any("constraint reversed" in why for why in planned.reasoning)
+
     def test_a_graph_constraint_is_skipped_when_its_unit_was_dropped(self) -> None:
         ctx = make_context({"common": 980, "rare": 10}, (Edge(1, 2, "calls"),))
         planned = plan(spec(graph=[{"src": "wide", "dst": "narrow"}]), ctx)
@@ -268,6 +292,122 @@ class TestGraphDirection:
 
 
 class TestExecution:
+    @staticmethod
+    def _relation_context(edges: tuple[Edge, ...]) -> EvalContext:
+        elements = [
+            Element(1, "source", "method", "Source.java", (1, 2)),
+            Element(2, "related", "method", "Related.java", (1, 2)),
+            Element(3, "competitor", "method", "Other.java", (1, 2)),
+            Element(10, "Source.java", "file", "Source.java", (1, 4)),
+            Element(11, "Other.java", "file", "Other.java", (1, 4)),
+        ]
+        return EvalContext(
+            symbols=InMemorySymbolStore(elements),
+            postings=InMemoryPostingIndex({}, total_symbols=3),
+            expansion=InMemoryExpansionTable({}),
+            edges=InMemoryEdgeStore(edges),
+            declaration_count=3,
+        )
+
+    @staticmethod
+    def _frag(ctx: EvalContext, *symbol_ids: int) -> Frag:
+        return Frag(nodes=ctx.symbols.get_many(symbol_ids))
+
+    @staticmethod
+    def _ranked_frag(ctx: EvalContext) -> Frag:
+        from codesense.ql import Evidence, Frag, UnitHit
+
+        return Frag(
+            nodes=ctx.symbols.get_many((2, 3)),
+            evidence={
+                2: Evidence(unit_hits=(UnitHit("q", "combined", "", score=0.7),)),
+                3: Evidence(unit_hits=(UnitHit("q", "combined", "", score=0.9),)),
+            },
+        )
+
+    def test_imports_boosts_logical_destination_and_changes_narrow_ranking(self) -> None:
+        ctx = self._relation_context((Edge(1, 10, "in_file"), Edge(10, 2, "imports")))
+        accepted, rejected = validate_relations(
+            [("src", "dst", ("imports",))],
+            {"src": ["source"], "dst": ["related"]},
+            EvalContext(
+                symbols=ctx.symbols,
+                postings=InMemoryPostingIndex(
+                    {
+                        "source": [Posting(1, IndexField.NAME)],
+                        "related": [Posting(2, IndexField.NAME)],
+                    },
+                    total_symbols=3,
+                ),
+                expansion=ctx.expansion,
+                edges=ctx.edges,
+                declaration_count=3,
+            ),
+        )
+        state = State(
+            units={"src": self._frag(ctx, 1), "dst": self._frag(ctx, 2, 3)},
+            current=self._ranked_frag(ctx),
+        )
+
+        assert accepted and not rejected
+        Boost("src", "dst", edge=("imports",), hops=(1, 1)).apply(ctx, state)
+        Narrow(limit=1).apply(ctx, state)
+
+        assert state.boosted == {2}
+        assert set(state.current.nodes) == {2}
+
+    def test_in_file_maps_reached_file_back_to_destination_declaration(self) -> None:
+        ctx = self._relation_context(
+            (Edge(1, 10, "in_file"), Edge(2, 10, "in_file"), Edge(3, 11, "in_file"))
+        )
+        state = State(
+            units={"src": self._frag(ctx, 1), "dst": self._frag(ctx, 2, 3)},
+            current=self._frag(ctx, 2, 3),
+        )
+
+        Boost("src", "dst", edge=("in_file",), hops=(1, 1)).apply(ctx, state)
+
+        assert state.boosted == {2}
+
+    def test_import_derived_reference_starts_from_source_owner_file(self) -> None:
+        ctx = self._relation_context((Edge(1, 10, "in_file"), Edge(10, 2, "references")))
+        state = State(
+            units={"src": self._frag(ctx, 1), "dst": self._frag(ctx, 2, 3)},
+            current=self._frag(ctx, 2, 3),
+        )
+
+        Boost("src", "dst", edge=("references",), hops=(1, 1)).apply(ctx, state)
+
+        assert state.boosted == {2}
+
+    def test_mixed_calls_and_imports_union_both_endpoint_roles(self) -> None:
+        ctx = self._relation_context(
+            (
+                Edge(1, 10, "in_file"),
+                Edge(1, 2, "calls"),
+                Edge(10, 3, "imports"),
+            )
+        )
+        state = State(
+            units={"src": self._frag(ctx, 1), "dst": self._frag(ctx, 2, 3)},
+            current=self._frag(ctx, 2, 3),
+        )
+
+        Boost("src", "dst", edge=("calls", "imports"), hops=(1, 1)).apply(ctx, state)
+
+        assert state.boosted == {2, 3}
+
+    def test_legacy_boost_keeps_historical_any_direction_semantics(self) -> None:
+        ctx = self._relation_context((Edge(1, 2, "calls"),))
+        state = State(
+            units={"smaller": self._frag(ctx, 2), "larger": self._frag(ctx, 1)},
+            current=self._frag(ctx, 1, 2),
+        )
+
+        Boost("smaller", "larger", edge=("calls",), hops=(1, 1)).apply(ctx, state)
+
+        assert state.boosted == {1}
+
     def test_units_union_rather_than_intersect(self) -> None:
         """Intersection kills the answers -- units land on different
         elements."""

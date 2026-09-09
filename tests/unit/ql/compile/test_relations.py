@@ -77,6 +77,68 @@ def make_file_endpoint_context(
     )
 
 
+def make_large_file_endpoint_context(size: int, edge: str) -> EvalContext:
+    """Build homogeneous file-source strata around the sampling boundary."""
+    target_id = size + 1
+    file_offset = size + 1
+    source_ids = range(1, size + 1)
+    elements = [
+        *(
+            Element(
+                symbol_id=symbol_id,
+                name=f"client{symbol_id}",
+                kind="class",
+                file=f"Client{symbol_id}.java",
+                span=(1, 4),
+            )
+            for symbol_id in source_ids
+        ),
+        Element(
+            symbol_id=target_id,
+            name="page",
+            kind="class",
+            file="Page.java",
+            span=(1, 4),
+        ),
+        *(
+            Element(
+                symbol_id=file_offset + symbol_id,
+                name=f"Client{symbol_id}.java",
+                kind="file",
+                file=f"Client{symbol_id}.java",
+                span=(1, 8),
+            )
+            for symbol_id in source_ids
+        ),
+        Element(
+            symbol_id=file_offset + target_id,
+            name="Page.java",
+            kind="file",
+            file="Page.java",
+            span=(1, 8),
+        ),
+    ]
+    ownership = tuple(
+        Edge(symbol_id, file_offset + symbol_id, "in_file") for symbol_id in source_ids
+    ) + (Edge(target_id, file_offset + target_id, "in_file"),)
+    relation_edges = tuple(
+        Edge(file_offset + symbol_id, target_id, edge) for symbol_id in source_ids
+    )
+    return EvalContext(
+        symbols=InMemorySymbolStore(elements),
+        postings=InMemoryPostingIndex(
+            {
+                "clients": [Posting(symbol_id, IndexField.NAME) for symbol_id in source_ids],
+                "page": [Posting(target_id, IndexField.NAME)],
+            },
+            total_symbols=size + 1,
+        ),
+        expansion=InMemoryExpansionTable({}),
+        edges=InMemoryEdgeStore((*ownership, *relation_edges)),
+        declaration_count=size + 1,
+    )
+
+
 def test_relation_lift_counts_only_the_proposed_edge_kinds() -> None:
     calls_only = make_context((Edge(1, 2, "calls"),))
     references_only = make_context((Edge(1, 2, "references"),))
@@ -242,6 +304,84 @@ def test_mixed_endpoint_tuple_is_deterministic_and_filters_degrees_exactly() -> 
     assert first[0] == pytest.approx(9.0)
     assert not rejected
     assert accepted[0].edge == ("calls", "imports")
+
+
+@pytest.mark.parametrize("size", [399, 400, 401, 450])
+def test_file_source_sampling_is_stratified_around_sample_cap(size: int) -> None:
+    ctx = make_large_file_endpoint_context(size, "imports")
+
+    lift, detail = relation_lift(["clients"], ["page"], ctx, edge=("imports",))
+
+    assert lift >= LIFT_FLOOR
+    assert detail.startswith(f"{size} crossings")
+
+
+def test_import_derived_references_are_not_starved_after_400_declarations() -> None:
+    size = 450
+    target_id = size + 1
+    file_id = size + 2
+    elements = [
+        *(Element(i, f"client{i}", "class", "Client.java", (1, 4)) for i in range(1, size + 1)),
+        Element(target_id, "page", "class", "Page.java", (1, 4)),
+        Element(file_id, "Client.java", "file", "Client.java", (1, 8)),
+        Element(file_id + 1, "Page.java", "file", "Page.java", (1, 8)),
+    ]
+    ctx = EvalContext(
+        symbols=InMemorySymbolStore(elements),
+        postings=InMemoryPostingIndex(
+            {
+                "clients": [Posting(i, IndexField.NAME) for i in range(1, size + 1)],
+                "page": [Posting(target_id, IndexField.NAME)],
+            },
+            total_symbols=size + 1,
+        ),
+        expansion=InMemoryExpansionTable({}),
+        edges=InMemoryEdgeStore(
+            (
+                *(Edge(i, file_id, "in_file") for i in range(1, size + 1)),
+                Edge(target_id, file_id + 1, "in_file"),
+                Edge(file_id, target_id, "references"),
+            )
+        ),
+        declaration_count=size + 1,
+    )
+
+    lift, _ = relation_lift(["clients"], ["page"], ctx, edge=("references",))
+
+    assert lift >= LIFT_FLOOR
+
+
+def test_mixed_calls_and_imports_keep_the_file_source_stratum_after_cap() -> None:
+    size = 450
+    ctx = make_large_file_endpoint_context(size, "imports")
+
+    lift, _ = relation_lift(["clients"], ["page"], ctx, edge=("calls", "imports"))
+
+    assert lift >= LIFT_FLOOR
+
+
+def test_unrelated_edge_kinds_do_not_change_typed_crossing_or_degree() -> None:
+    clean = make_file_endpoint_context((Edge(10, 2, "imports"),))
+    noisy = make_file_endpoint_context(
+        (
+            Edge(10, 2, "imports"),
+            Edge(10, 2, "references"),
+            Edge(10, 3, "references"),
+            Edge(10, 3, "calls"),
+        )
+    )
+
+    assert relation_lift(["client"], ["page"], noisy, edge=("imports",)) == relation_lift(
+        ["client"], ["page"], clean, edge=("imports",)
+    )
+
+
+def test_repeated_typed_edge_kind_is_counted_once() -> None:
+    ctx = make_file_endpoint_context((Edge(10, 2, "imports"),))
+
+    assert relation_lift(["client"], ["page"], ctx, edge=("imports", "imports")) == relation_lift(
+        ["client"], ["page"], ctx, edge=("imports",)
+    )
 
 
 @pytest.mark.parametrize(

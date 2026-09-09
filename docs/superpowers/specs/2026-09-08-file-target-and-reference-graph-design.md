@@ -279,6 +279,28 @@ target，但召回取决于其现有候选。后续如要补齐，可单独设�
 实现时必须先修复现有 `_planned()` 对 `build_spec()` 的参数传递错误，并正确解包其
 `(QuerySpec, notes)` 返回值，再加回归测试；否则新增 planned target 会被异常降级掩盖。
 
+#### 7.2.1 relation 的逻辑候选与物理端点
+
+planned 的 query unit 始终由 postings 得到 declaration 候选，但关系图中的物理端点随 edge kind
+变化。验证和 Plan 执行共用同一套端点投影：
+
+- `calls` / `contains`：source declaration -> destination declaration；纯旧类型 tuple 保留历史的
+  无向 Boost 和较小侧起步优化。
+- `imports`：source declaration 的 owner file -> destination declaration。
+- `in_file`：source declaration -> destination declaration 的 owner file；命中文件再映回该 relation
+  的 destination declaration 候选。
+- `references`：source declaration 和其 owner file 是两个独立 source stratum，均指向 destination
+  declaration。
+
+含文件端点的 typed/mixed tuple 保持模型提出并经验证的 `src -> dst` 方向，不能为了从较小侧起步
+而交换语义角色。每个 `(edge kind, endpoint role)` 独立执行和采样，最后只 union 命中的逻辑
+destination declaration；不同种类的 ID 不先混成一个集合。
+
+统计验证对每个 homogeneous stratum 单独应用 `SAMPLE_CAP`、边类型过滤和 population 分母，再汇总
+crossing 与 expected 后计算 lift。这使 file ID 即使排序在大量 declaration ID 之后，也不会因前
+400 个采样名额已耗尽而永远不可见。owner 投影只查询输入候选的精确一跳 `in_file` 边，不扫描
+全图，额外工作上界为候选 ownership lookup 加每个 stratum 的固定采样规模。
+
 ### 7.3 lexical 与降级
 
 lexical 路由不猜复杂关系。它继续获得词法候选，在明确识别或显式传入 `target="file"` 后，统一

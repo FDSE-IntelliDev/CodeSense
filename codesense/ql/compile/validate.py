@@ -24,6 +24,10 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 
 from codesense.ql.compile.partition import OVERLAP_FLOOR
+from codesense.ql.compile.relation_endpoints import (
+    is_legacy_relation,
+    relation_endpoint_strata,
+)
 from codesense.ql.context import EvalContext
 
 __all__ = ["LIFT_FLOOR", "Relation", "relation_lift", "validate_groups", "validate_relations"]
@@ -66,9 +70,9 @@ def relation_lift(
     populations. It is crude, but ample for telling 4.75x from 0.
     """
     declarations = ctx.population
-    kinds = tuple(edge) or ("calls", "contains")
-    declaration_only = set(kinds) <= {"calls", "contains"}
-    if declaration_only and declarations < 2:
+    kinds = tuple(dict.fromkeys(edge)) or ("calls", "contains")
+    legacy = is_legacy_relation(kinds)
+    if legacy and declarations < 2:
         return 0.0, "too few symbols"
     src_declarations = {p.symbol_id for term in src_terms for p in ctx.postings.lookup(term)}
     dst_declarations = {p.symbol_id for term in dst_terms for p in ctx.postings.lookup(term)}
@@ -76,95 +80,65 @@ def relation_lift(
         return 0.0, "one side matched nothing"
 
     # Keep the historical declaration-only calculation exactly as it was.
-    # File nodes deliberately have no postings, so edge kinds with physical
-    # file endpoints project their lexical declaration groups through the
-    # exact one-hop ownership relation before crossings are counted.
-    if declaration_only:
+    if legacy:
         left = src_declarations
         right = dst_declarations
-        source_population = destination_population = declarations
-    else:
-        owners_by_side = (
-            _owning_files(src_declarations, ctx),
-            _owning_files(dst_declarations, ctx),
+        sampled = sorted(left)[:SAMPLE_CAP]
+        scale = len(left) / len(sampled)
+        crossing = scale * sum(
+            1
+            for node in sampled
+            for relation in ctx.edges.out_edges(node, kinds=kinds)
+            if relation.target_id in right
         )
-        left, right = _endpoint_candidates(
-            src_declarations,
-            dst_declarations,
-            owners_by_side,
-            kinds,
-        )
-        if not left or not right:
-            return 0.0, "one side matched nothing"
-        source_population, destination_population = _endpoint_populations(kinds, ctx)
-        if source_population < 1 or destination_population < 1:
-            return 0.0, "too few endpoint symbols"
+        edges = sum(ctx.edges.degree(node, kinds=kinds) for node in sampled) * scale
+        expected = len(left) * len(right) * edges / (declarations * declarations)
+        if expected <= 0:
+            return 0.0, "the graph has no edges"
+        lift = crossing / expected
+        return lift, f"{crossing:.0f} crossings vs {expected:.0f} expected ({lift:.2f}x)"
 
-    sampled = sorted(left)[:SAMPLE_CAP]
-    scale = len(left) / len(sampled)
-    crossing = scale * sum(
-        1
-        for node in sampled
-        for relation in ctx.edges.out_edges(node, kinds=kinds)
-        if relation.target_id in right
-    )
-    edges = sum(ctx.edges.degree(node, kinds=kinds) for node in sampled) * scale
-    expected = len(left) * len(right) * edges / (source_population * destination_population)
+    # Typed/mixed tuples keep every edge kind and physical endpoint role in
+    # a separate sampling stratum. This prevents declaration IDs from using
+    # the entire cap before later file IDs are ever inspected.
+    crossing = 0.0
+    expected = 0.0
+    usable_endpoint_pair = False
+    usable_population = False
+    for stratum in relation_endpoint_strata(src_declarations, dst_declarations, ctx, kinds):
+        if not stratum.source_ids or not stratum.destination_ids:
+            continue
+        usable_endpoint_pair = True
+        if stratum.source_population < 1 or stratum.destination_population < 1:
+            continue
+        usable_population = True
+        sampled = sorted(stratum.source_ids)[:SAMPLE_CAP]
+        scale = len(stratum.source_ids) / len(sampled)
+        stratum_crossing = scale * sum(
+            1
+            for node in sampled
+            for relation in ctx.edges.out_edges(node, kinds=(stratum.kind,))
+            if relation.target_id in stratum.destination_ids
+        )
+        stratum_edges = (
+            sum(ctx.edges.degree(node, kinds=(stratum.kind,)) for node in sampled) * scale
+        )
+        crossing += stratum_crossing
+        expected += (
+            len(stratum.source_ids)
+            * len(stratum.destination_ids)
+            * stratum_edges
+            / (stratum.source_population * stratum.destination_population)
+        )
+
+    if not usable_endpoint_pair:
+        return 0.0, "one side matched nothing"
+    if not usable_population:
+        return 0.0, "too few endpoint symbols"
     if expected <= 0:
         return 0.0, "the graph has no edges"
     lift = crossing / expected
     return lift, f"{crossing:.0f} crossings vs {expected:.0f} expected ({lift:.2f}x)"
-
-
-def _owning_files(declarations: set[int], ctx: EvalContext) -> set[int]:
-    """Return exact physical owners for declaration IDs in one graph hop."""
-    return {
-        relation.target_id
-        for symbol_id in declarations
-        for relation in ctx.edges.out_edges(symbol_id, kinds=("in_file",))
-    }
-
-
-def _endpoint_candidates(
-    src_declarations: set[int],
-    dst_declarations: set[int],
-    owners_by_side: tuple[set[int], set[int]],
-    kinds: Sequence[str],
-) -> tuple[set[int], set[int]]:
-    """Map posting candidates onto the endpoint roles of requested edges."""
-    src_files, dst_files = owners_by_side
-    left: set[int] = set()
-    right: set[int] = set()
-    for kind in kinds:
-        if kind == "imports":
-            left.update(src_files)
-            right.update(dst_declarations)
-        elif kind == "in_file":
-            left.update(src_declarations)
-            right.update(dst_files)
-        elif kind == "references":
-            left.update(src_declarations)
-            left.update(src_files)
-            right.update(dst_declarations)
-        else:
-            # Preserve declaration endpoints for legacy and extension kinds.
-            left.update(src_declarations)
-            right.update(dst_declarations)
-    return left, right
-
-
-def _endpoint_populations(kinds: Sequence[str], ctx: EvalContext) -> tuple[int, int]:
-    """Return source/destination universe sizes for the requested edge union."""
-    declarations = ctx.population
-    files = 0 if ctx.declaration_count is None else max(ctx.symbols.count() - declarations, 0)
-    source_has_declarations = any(kind != "imports" for kind in kinds)
-    source_has_files = any(kind in {"imports", "references"} for kind in kinds)
-    destination_has_declarations = any(kind != "in_file" for kind in kinds)
-    destination_has_files = "in_file" in kinds
-    return (
-        declarations * source_has_declarations + files * source_has_files,
-        declarations * destination_has_declarations + files * destination_has_files,
-    )
 
 
 def validate_relations(

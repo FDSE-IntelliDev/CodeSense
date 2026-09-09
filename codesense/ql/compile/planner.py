@@ -24,6 +24,7 @@ from codesense.ql.compile.plan import (
     ProjectTarget,
     Step,
 )
+from codesense.ql.compile.relation_endpoints import is_legacy_relation
 from codesense.ql.compile.spec import QuerySpec
 from codesense.ql.context import EvalContext
 from codesense.ql.satisfiers.lexical import AnnotationSatisfier, LexicalSatisfier, ModifierSatisfier
@@ -198,7 +199,7 @@ def _add_graph(
             )
             continue
         src, dst = constraint.src, constraint.dst
-        if rows[dst] * ASYMMETRY < rows[src]:
+        if is_legacy_relation(constraint.edge) and rows[dst] * ASYMMETRY < rows[src]:
             src, dst = dst, src
             why.append(
                 f"constraint reversed: starting from {src!r} ({rows[src]} rows) rather "
