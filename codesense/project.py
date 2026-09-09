@@ -27,6 +27,7 @@ command-line argument without landing in shell history.
 from __future__ import annotations
 
 import logging
+from collections.abc import Sequence
 from datetime import datetime, timezone
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -157,6 +158,8 @@ class Project:
                 root=str(source),
                 built_at=datetime.now(timezone.utc).isoformat(timespec="seconds"),
                 symbols=stats.symbols,
+                declarations=stats.declarations,
+                files=stats.symbols - stats.declarations,
                 postings=stats.postings,
                 edges=stats.edges,
                 language=", ".join(stats.languages),
@@ -174,7 +177,7 @@ class Project:
         )
         outcome = ground_vocabulary_result(
             dict(index.vocabulary()),
-            stats.symbols,
+            stats.declarations,
             config=config,
             sentences=corpus or result.sentences,
             finetune_config=finetune,
@@ -198,7 +201,13 @@ class Project:
     # -- querying --------------------------------------------------------
 
     def search(
-        self, query: str, *, route: str = "codegen", limit: int = 30, **kwargs: Any
+        self,
+        query: str,
+        *,
+        route: str = "codegen",
+        limit: int = 30,
+        target: str | Sequence[str] | None = None,
+        **kwargs: Any,
     ) -> SearchResult:
         """Run a query. See `codesense.search.search` for the routes."""
         return search(
@@ -209,6 +218,7 @@ class Project:
             llm=self.llm,
             route=route,
             limit=limit,
+            target=target,
             **kwargs,
         )
 

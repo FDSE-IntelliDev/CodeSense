@@ -12,7 +12,7 @@ none of them knows indexing exists.
 """
 
 from codesense.indexing.expansion import build_expansion_table
-from codesense.indexing.graph import GraphBuilder, TypeTable
+from codesense.indexing.graph import GraphBuilder, GraphStats, TypeTable
 from codesense.indexing.grounding import GroundingConfig, ground_vocabulary
 from codesense.indexing.pipeline import BuildResult, Stats, build_index
 from codesense.indexing.postings import PostingTable, declaration_terms
@@ -20,6 +20,7 @@ from codesense.indexing.postings import PostingTable, declaration_terms
 __all__ = [
     "BuildResult",
     "GraphBuilder",
+    "GraphStats",
     "GroundingConfig",
     "PostingTable",
     "Stats",

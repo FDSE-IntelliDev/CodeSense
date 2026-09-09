@@ -31,6 +31,8 @@ from codesense.lang.base import (
     Invocation,
     Language,
     LanguageRegistry,
+    ReferenceUse,
+    ScanResult,
 )
 
 __all__ = [
@@ -40,6 +42,8 @@ __all__ = [
     "LANGUAGES",
     "Language",
     "LanguageRegistry",
+    "ReferenceUse",
+    "ScanResult",
 ]
 
 _log = logging.getLogger(__name__)

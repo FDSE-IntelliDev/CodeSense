@@ -36,6 +36,13 @@ Available operators (all return a Frag -- a code subgraph carrying evidence):
         hops=(lo, hi)) -> Frag
       Symbols reachable from frag. Nodes only, no paths. Cheap.
 
+  project(frag, ctx, *, edge="in_file", direction="forward",
+          kind=None, include_self=False, min_confidence=0.0) -> Frag
+      Project evidence-preserving one-hop results across an exact edge kind.
+      Edge kinds include references, imports, and in_file. Use
+      direction="backward" for referencers, then edge="in_file" to return
+      their owning files.
+
   hop(src, dst, ctx, *, edge, direction, hops, avoid=None,
       min_confidence=0.0, max_paths=10000) -> Frag
       The **paths** between src and dst satisfying a graph constraint. Much
@@ -113,11 +120,20 @@ Or probe different edge kinds separately and combine:
 by_call = reach(seeds, ctx, edge=["calls"], direction="any", hops=(1, 2))
 by_type = reach(seeds, ctx, edge=["contains"], direction="any", hops=(1, 1))
 strong = set(by_call.nodes) & set(by_type.nodes)   # connected both ways: stronger
+
+# For "files containing references to PageRequest", retain lexical evidence
+# while moving from the referenced type to its referencers and then to files.
+page_request = eval_unit(page_request_unit, ctx)
+referencers = project(page_request, ctx, edge="references", direction="backward")
+answer = project(referencers, ctx, edge="in_file", kind="file", include_self=True)
 ```
 """
 
 PROMPT = """\
 You are generating a query script for a code retrieval system.
+
+The operator reference includes the evidence-preserving `project` operator
+and the `references`, `imports`, and `in_file` edge vocabulary.
 
 Codebase: {project} ({symbols} symbols, {edges} edges)
 Query: {query}

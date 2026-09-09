@@ -27,7 +27,7 @@ from typing import Any
 
 from codesense.indexing.graph import GraphBuilder
 from codesense.indexing.postings import PostingTable, declaration_terms
-from codesense.lang.base import Declaration, Language
+from codesense.lang.base import Declaration, Language, ReferenceUse
 from codesense.text.corpus import corpus_sentences, source_files
 from codesense.text.split import Splitter, split_identifier
 
@@ -50,6 +50,7 @@ class Stats:
 
     files: int = 0
     failed: int = 0
+    declarations: int = 0
     symbols: int = 0
     annotations: int = 0
     postings: int = 0
@@ -59,6 +60,10 @@ class Stats:
     typed: int = 0
     ambiguous: int = 0
     unresolved: int = 0
+    references: int = 0
+    imports: int = 0
+    reference_ambiguous: int = 0
+    reference_unresolved: int = 0
     segmented: int = 0
     languages: tuple[str, ...] = ()
 
@@ -70,6 +75,17 @@ class BuildResult:
     payload: dict[str, Any]
     sentences: list[list[str]] = field(default_factory=list)
     stats: Stats = field(default_factory=Stats)
+
+
+@dataclass(frozen=True, slots=True)
+class _IndexedFile:
+    """A successfully scanned file awaiting its stable Element ID."""
+
+    path: str
+    language: str
+    lines: int
+    declarations: tuple[tuple[Declaration, int], ...]
+    references: tuple[ReferenceUse, ...]
 
 
 def build_index(
@@ -95,6 +111,7 @@ def build_index(
 
     stats = Stats(languages=tuple(language.name for language in languages))
     symbols: list[dict[str, Any]] = []
+    indexed_files: list[_IndexedFile] = []
     sentences: list[list[str]] = []
     postings = PostingTable()
     graphs = {
@@ -107,6 +124,7 @@ def build_index(
             root,
             language,
             symbols,
+            indexed_files,
             sentences,
             postings,
             graphs[language.name],
@@ -115,6 +133,43 @@ def build_index(
             corpus_observer,
         )
 
+    # File Elements follow every declaration so existing declaration IDs stay
+    # stable. Their own order is language-independent and reproducible.
+    stats.declarations = len(symbols)
+    in_file_edges: list[dict[str, Any]] = []
+    for record in sorted(indexed_files, key=lambda item: (item.path, item.language)):
+        file_id = len(symbols) + 1
+        symbols.append(
+            {
+                "symbol_id": file_id,
+                "name": Path(record.path).name,
+                "kind": "file",
+                "file": record.path,
+                "span": [1, record.lines],
+                "signature": "",
+                "container": "",
+                "doc": "",
+                "language": record.language,
+                "modifiers": [],
+            }
+        )
+        in_file_edges.extend(
+            {
+                "source_id": declaration_id,
+                "target_id": file_id,
+                "kind": "in_file",
+                "site": None,
+                "confidence": 1.0,
+                "provenance": "source_path",
+            }
+            for _, declaration_id in record.declarations
+        )
+        graphs[record.language].observe_file(
+            record.path,
+            file_id,
+            record.declarations,
+            record.references,
+        )
     stats.symbols = len(symbols)
     if segment:
         stats.segmented = _segment_compounds(postings)
@@ -128,12 +183,22 @@ def build_index(
         stats.typed += builder.stats.typed
         stats.ambiguous += builder.stats.ambiguous
         stats.unresolved += builder.stats.unresolved
+        stats.references += builder.stats.references
+        stats.imports += builder.stats.imports
+        stats.reference_ambiguous += builder.stats.reference_ambiguous
+        stats.reference_unresolved += builder.stats.reference_unresolved
+    edges += in_file_edges
     stats.edges = len(edges)
 
     flat = postings.flatten()
     stats.postings = postings.count()
     return BuildResult(
-        payload={"symbols": symbols, "postings": flat, "edges": edges},
+        payload={
+            "symbols": symbols,
+            "postings": flat,
+            "edges": edges,
+            "declaration_count": stats.declarations,
+        },
         sentences=sentences,
         stats=stats,
     )
@@ -143,6 +208,7 @@ def _scan_language(
     root: Path,
     language: Language,
     symbols: list[dict[str, Any]],
+    indexed_files: list[_IndexedFile],
     sentences: list[list[str]],
     postings: PostingTable,
     graph: GraphBuilder,
@@ -153,24 +219,40 @@ def _scan_language(
     for path in source_files(root, language):
         stats.files += 1
         try:
-            declarations = language.scan(path.read_text(encoding="utf-8", errors="replace"))
+            source = path.read_text(encoding="utf-8", errors="replace")
+            scan_result = language.scan(source)
         except Exception as exc:  # noqa: BLE001 -- one bad file must not halt the build
             stats.failed += 1
             _log.warning("skipped %s: %s", path, exc)
             continue
 
-        kept = [d for d in declarations if d.kind in language.indexed_kinds and d.name]
+        kept = [
+            declaration
+            for declaration in scan_result.declarations
+            if declaration.kind in language.indexed_kinds and declaration.name
+        ]
         file_sentences = list(corpus_sentences(kept))
         if corpus_observer is None:
             sentences.extend(file_sentences)
         else:
             corpus_observer(str(path.relative_to(root)), file_sentences)
+        declarations: list[tuple[Declaration, int]] = []
         for declaration in kept:
             symbol_id = len(symbols) + 1
             symbols.append(_symbol_row(symbol_id, declaration, path, root, language.name))
+            declarations.append((declaration, symbol_id))
             stats.annotations += len(declaration.annotations)
             postings.add_all(declaration_terms(declaration, split_identifier, language), symbol_id)
             graph.observe(declaration, symbol_id)
+        indexed_files.append(
+            _IndexedFile(
+                path=path.relative_to(root).as_posix(),
+                language=language.name,
+                lines=max(1, len(source.splitlines())),
+                declarations=tuple(declarations),
+                references=scan_result.references,
+            )
+        )
         if progress is not None and stats.files % 200 == 0:
             progress(stats.files, len(symbols))
 

@@ -15,9 +15,13 @@ from __future__ import annotations
 import re
 from collections.abc import Iterator, Sequence
 
-from codesense.lang.base import AnnotationUse, Declaration, Invocation
+from codesense.lang.base import AnnotationUse, Declaration, Invocation, ReferenceUse, ScanResult
 
-__all__ = ["Declaration", "Invocation", "JavaDeclarationScanner"]
+__all__ = [
+    "Declaration",
+    "Invocation",
+    "JavaDeclarationScanner",
+]
 
 #: Declarations carrying a ``modifiers`` child. Annotations and modifiers
 #: both hang off it.
@@ -89,29 +93,42 @@ class JavaDeclarationScanner:
 
         return cls(get_parser("java"))
 
-    def scan(self, source: str) -> list[Declaration]:
+    def scan(self, source: str) -> ScanResult:
         data = source.encode("utf-8")
         tree = self._parser.parse(data)  # type: ignore[attr-defined]
-        return list(self._walk(tree.root_node, data))
+        root = tree.root_node
+        package = _package_name(root, data)
+        return ScanResult(
+            declarations=tuple(self._walk(root, data, package=package)),
+            references=_reference_uses(root, data, package),
+        )
 
     def annotations(self, source: str) -> list[AnnotationUse]:
         """Convenience entry point when only annotations are wanted."""
-        return [use for declaration in self.scan(source) for use in declaration.annotations]
+        return [
+            use for declaration in self.scan(source).declarations for use in declaration.annotations
+        ]
 
-    def _walk(self, node: object, data: bytes, container: str = "") -> Iterator[Declaration]:
+    def _walk(
+        self, node: object, data: bytes, container: str = "", package: str = ""
+    ) -> Iterator[Declaration]:
         kind = _DECLARATIONS.get(node.type)  # type: ignore[attr-defined]
         inner = container
         if kind is not None:
-            declaration = self._declaration(node, kind, data, container)
+            declaration = self._declaration(node, kind, data, container, package)
             yield declaration
             if kind in _TYPE_KINDS and declaration.name:
                 # Nested classes carry the outer name: `Outer.Inner`, not a bare `Inner`
                 inner = f"{container}.{declaration.name}" if container else declaration.name
         for child in node.children:  # type: ignore[attr-defined]
-            yield from self._walk(child, data, inner)
+            yield from self._walk(child, data, inner, package)
 
-    def _declaration(self, node: object, kind: str, data: bytes, container: str) -> Declaration:
+    def _declaration(
+        self, node: object, kind: str, data: bytes, container: str, package: str
+    ) -> Declaration:
         name = _text(node.child_by_field_name("name"), data) or _declared_name(node, data)  # type: ignore[attr-defined]
+        structural_name = f"{container}.{name}" if container else name
+        qualified_name = f"{package}.{structural_name}" if package else structural_name
         modifiers: set[str] = set()
         uses: list[AnnotationUse] = []
         modifier_node = _child_of_type(node, "modifiers")
@@ -127,8 +144,11 @@ class JavaDeclarationScanner:
             kind=kind,
             name=name,
             line=node.start_point[0] + 1,  # type: ignore[attr-defined]
+            column=node.start_point[1],  # type: ignore[attr-defined]
             end_line=node.end_point[0] + 1,  # type: ignore[attr-defined]
+            end_column=node.end_point[1],  # type: ignore[attr-defined]
             container=container,
+            qualified_name=qualified_name,
             signature=_signature(node, kind, data),
             doc=_javadoc(node, data),
             modifiers=frozenset(modifiers),
@@ -137,6 +157,29 @@ class JavaDeclarationScanner:
             local_types=_local_types(node, data) if kind in _CALLABLE_KINDS else (),
             supertypes=_supertypes(node, data) if kind in _TYPE_KINDS else (),
         )
+
+
+def _package_name(root: object, data: bytes) -> str:
+    """Read the Java package from the already parsed compilation unit."""
+    package = next(
+        (
+            child
+            for child in root.children  # type: ignore[attr-defined]
+            if child.type == "package_declaration"
+        ),
+        None,
+    )
+    if package is None:
+        return ""
+    target = next(
+        (
+            child
+            for child in package.children  # type: ignore[attr-defined]
+            if child.type in {"identifier", "scoped_identifier"}
+        ),
+        None,
+    )
+    return _text(target, data)
 
 
 def _invocations(node: object, data: bytes) -> tuple[Invocation, ...]:
@@ -153,8 +196,127 @@ def _invocations(node: object, data: bytes) -> tuple[Invocation, ...]:
         name = _text(current.child_by_field_name("name"), data)
         if name:
             receiver = _text(current.child_by_field_name("object"), data)
-            found.setdefault(Invocation(name=name, receiver=receiver), None)
+            found.setdefault(
+                Invocation(
+                    name=name,
+                    receiver=receiver,
+                    line=current.start_point[0] + 1,
+                ),
+                None,
+            )
     return tuple(found)
+
+
+def _reference_uses(root: object, data: bytes, package: str) -> tuple[ReferenceUse, ...]:
+    """Collect conservative type and import facts in source traversal order.
+
+    These are deliberately unresolved syntax observations. The graph builder
+    owns project-wide name resolution, where all declarations are available.
+    """
+    found: dict[tuple[str, int, int, str, str], ReferenceUse] = {}
+    imports = _explicit_type_imports(root, data)
+
+    def add(use: ReferenceUse | None) -> None:
+        if use is None or not use.name:
+            return
+        key = (use.name, use.line, use.column, use.relation, use.qualified_name)
+        found.setdefault(key, use)
+
+    def visit(node: object) -> None:
+        node_type = node.type  # type: ignore[attr-defined]
+        if node_type == "import_declaration":
+            add(_import_use(node, data))
+        elif node_type == "scoped_type_identifier":
+            # The children are path components, not independent type uses.
+            add(_type_use(node, data, qualified_name=_text(node, data)))
+            return
+        elif node_type == "type_identifier":
+            name = _text(node, data)
+            add(_type_use(node, data, qualified_name=_qualified_type(name, imports, package)))
+        elif node_type == "method_invocation":
+            receiver = node.child_by_field_name("object")  # type: ignore[attr-defined]
+            receiver_name = _text(receiver, data)
+            if receiver_name.isidentifier() and receiver_name[:1].isupper():
+                add(
+                    _type_use(
+                        receiver,
+                        data,
+                        qualified_name=_qualified_type(receiver_name, imports, package),
+                    )
+                )
+        for child in node.children:  # type: ignore[attr-defined]
+            visit(child)
+
+    visit(root)
+    return tuple(found.values())
+
+
+def _explicit_type_imports(root: object, data: bytes) -> dict[str, str]:
+    """Map simple names to non-static, non-wildcard explicit imports."""
+    imports: dict[str, str] = {}
+    for node in root.children:  # type: ignore[attr-defined]
+        if node.type != "import_declaration":
+            continue
+        child_types = {child.type for child in node.children}
+        if "static" in child_types or "asterisk" in child_types:
+            continue
+        target = next(
+            (child for child in node.children if child.type in {"identifier", "scoped_identifier"}),
+            None,
+        )
+        qualified_name = _text(target, data)
+        name = qualified_name.rsplit(".", 1)[-1]
+        if name:
+            imports.setdefault(name, qualified_name)
+    return imports
+
+
+def _qualified_type(name: str, imports: dict[str, str], package: str) -> str:
+    """Give a simple Java type its compilation-unit-qualified identity."""
+    if not name:
+        return ""
+    return imports.get(name, f"{package}.{name}" if package else name)
+
+
+def _import_use(node: object, data: bytes) -> ReferenceUse | None:
+    """Return the import target, excluding wildcard packages."""
+    if any(child.type == "asterisk" for child in node.children):  # type: ignore[attr-defined]
+        return None
+    target = next(
+        (
+            child
+            for child in node.children  # type: ignore[attr-defined]
+            if child.type in {"identifier", "scoped_identifier"}
+        ),
+        None,
+    )
+    qualified_name = _text(target, data)
+    name = qualified_name.rsplit(".", 1)[-1]
+    if not name or name == "*":
+        return None
+    return ReferenceUse(
+        name=name,
+        line=target.start_point[0] + 1,  # type: ignore[union-attr]
+        column=target.start_point[1],  # type: ignore[union-attr]
+        relation="imports",
+        target_kind="type",
+        qualified_name=qualified_name,
+    )
+
+
+def _type_use(node: object | None, data: bytes, *, qualified_name: str = "") -> ReferenceUse | None:
+    """Convert a type-shaped AST occurrence to a language-neutral use."""
+    spelling = _text(node, data)
+    if node is None or not spelling:
+        return None
+    name = spelling.rsplit(".", 1)[-1]
+    return ReferenceUse(
+        name=name,
+        line=node.start_point[0] + 1,  # type: ignore[attr-defined]
+        column=node.start_point[1],  # type: ignore[attr-defined]
+        target_kind="type",
+        qualified_name=qualified_name,
+    )
 
 
 def _local_types(node: object, data: bytes) -> tuple[tuple[str, str], ...]:

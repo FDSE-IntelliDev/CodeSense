@@ -14,6 +14,7 @@
 | **图** | | | |
 | `hop` | `(src, dst, edge=, dir=, len=, via=, avoid=) -> Frag` | 中 | 两片段之间满足图约束的路径 |
 | `reach` | `(src, edge=, dir=, len=) -> Frag` | 中 | 单向可达，无目标 |
+| `project` | `(src, ctx, edge=, direction=, kind=, include_self=) -> Frag` | 低 | 保留证据的一跳结果投影 |
 | `degree` | `(f, in_=, out=, edge=) -> Frag` | 低 | 按出入度筛 |
 | `neighbors` | `(f, radius=, edge=) -> Frag` | 中 | 邻域扩展，补上下文 |
 | **结构** | | | |
@@ -131,6 +132,37 @@ def reach(src: Frag, ctx, *, edge="calls", direction="forward", hops=(1, 3)) -> 
 
 无目标的可达，回答「从这里出发能到哪」。与 `hop` 的区别是没有 `dst`
 ——它在探索，不在验证约束。
+
+### `project`
+
+```python
+def project(
+    src: Frag,
+    ctx,
+    *,
+    edge: str | Sequence[str] = "in_file",
+    direction: str = "forward",
+    kind: str | Sequence[str] | None = None,
+    include_self: bool = False,
+    min_confidence: float = 0.0,
+) -> Frag
+```
+
+沿指定 edge 精确移动一跳，并把源节点 Evidence 合并到目标节点；边的 kind、site 和
+provenance 以零分 graph hit 留在证据链中。它返回节点 Frag，不物化路径，因此与另外两个
+图算子分工明确：`reach` 用于无证据的邻域探索，`hop` 验证两端之间的路径，`project`
+负责结果对象转换。
+
+`kind` 是投影目标过滤；`include_self=True` 会保留输入中已经满足 kind 的节点，公共
+`target=("file",)` 后置条件正是用它避免重复投影已有文件节点。例如：
+
+```python
+referencers = project(page_request, ctx, edge="references", direction="backward")
+answer = project(referencers, ctx, edge="in_file", kind="file", include_self=True)
+```
+
+这里 `target=("file",)` 是最终输出的硬契约；查询计划中的 `kinds` 仍是软偏好，不能用
+低分的非文件结果代替文件结果。
 
 ### `degree`
 

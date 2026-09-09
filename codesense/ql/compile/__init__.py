@@ -21,12 +21,13 @@ from codesense.ql.compile.plan import (
     Intent,
     Narrow,
     Plan,
+    ProjectTarget,
     State,
     Step,
     Trace,
 )
 from codesense.ql.compile.planner import plan
-from codesense.ql.compile.spec import GraphConstraint, QuerySpec
+from codesense.ql.compile.spec import GraphConstraint, QuerySpec, normalise_target
 from codesense.ql.compile.validate import (
     Relation,
     relation_lift,
@@ -44,6 +45,7 @@ __all__ = [
     "Intent",
     "Narrow",
     "Plan",
+    "ProjectTarget",
     "QuerySpec",
     "Relation",
     "ScoredTerm",
@@ -56,6 +58,7 @@ __all__ = [
     "estimate_unit",
     "infer_fields",
     "infer_kinds",
+    "normalise_target",
     "partition",
     "plan",
     "to_script",

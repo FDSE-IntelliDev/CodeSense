@@ -3,6 +3,29 @@
 [05](05-operators.md) 定义了 `hop` 的语义，[09](09-grounding.md) 讲了词法基座。
 这一章讲图基座：**边从哪来，`hop` 怎么在上面跑。**
 
+## 现役轻量图的文件与引用契约
+
+下文保留的是更完整的 CodeQL 图路线；现役索引已经先实现了不依赖 CodeQL 的文件与 Java
+项目内引用关系，契约如下：
+
+- `declaration --in_file--> file` 表示物理归属，不复用结构语义的 `contains`。每个声明
+  最多一条 `in_file`，文件节点不创建自环；该边不进入默认 coherence，避免文件成为
+  高连接度排序枢纽。
+- `source element --references--> target element` 方向固定。source 取覆盖引用位置的最小
+  可索引元素：方法体中的引用属于方法，import、package 或声明外引用属于文件节点。
+- `imports` 等精确边可与通用 `references` 并存。Java scanner 在同一次 AST 扫描中提取
+  引用事实，等项目符号表完整后再解析项目内目标；不为外部或无法可靠解析的名称制造节点。
+- Java 声明的引用身份包含真实 package 和结构路径，但 `container` 仍只表达声明嵌套。
+  显式全限定名只做精确匹配，未命中时不退回同名声明；`target_kind="type"` 只接受语言
+  配置的容器类型。静态成员 import 因此保守地保持 unresolved，而不会误指向同名方法或字段。
+- 引用归属使用同一次扫描得到的行列范围，并按文件预计算 sweep/heap 索引；对一个文件的
+  `D` 个声明和 `R` 个引用，归属解析为 `O((D + R) log D)`，不逐引用重扫全部声明。
+- `project()` 使用边存储的方向索引做证据保留的一跳转换，复杂度为
+  `O(input_nodes + traversed_edges)`；`in_file` / `references` 均不加入默认 coherence。
+
+这套能力支持“先定位 PageRequest，再反向找到引用方，最后投影到文件”。它不等于文件全文
+检索：直接路径/glob postings 和任意内容正则当前仍不支持。
+
 ---
 
 ## 一、现状：图跑不动

@@ -14,7 +14,17 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from codesense.ql.compile.cost import estimate_unit
-from codesense.ql.compile.plan import Boost, Cohere, EvalUnit, Intent, Narrow, Plan, Step
+from codesense.ql.compile.plan import (
+    Boost,
+    Cohere,
+    EvalUnit,
+    Intent,
+    Narrow,
+    Plan,
+    ProjectTarget,
+    Step,
+)
+from codesense.ql.compile.relation_endpoints import is_legacy_relation
 from codesense.ql.compile.spec import QuerySpec
 from codesense.ql.context import EvalContext
 from codesense.ql.satisfiers.lexical import AnnotationSatisfier, LexicalSatisfier, ModifierSatisfier
@@ -107,7 +117,7 @@ def plan(spec: QuerySpec, ctx: EvalContext) -> Plan:
         ),
         key=lambda item: item.rows,
     )
-    total = max(ctx.symbols.count(), 1)
+    total = max(ctx.population, 1)
     why: list[str] = []
     steps: list[Step] = []
 
@@ -143,22 +153,25 @@ def plan(spec: QuerySpec, ctx: EvalContext) -> Plan:
         "more likely an answer, on every query"
     )
 
-    if spec.kinds or spec.concept:
-        limit = INTENT_INPUT_CAP if spec.concept else spec.limit
-        steps.append(Narrow(kind=spec.kinds or None, limit=limit, by=useful[0].unit.name))
-        if spec.concept:
-            why.append(
-                f"cap at {INTENT_INPUT_CAP} before judging: intent costs thousands of lookups"
-            )
-    else:
-        steps.append(Narrow(limit=spec.limit or 100, by=useful[0].unit.name))
-
     if spec.concept:
+        steps.append(
+            Narrow(kind=spec.kinds or None, limit=INTENT_INPUT_CAP, by=useful[0].unit.name)
+        )
+        why.append(f"cap at {INTENT_INPUT_CAP} before judging: intent costs thousands of lookups")
         steps.append(Intent(spec.concept, max_items=INTENT_INPUT_CAP))
         why.append(
-            "intent goes last: it is the only operator calling an LLM, and every "
-            "step before it saves money"
+            "intent goes last among candidate-selection steps: it is the only operator "
+            "calling an LLM, and every step before it saves money"
         )
+    elif spec.kinds and not spec.target:
+        steps.append(Narrow(kind=spec.kinds, limit=spec.limit, by=useful[0].unit.name))
+    elif not spec.target:
+        steps.append(Narrow(limit=spec.limit or 100, by=useful[0].unit.name))
+
+    if spec.target:
+        steps.append(ProjectTarget(spec.target))
+        why.append("project to the hard result target before applying the public result limit")
+        steps.append(Narrow(limit=spec.limit or 100, by=useful[0].unit.name))
 
     return Plan(steps=tuple(steps), reasoning=tuple(why))
 
@@ -175,8 +188,9 @@ def _add_graph(
     """Insert graph constraints and decide which side to start from.
 
     A graph constraint **weights** rather than filters -- answers matching
-    only one side must not be killed. The start is always the smaller side:
-    `hop` costs scale linearly with the number of seeds.
+    only one side must not be killed. Pure legacy constraints may start from
+    the smaller side because their traversal is reversible; typed constraints
+    retain their validated ``src -> dst`` endpoint roles.
     """
     for constraint in spec.graph:
         if constraint.src not in rows or constraint.dst not in rows:
@@ -186,7 +200,7 @@ def _add_graph(
             )
             continue
         src, dst = constraint.src, constraint.dst
-        if rows[dst] * ASYMMETRY < rows[src]:
+        if is_legacy_relation(constraint.edge) and rows[dst] * ASYMMETRY < rows[src]:
             src, dst = dst, src
             why.append(
                 f"constraint reversed: starting from {src!r} ({rows[src]} rows) rather "

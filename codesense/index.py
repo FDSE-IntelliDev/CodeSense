@@ -38,7 +38,7 @@ __all__ = ["Index", "IndexMeta"]
 
 #: Bumped when the on-disk shape changes incompatibly. Loading an index from a
 #: different version fails loudly rather than half-working.
-FORMAT_VERSION = 1
+FORMAT_VERSION = 2
 
 _INDEX_FILE = "index.json"
 _EXPANSION_FILE = "expansion.json"
@@ -53,6 +53,8 @@ class IndexMeta:
     root: str
     built_at: str
     symbols: int = 0
+    declarations: int = 0
+    files: int = 0
     postings: int = 0
     edges: int = 0
     grounded_terms: int = 0
@@ -150,6 +152,10 @@ class Index:
         from codesense.indexing.expansion import build_expansion_table
 
         elements = self.elements()
+        declaration_count = self.payload.get(
+            "declaration_count",
+            sum(row["kind"] != "file" for row in self.payload["symbols"]),
+        )
         language = _language_of(self.meta.language)
         postings = {
             term: [Posting(p["symbol_id"], IndexField(p["field"]), p["tf"]) for p in entries]
@@ -157,18 +163,20 @@ class Index:
         }
         base: dict[str, Any] = {
             "symbols": InMemorySymbolStore(elements),
-            "postings": InMemoryPostingIndex(postings, total_symbols=len(elements)),
+            "postings": InMemoryPostingIndex(postings, total_symbols=declaration_count),
             "expansion": build_expansion_table(lexical=self.expansion or None, language=language),
             "edges": InMemoryEdgeStore(
                 Edge(
                     source_id=e["source_id"],
                     target_id=e["target_id"],
                     kind=e["kind"],
+                    site=tuple(e["site"]) if e.get("site") is not None else None,
                     confidence=e["confidence"],
                     provenance=e["provenance"],
                 )
                 for e in self.payload.get("edges", ())
             ),
+            "declaration_count": declaration_count,
         }
         base.update(overrides)
         return EvalContext(**base)

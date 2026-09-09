@@ -13,13 +13,17 @@ from __future__ import annotations
 import logging
 import time
 from abc import ABC, abstractmethod
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 
 from codesense.ql.compile.cost import Estimate, estimate_hop, estimate_intent, estimate_unit
+from codesense.ql.compile.relation_endpoints import (
+    is_legacy_relation,
+    relation_destinations,
+)
 from codesense.ql.context import EvalContext
 from codesense.ql.frag import Frag
-from codesense.ql.operators import eval_unit, intent, reach, score_of, top
+from codesense.ql.operators import eval_unit, intent, project, reach, score_of, top
 from codesense.ql.unit import QueryUnit
 
 __all__ = [
@@ -29,6 +33,7 @@ __all__ = [
     "Intent",
     "Narrow",
     "Plan",
+    "ProjectTarget",
     "State",
     "Step",
     "Trace",
@@ -151,7 +156,7 @@ class EvalUnit(Step):
         if self.seed:
             return guess
         # Union under independence: |A or B| = N*(1 - (1-|A|/N)(1-|B|/N))
-        total = max(ctx.symbols.count(), 1)
+        total = max(ctx.population, 1)
         merged = total * (1 - (1 - state.rows / total) * (1 - guess.rows / total))
         return Estimate(rows=round(merged), cost=guess.cost, detail=guess.detail)
 
@@ -194,8 +199,9 @@ class Boost(Step):
     not a filter on the candidate set. Using it as a hard filter kills every
     answer that matches only one side -- which is the common case.
 
-    The seed is deliberately the **smaller side**: `hop` costs scale linearly
-    with the number of seeds.
+    Pure ``calls``/``contains`` constraints are bidirectional and may start
+    from the smaller side because reach cost scales with the seed count.
+    Typed constraints retain their validated ``src -> dst`` endpoint roles.
     """
 
     src_name: str
@@ -206,8 +212,9 @@ class Boost(Step):
     label: str = ""
 
     def __post_init__(self) -> None:
+        relation = "<->" if is_legacy_relation(self.edge) else "->"
         self.label = (
-            f"boost({self.src_name} <-> {self.dst_name}, {self.hops[0]}-{self.hops[1]} hops)"
+            f"boost({self.src_name} {relation} {self.dst_name}, {self.hops[0]}-{self.hops[1]} hops)"
         )
 
     def estimate(self, ctx: EvalContext, state: State) -> Estimate:
@@ -224,8 +231,14 @@ class Boost(Step):
         src = state.units.get(self.src_name, Frag())
         if not src or not state.current:
             return
-        near = reach(src, ctx, edge=list(self.edge), direction="any", hops=self.hops)
-        state.boosted |= set(near.nodes) & set(state.current.nodes)
+        dst = state.units.get(self.dst_name, Frag())
+        state.boosted |= relation_destinations(
+            src,
+            dst,
+            ctx,
+            edge=self.edge,
+            hops=self.hops,
+        ) & set(state.current.nodes)
 
 
 @dataclass(slots=True)
@@ -304,6 +317,43 @@ class Narrow(Step):
 
 
 @dataclass(slots=True)
+class ProjectTarget(Step):
+    """Project candidates to the element kind promised by the result contract."""
+
+    target: tuple[str, ...]
+    label: str = ""
+
+    def __post_init__(self) -> None:
+        self.label = f"target({'/'.join(self.target)})"
+
+    def estimate(self, ctx: EvalContext, state: State) -> Estimate:
+        return Estimate(rows=state.rows, cost=float(state.rows), detail="one graph hop")
+
+    def apply(self, ctx: EvalContext, state: State) -> None:
+        source = state.current
+        # Ranking state lives in the same id domain as ``current``. Project
+        # the boosted subset through the exact public-target contract before
+        # replacing declarations with their owner files.
+        boosted_source = source.induced(state.boosted)
+        state.boosted = set(
+            project(
+                boosted_source,
+                ctx,
+                edge="in_file",
+                kind=self.target,
+                include_self=True,
+            ).nodes
+        )
+        state.current = project(
+            source,
+            ctx,
+            edge="in_file",
+            kind=self.target,
+            include_self=True,
+        )
+
+
+@dataclass(slots=True)
 class Intent(Step):
     """Semantic judging. **Always last**, and the planner caps its input with
     `Narrow` first."""
@@ -340,7 +390,13 @@ class Plan:
     steps: tuple[Step, ...]
     reasoning: tuple[str, ...] = ()
 
-    def run(self, ctx: EvalContext, *, skip: tuple[type[Step], ...] = ()) -> State:
+    def run(
+        self,
+        ctx: EvalContext,
+        *,
+        skip: tuple[type[Step], ...] = (),
+        after_step: Callable[[Step], None] | None = None,
+    ) -> State:
         """Execute. ``skip`` omits expensive steps on a dry run, usually
         `Intent`.
 
@@ -363,6 +419,8 @@ class Plan:
             state.trace.append(
                 Trace(step.label, predicted, len(state.current), time.perf_counter() - started)
             )
+            if after_step is not None:
+                after_step(step)
         return state
 
     def explain(self, ctx: EvalContext) -> str:

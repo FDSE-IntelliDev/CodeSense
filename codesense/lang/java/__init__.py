@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 
-from codesense.lang.base import Declaration
+from codesense.lang.base import Declaration, ScanResult
 from codesense.lang.java.annotations import arg_tokens, posting_terms
 from codesense.lang.java.frameworks import META_ANNOTATIONS, expansions_for, meta_expansion_table
 from codesense.lang.java.scanner import JAVA_MODIFIERS, JavaDeclarationScanner, modifier_terms
@@ -75,7 +75,7 @@ class JavaLanguage:
             self._scanner = JavaDeclarationScanner.for_java()
         return self._scanner
 
-    def scan(self, source: str) -> Sequence[Declaration]:
+    def scan(self, source: str) -> ScanResult:
         return self.scanner.scan(source)
 
     def modifier_terms(self, declaration: Declaration) -> Sequence[tuple[str, str]]:

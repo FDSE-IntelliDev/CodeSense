@@ -33,6 +33,7 @@ import logging
 from collections.abc import Sequence
 
 from codesense.llm.config import LlmConfig
+from codesense.ql.compile.spec import normalise_target
 
 __all__ = ["PROMPT", "QueryUnderstanding"]
 
@@ -52,7 +53,8 @@ Output JSON:
 {{
   "terms": {{"word": relevance from 0 to 1, ...}},
   "groups": {{"group name": ["word1", "word2", ...], ...}},
-  "relations": [["group A", "group B"], ...],
+  "relations": [{{"src": "group A", "dst": "group B", "edge": ["references"]}}, ...],
+  "target": ["file"],
   "annotations": ["@AnnotationName", ...],
   "concept": "one sentence of criterion, used to judge each piece of code"
 }}
@@ -64,10 +66,16 @@ Requirements:
 - group the terms by meaning. **If the query is about one thing, give one
   group**; split only when the query really is about two different things
   (for instance "performance" and "disk" are two things)
-- give relations only when the query really means "A-related code
-  calls/contains B-related code", otherwise give an empty list. **These
-  proposals are checked against the codebase's actual edges and fabricated
-  ones are discarded**
+- propose relations whenever the query explicitly expresses a relation
+  between groups (for example, A-related code calls, contains, references,
+  imports, or in_file B-related code); use one or more supported edge kinds.
+  Otherwise give an empty list. **These proposals are checked against the
+  codebase's actual edges and fabricated ones are discarded**
+- valid edge names are calls, contains, references, imports, and in_file;
+  use the exact edge kind requested by the query
+- set target to ["file"] only when the query explicitly asks for files. A
+  relation verb such as references or imports alone does not imply a file
+  target; otherwise use an empty list
 - annotations may name framework annotations absent from the vocabulary; give
   an empty list if there are none
 - concept must be specific and falsifiable, not a restatement of the query
@@ -88,15 +96,40 @@ def _groups(raw: object, terms: dict[str, float]) -> dict[str, list[str]]:
     return found
 
 
-def _relations(raw: object) -> list[tuple[str, str]]:
+_DEFAULT_EDGES = ("calls", "contains")
+_VALID_EDGES = frozenset((*_DEFAULT_EDGES, "references", "imports", "in_file"))
+
+
+def _relations(raw: object) -> list[tuple[str, str, tuple[str, ...]]]:
     if not isinstance(raw, list):
         return []
-    found: list[tuple[str, str]] = []
+    found: list[tuple[str, str, tuple[str, ...]]] = []
     for item in raw:
         if isinstance(item, (list, tuple)) and len(item) >= 2:
-            found.append((str(item[0]), str(item[1])))
+            src, dst = item[0], item[1]
+            edge = item[2] if len(item) >= 3 else None
         elif isinstance(item, dict) and "src" in item and "dst" in item:
-            found.append((str(item["src"]), str(item["dst"])))
+            src, dst = item["src"], item["dst"]
+            edge = item.get("edge")
+        else:
+            continue
+        if not isinstance(src, str) or not isinstance(dst, str):
+            continue
+        if isinstance(edge, str):
+            edge_values = (edge,)
+        elif isinstance(edge, (list, tuple)):
+            edge_values = edge
+        else:
+            edge_values = ()
+        valid = tuple(
+            name.strip().lower()
+            for name in edge_values
+            if isinstance(name, str) and name.strip().lower() in _VALID_EDGES
+        )
+        # Preserve order while avoiding duplicate edge filters. A wholly
+        # malformed edge value falls back to the legacy broad relation.
+        valid = tuple(dict.fromkeys(valid)) or _DEFAULT_EDGES
+        found.append((src, dst, valid))
     return found
 
 
@@ -146,13 +179,18 @@ class QueryUnderstanding:
             _log.warning("the model gave no usable terms")
             return None
         scored = {str(k).lower(): _score(v) for k, v in terms.items()}
-        return {
+        understood = {
             "terms": scored,
             "groups": _groups(payload.get("groups"), scored),
             "relations": _relations(payload.get("relations")),
             "annotations": [a for a in payload.get("annotations", ()) if isinstance(a, str)],
             "concept": str(payload.get("concept") or ""),
         }
+        # Missing means "the model did not decide", while an explicit empty
+        # target is a decision that must suppress later query-text inference.
+        if "target" in payload:
+            understood["target"] = normalise_target(payload["target"])
+        return understood
 
     def _ask(self, prompt: str) -> str | None:
         session = self._session

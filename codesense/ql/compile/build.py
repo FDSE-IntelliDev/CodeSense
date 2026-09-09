@@ -20,7 +20,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 
 from codesense.ql.compile.partition import Cluster, partition
-from codesense.ql.compile.spec import GraphConstraint, QuerySpec
+from codesense.ql.compile.spec import GraphConstraint, QuerySpec, normalise_target
 from codesense.ql.compile.validate import validate_groups, validate_relations
 from codesense.ql.context import EvalContext
 from codesense.ql.fields import IndexField
@@ -93,7 +93,9 @@ def build_spec(
     concept: str = "",
     annotations: Sequence[str] = (),
     groups: Mapping[str, Sequence[str]] | None = None,
-    relations: Sequence[tuple[str, str]] = (),
+    relations: Sequence[tuple[str, str] | tuple[str, str, Sequence[str]]] = (),
+    target: object = None,
+    limit: int | None = None,
 ) -> tuple[QuerySpec, list[str]]:
     """Assemble the model's proposals into a spec, returning the validation
     record alongside it.
@@ -122,7 +124,11 @@ def build_spec(
         notes += rejected
         notes += [f"accepted relation {r.src}->{r.dst}: {r.detail}" for r in kept_relations]
         constraints = tuple(
-            GraphConstraint(src=f"u{names.index(r.src)}", dst=f"u{names.index(r.dst)}")
+            GraphConstraint(
+                src=f"u{names.index(r.src)}",
+                dst=f"u{names.index(r.dst)}",
+                edge=r.edge,
+            )
             for r in kept_relations
         )
     else:
@@ -156,6 +162,8 @@ def build_spec(
             graph=constraints if len(units) > 1 else (),
             concept=concept,
             kinds=infer_kinds(values, ctx),
+            target=normalise_target(target),
+            limit=limit,
         ),
         notes,
     )

@@ -24,6 +24,10 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 
 from codesense.ql.compile.partition import OVERLAP_FLOOR
+from codesense.ql.compile.relation_endpoints import (
+    is_legacy_relation,
+    relation_endpoint_strata,
+)
 from codesense.ql.context import EvalContext
 
 __all__ = ["LIFT_FLOOR", "Relation", "relation_lift", "validate_groups", "validate_relations"]
@@ -49,32 +53,88 @@ class Relation:
     dst: str
     lift: float
     detail: str = ""
+    edge: tuple[str, ...] = ("calls", "contains")
 
 
 def relation_lift(
-    src_terms: Sequence[str], dst_terms: Sequence[str], ctx: EvalContext
+    src_terms: Sequence[str],
+    dst_terms: Sequence[str],
+    ctx: EvalContext,
+    *,
+    edge: Sequence[str] = ("calls", "contains"),
 ) -> tuple[float, str]:
     """How many times denser the edges between two term groups are than chance.
 
-    The baseline is ``|A|*|B|*2E/N^2``, treating the graph as a random one
-    with the same edge count. It is a crude baseline, but ample for telling
-    4.75x from 0.
+    The declaration-only baseline remains ``|A|*|B|*2E/N^2``. File-endpoint
+    kinds use the same heuristic with separate source and destination
+    populations. It is crude, but ample for telling 4.75x from 0.
     """
-    total = ctx.symbols.count()
-    if total < 2:
+    declarations = ctx.population
+    kinds = tuple(dict.fromkeys(edge)) or ("calls", "contains")
+    legacy = is_legacy_relation(kinds)
+    if legacy and declarations < 2:
         return 0.0, "too few symbols"
-    left = {p.symbol_id for term in src_terms for p in ctx.postings.lookup(term)}
-    right = {p.symbol_id for term in dst_terms for p in ctx.postings.lookup(term)}
-    if not left or not right:
+    src_declarations = {p.symbol_id for term in src_terms for p in ctx.postings.lookup(term)}
+    dst_declarations = {p.symbol_id for term in dst_terms for p in ctx.postings.lookup(term)}
+    if not src_declarations or not dst_declarations:
         return 0.0, "one side matched nothing"
 
-    sampled = sorted(left)[:SAMPLE_CAP]
-    scale = len(left) / len(sampled)
-    crossing = scale * sum(
-        1 for node in sampled for edge in ctx.edges.out_edges(node) if edge.target_id in right
-    )
-    edges = sum(ctx.edges.degree(node) for node in sampled) * scale
-    expected = len(left) * len(right) * edges / (total * total) if total else 0.0
+    # Keep the historical declaration-only calculation exactly as it was.
+    if legacy:
+        left = src_declarations
+        right = dst_declarations
+        sampled = sorted(left)[:SAMPLE_CAP]
+        scale = len(left) / len(sampled)
+        crossing = scale * sum(
+            1
+            for node in sampled
+            for relation in ctx.edges.out_edges(node, kinds=kinds)
+            if relation.target_id in right
+        )
+        edges = sum(ctx.edges.degree(node, kinds=kinds) for node in sampled) * scale
+        expected = len(left) * len(right) * edges / (declarations * declarations)
+        if expected <= 0:
+            return 0.0, "the graph has no edges"
+        lift = crossing / expected
+        return lift, f"{crossing:.0f} crossings vs {expected:.0f} expected ({lift:.2f}x)"
+
+    # Typed/mixed tuples keep every edge kind and physical endpoint role in
+    # a separate sampling stratum. This prevents declaration IDs from using
+    # the entire cap before later file IDs are ever inspected.
+    crossing = 0.0
+    expected = 0.0
+    usable_endpoint_pair = False
+    usable_population = False
+    for stratum in relation_endpoint_strata(src_declarations, dst_declarations, ctx, kinds):
+        if not stratum.source_ids or not stratum.destination_ids:
+            continue
+        usable_endpoint_pair = True
+        if stratum.source_population < 1 or stratum.destination_population < 1:
+            continue
+        usable_population = True
+        sampled = sorted(stratum.source_ids)[:SAMPLE_CAP]
+        scale = len(stratum.source_ids) / len(sampled)
+        stratum_crossing = scale * sum(
+            1
+            for node in sampled
+            for relation in ctx.edges.out_edges(node, kinds=(stratum.kind,))
+            if relation.target_id in stratum.destination_ids
+        )
+        stratum_edges = (
+            sum(ctx.edges.degree(node, kinds=(stratum.kind,)) for node in sampled) * scale
+        )
+        crossing += stratum_crossing
+        expected += (
+            len(stratum.source_ids)
+            * len(stratum.destination_ids)
+            * stratum_edges
+            / (stratum.source_population * stratum.destination_population)
+        )
+
+    if not usable_endpoint_pair:
+        return 0.0, "one side matched nothing"
+    if not usable_population:
+        return 0.0, "too few endpoint symbols"
     if expected <= 0:
         return 0.0, "the graph has no edges"
     lift = crossing / expected
@@ -82,7 +142,7 @@ def relation_lift(
 
 
 def validate_relations(
-    proposed: Sequence[tuple[str, str]],
+    proposed: Sequence[tuple[str, str] | tuple[str, str, Sequence[str]]],
     groups: dict[str, Sequence[str]],
     ctx: EvalContext,
     *,
@@ -95,13 +155,16 @@ def validate_relations(
     """
     kept: list[Relation] = []
     rejected: list[str] = []
-    for src, dst in proposed:
+    for proposal in proposed:
+        src, dst = proposal[:2]
+        edge = tuple(proposal[2]) if len(proposal) >= 3 else ("calls", "contains")
+        edge = edge or ("calls", "contains")
         if src not in groups or dst not in groups or src == dst:
             rejected.append(f"{src}->{dst}: names a group that does not exist")
             continue
-        lift, detail = relation_lift(groups[src], groups[dst], ctx)
+        lift, detail = relation_lift(groups[src], groups[dst], ctx, edge=edge)
         if lift >= floor:
-            kept.append(Relation(src=src, dst=dst, lift=lift, detail=detail))
+            kept.append(Relation(src=src, dst=dst, lift=lift, edge=edge, detail=detail))
         else:
             rejected.append(
                 f"{src}->{dst}: {detail}, below {floor}x -- the relation does not "

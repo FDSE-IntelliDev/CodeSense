@@ -10,7 +10,14 @@ from __future__ import annotations
 
 import pytest
 
-from codesense.lang import LANGUAGES, Declaration, Language, LanguageRegistry
+from codesense.lang import (
+    LANGUAGES,
+    Declaration,
+    Language,
+    LanguageRegistry,
+    ReferenceUse,
+    ScanResult,
+)
 
 
 class ToyLanguage:
@@ -22,18 +29,24 @@ class ToyLanguage:
     indexed_kinds = frozenset({"function"})
     container_kinds = frozenset({"module"})
 
-    def scan(self, source: str) -> list[Declaration]:
-        return [
-            Declaration(name=line.strip(), kind="function", line=n)
-            for n, line in enumerate(source.splitlines(), 1)
-            if line.strip()
-        ]
+    def scan(self, source: str) -> ScanResult:
+        return ScanResult(
+            declarations=tuple(
+                Declaration(name=line.strip(), kind="function", line=n)
+                for n, line in enumerate(source.splitlines(), 1)
+                if line.strip()
+            )
+        )
 
     def expansions(self) -> dict:
         return {}
 
 
 class TestProtocol:
+    def test_scan_fact_types_are_language_neutral(self) -> None:
+        use = ReferenceUse(name="Widget", line=3, target_kind="type")
+        assert ScanResult(declarations=(), references=(use,)).references == (use,)
+
     def test_a_minimal_adapter_satisfies_the_protocol(self) -> None:
         assert isinstance(ToyLanguage(), Language)
 
@@ -108,7 +121,9 @@ class TestIndexingIsLanguageAgnostic:
 
         (tmp_path / "a.toy").write_text("readBuffer\nwriteBuffer\n")
         result = build_index(tmp_path, languages=[ToyLanguage()])
-        assert result.stats.symbols == 2
+        assert result.stats.symbols == 3
+        assert result.stats.declarations == 2
+        assert result.payload["declaration_count"] == 2
         assert "buffer" in result.payload["postings"]
 
     def test_records_which_language_each_symbol_came_from(self, tmp_path) -> None:  # type: ignore[no-untyped-def]
@@ -128,7 +143,7 @@ class TestIndexingIsLanguageAgnostic:
         (vendor / "b.toy").write_text("skipMe\n")
         (tmp_path / "a.toy").write_text("keepMe\n")
         result = build_index(tmp_path, languages=[ToyLanguage()])
-        assert [s["name"] for s in result.payload["symbols"]] == ["keepMe"]
+        assert [s["name"] for s in result.payload["symbols"]] == ["keepMe", "a.toy"]
 
     def test_refuses_to_build_with_no_adapter(self, tmp_path) -> None:  # type: ignore[no-untyped-def]
         from codesense.indexing import build_index
