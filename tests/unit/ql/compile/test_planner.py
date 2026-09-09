@@ -234,6 +234,10 @@ class TestOrdering:
 
 
 class TestGraphDirection:
+    def test_boost_labels_distinguish_reversible_and_typed_relations(self) -> None:
+        assert "left <-> right" in Boost("left", "right", edge=("calls",)).label
+        assert "left -> right" in Boost("left", "right", edge=("references",)).label
+
     def test_starts_from_the_smaller_side(self) -> None:
         """`hop` costs scale linearly with the number of seeds."""
         ctx = make_context({"common": 400, "rare": 10}, (Edge(1, 2, "calls"),))

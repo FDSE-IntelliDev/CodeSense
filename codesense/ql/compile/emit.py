@@ -28,6 +28,7 @@ from codesense.ql.compile.plan import (
     ProjectTarget,
     Step,
 )
+from codesense.ql.compile.relation_endpoints import is_legacy_relation
 from codesense.ql.compile.spec import QuerySpec
 from codesense.ql.satisfiers.lexical import AnnotationSatisfier, LexicalSatisfier, ModifierSatisfier
 from codesense.ql.unit import QueryUnit
@@ -40,6 +41,7 @@ compiled from: {query}
 index: {index}
 """
 from codesense.ql.compile import Intent
+from codesense.ql.compile.relation_endpoints import relation_destinations
 from codesense.ql.operators import eval_unit, intent, project, reach, score_of, top
 from codesense.ql.satisfiers import AnnotationSatisfier, LexicalSatisfier, ModifierSatisfier
 from codesense.ql.unit import QueryUnit, Term
@@ -69,7 +71,7 @@ def to_script(plan: Plan, spec: QuerySpec, *, index: str = "<unrecorded>") -> st
         lines.append(_comment(why))
     lines.append("")
 
-    body: list[str] = []
+    body: list[str] = ["boosted = set()"]
     for step in plan.steps:
         rendered = _step_source(step)
         if rendered:
@@ -137,10 +139,11 @@ def _wrap(text: str, indent: str = "        ") -> str:
 def _step_source(step: Step) -> str:
     if isinstance(step, EvalUnit):
         name = _ident(step.unit.name)
+        matches = _matches_ident(step.unit.name)
         if step.seed:
-            return f"frag = eval_unit({name}, ctx)"
+            return f"{matches} = eval_unit({name}, ctx)\nfrag = {matches}"
         # Union, not intersection -- units land on different elements
-        return f"frag = frag | eval_unit({name}, ctx)"
+        return f"{matches} = eval_unit({name}, ctx)\nfrag = frag | {matches}"
     if isinstance(step, Cohere):
         # Only mark the neighbourhood; ranking happens once, in `Narrow`,
         # matching `Plan` semantics (`Cohere` fills state.boosted, `Narrow`
@@ -151,15 +154,19 @@ def _step_source(step: Step) -> str:
                 f"{step.hops[0]}-{step.hops[1]} hops out",
                 f"near = reach(top(frag, {step.seeds}), ctx,",
                 f'             edge={list(step.edge)!r}, direction="any", hops={step.hops!r})',
-                "boosted = set(near.nodes) & set(frag.nodes)",
+                "boosted |= set(near.nodes) & set(frag.nodes)",
             ]
         )
 
     if isinstance(step, Boost):
+        relation = "<->" if is_legacy_relation(step.edge) else "->"
         return (
-            f"# graph constraint: {step.src_name} <-> {step.dst_name} (statistically validated)\n"
-            f"near = reach(eval_unit({_ident(step.src_name)}, ctx), ctx,\n"
-            f'             edge={list(step.edge)!r}, direction="any", hops={step.hops!r})'
+            f"# graph constraint: {step.src_name} {relation} {step.dst_name} "
+            f"(statistically validated)\n"
+            f"boosted |= relation_destinations(\n"
+            f"    {_matches_ident(step.src_name)}, {_matches_ident(step.dst_name)}, ctx,\n"
+            f"    edge={step.edge!r}, hops={step.hops!r},\n"
+            f") & set(frag.nodes)"
         )
     if isinstance(step, Narrow):
         if not step.limit:
@@ -193,6 +200,11 @@ def _step_source(step: Step) -> str:
 def _ident(name: str) -> str:
     cleaned = "".join(ch if ch.isalnum() or ch == "_" else "_" for ch in name)
     return f"unit_{cleaned}" if not cleaned[:1].isalpha() else cleaned
+
+
+def _matches_ident(name: str) -> str:
+    """Name the evaluated fragment without obscuring the editable unit."""
+    return f"{_ident(name)}_matches"
 
 
 def _escape(text: str) -> str:

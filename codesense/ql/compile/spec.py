@@ -94,9 +94,9 @@ def normalise_hops(raw: object) -> tuple[int, int]:
 class GraphConstraint:
     """A graph constraint between two units.
 
-    The direction is **semantic** -- who calls whom. Which side execution
-    actually starts from is the planner's decision, because that is a cost
-    question rather than a meaning one.
+    The direction is **semantic** -- who calls whom. Pure legacy
+    ``calls``/``contains`` constraints are reversible for execution; typed
+    constraints retain ``src -> dst`` because their endpoint roles differ.
     """
 
     src: str

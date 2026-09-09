@@ -12,11 +12,14 @@ from dataclasses import dataclass
 from types import MappingProxyType
 
 from codesense.ql.context import EvalContext
+from codesense.ql.frag import Frag
+from codesense.ql.operators import reach
 
 __all__ = [
     "EndpointStratum",
     "is_legacy_relation",
     "logical_destinations",
+    "relation_destinations",
     "relation_endpoint_strata",
 ]
 
@@ -122,6 +125,44 @@ def logical_destinations(stratum: EndpointStratum, physical_ids: Iterable[int]) 
         for physical_id in physical_ids
         for logical_id in stratum.destination_to_logical.get(physical_id, ())
     }
+
+
+def relation_destinations(
+    src: Frag,
+    dst: Frag,
+    ctx: EvalContext,
+    *,
+    edge: Sequence[str],
+    hops: tuple[int, int],
+) -> set[int]:
+    """Return logical candidates reached by one compiled graph constraint.
+
+    Pure declaration-only constraints retain the historical bidirectional
+    neighbourhood behavior. Typed constraints preserve ``src -> dst`` and
+    use the same endpoint-role projection as statistical validation.
+    """
+    if not src:
+        return set()
+    if is_legacy_relation(edge):
+        return set(reach(src, ctx, edge=list(edge), direction="any", hops=hops).nodes)
+    if not dst:
+        return set()
+
+    matched: set[int] = set()
+    for stratum in relation_endpoint_strata(src.nodes, dst.nodes, ctx, edge):
+        physical_src = Frag(nodes=ctx.symbols.get_many(stratum.source_ids))
+        if not physical_src or not stratum.destination_ids:
+            continue
+        reached = reach(
+            physical_src,
+            ctx,
+            edge=stratum.kind,
+            direction="forward",
+            hops=hops,
+        )
+        physical_dst = set(reached.nodes) & set(stratum.destination_ids)
+        matched.update(logical_destinations(stratum, physical_dst))
+    return matched
 
 
 def _ownership_by_declaration(

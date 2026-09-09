@@ -19,8 +19,7 @@ from dataclasses import dataclass, field
 from codesense.ql.compile.cost import Estimate, estimate_hop, estimate_intent, estimate_unit
 from codesense.ql.compile.relation_endpoints import (
     is_legacy_relation,
-    logical_destinations,
-    relation_endpoint_strata,
+    relation_destinations,
 )
 from codesense.ql.context import EvalContext
 from codesense.ql.frag import Frag
@@ -200,8 +199,9 @@ class Boost(Step):
     not a filter on the candidate set. Using it as a hard filter kills every
     answer that matches only one side -- which is the common case.
 
-    The seed is deliberately the **smaller side**: `hop` costs scale linearly
-    with the number of seeds.
+    Pure ``calls``/``contains`` constraints are bidirectional and may start
+    from the smaller side because reach cost scales with the seed count.
+    Typed constraints retain their validated ``src -> dst`` endpoint roles.
     """
 
     src_name: str
@@ -212,8 +212,9 @@ class Boost(Step):
     label: str = ""
 
     def __post_init__(self) -> None:
+        relation = "<->" if is_legacy_relation(self.edge) else "->"
         self.label = (
-            f"boost({self.src_name} <-> {self.dst_name}, {self.hops[0]}-{self.hops[1]} hops)"
+            f"boost({self.src_name} {relation} {self.dst_name}, {self.hops[0]}-{self.hops[1]} hops)"
         )
 
     def estimate(self, ctx: EvalContext, state: State) -> Estimate:
@@ -230,32 +231,14 @@ class Boost(Step):
         src = state.units.get(self.src_name, Frag())
         if not src or not state.current:
             return
-        if is_legacy_relation(self.edge):
-            near = reach(src, ctx, edge=list(self.edge), direction="any", hops=self.hops)
-            state.boosted |= set(near.nodes) & set(state.current.nodes)
-            return
-
         dst = state.units.get(self.dst_name, Frag())
-        if not dst:
-            return
-        # Typed relations retain their validated src -> dst roles. Each edge
-        # kind is traversed independently because file endpoints and
-        # declaration endpoints cannot be combined into one start fragment.
-        boosted: set[int] = set()
-        for stratum in relation_endpoint_strata(src.nodes, dst.nodes, ctx, self.edge):
-            physical_src = Frag(nodes=ctx.symbols.get_many(stratum.source_ids))
-            if not physical_src or not stratum.destination_ids:
-                continue
-            reached = reach(
-                physical_src,
-                ctx,
-                edge=stratum.kind,
-                direction="forward",
-                hops=self.hops,
-            )
-            physical_dst = set(reached.nodes) & set(stratum.destination_ids)
-            boosted.update(logical_destinations(stratum, physical_dst))
-        state.boosted |= boosted & set(state.current.nodes)
+        state.boosted |= relation_destinations(
+            src,
+            dst,
+            ctx,
+            edge=self.edge,
+            hops=self.hops,
+        ) & set(state.current.nodes)
 
 
 @dataclass(slots=True)

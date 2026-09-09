@@ -188,8 +188,9 @@ def _add_graph(
     """Insert graph constraints and decide which side to start from.
 
     A graph constraint **weights** rather than filters -- answers matching
-    only one side must not be killed. The start is always the smaller side:
-    `hop` costs scale linearly with the number of seeds.
+    only one side must not be killed. Pure legacy constraints may start from
+    the smaller side because their traversal is reversible; typed constraints
+    retain their validated ``src -> dst`` endpoint roles.
     """
     for constraint in spec.graph:
         if constraint.src not in rows or constraint.dst not in rows:
