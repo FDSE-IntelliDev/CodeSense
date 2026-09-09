@@ -54,6 +54,18 @@ INTENT_CAP = 60
 
 _WORD = re.compile(r"[A-Za-z][A-Za-z0-9]*")
 
+# File output is intentionally recognised only in a few explicit result
+# forms. A broad ``file`` noun match misreads object-position prose such as
+# "methods that write a file" as a request to return files.
+_FILE_OUTPUT_REQUEST = re.compile(
+    r"\b(?:find|list|show|return)\s+(?:(?:a|an|the|java|source)\s+)*files?\b",
+    re.IGNORECASE,
+)
+_WHICH_FILES_REQUEST = re.compile(r"\bwhich\s+files?\b", re.IGNORECASE)
+_CHINESE_FILE_OUTPUT_REQUEST = re.compile(
+    r"(?:哪些|列出|查找|找出|显示|返回)\s*(?:[A-Za-z][A-Za-z0-9._-]*\s*)?文件"
+)
+
 #: Words dropped from a query before lexical matching. Kept deliberately tiny:
 #: these are the ones that carry no intent yet appear in real code (`and` is a
 #: real Java identifier), so ICF alone will not push them down far enough.
@@ -116,6 +128,15 @@ _STOPWORDS = frozenset(
     ]
     # fmt: on
 )
+
+
+class _PlannedFailure(RuntimeError):
+    """Carry a structured target through planned-route degradation."""
+
+    def __init__(self, target: tuple[str, ...] | None, cause: Exception) -> None:
+        super().__init__(str(cause))
+        self.target = target
+        self.cause = cause
 
 
 @dataclass(frozen=True, slots=True)
@@ -194,7 +215,9 @@ def search(
         raise ValueError(f"route must be one of {ROUTES}, got {route!r}")
     started = time.perf_counter()
     target_was_explicit = target is not None
-    requested_target = normalise_target(target) if target_was_explicit else _query_target(query)
+    # ``None`` means no route has decided yet; ``()`` is a deliberate empty
+    # target and must not be replaced by lexical inference later.
+    requested_target = normalise_target(target) if target_was_explicit else None
     if llm is None and route != "lexical":
         _log.info("no LLM configured; falling back to the lexical route")
         route = "lexical"
@@ -209,7 +232,28 @@ def search(
             llm,
             requested_target,
             target_was_explicit,
+            judge,
+            limit,
         )
+    except _PlannedFailure as exc:
+        _log.exception("route %s failed", route)
+        fallback_target = requested_target if target_was_explicit else exc.target
+        frag, script, notes, route_target = _lexical(
+            query,
+            ctx,
+            project,
+            vocabulary,
+            None,
+            fallback_target,
+            target_was_explicit,
+            judge,
+            limit,
+        )
+        notes = [
+            f"{route} failed ({type(exc.cause).__name__}: {exc.cause}); fell back to lexical",
+            *notes,
+        ]
+        route = "lexical"
     except Exception as exc:  # noqa: BLE001 -- a failed route degrades, never crashes
         _log.exception("route %s failed", route)
         frag, script, notes, route_target = _lexical(
@@ -220,12 +264,20 @@ def search(
             None,
             requested_target,
             target_was_explicit,
+            judge,
+            limit,
         )
         notes = [f"{route} failed ({type(exc).__name__}: {exc}); fell back to lexical", *notes]
         route = "lexical"
 
-    effective_target = requested_target if target_was_explicit else route_target
-    if judge and len(frag) and ctx.judge is not None:
+    effective_target = (
+        requested_target
+        if target_was_explicit
+        else route_target
+        if route_target is not None
+        else _query_target(query)
+    )
+    if judge and route != "planned" and len(frag) and ctx.judge is not None:
         frag, notes = _judge(frag, query, ctx, notes)
     frag = _enforce_target(frag, ctx, effective_target)
     if route == "lexical" and effective_target:
@@ -246,8 +298,14 @@ def search(
 
 
 def _query_target(query: str) -> tuple[str, ...]:
-    """Infer only explicit file nouns; relation verbs do not imply a target."""
-    return ("file",) if re.search(r"\bfiles?\b|文件", query, re.IGNORECASE) else ()
+    """Infer a file result only from narrow, explicit output wording."""
+    if (
+        _FILE_OUTPUT_REQUEST.search(query)
+        or _WHICH_FILES_REQUEST.search(query)
+        or _CHINESE_FILE_OUTPUT_REQUEST.search(query)
+    ):
+        return ("file",)
+    return ()
 
 
 def _enforce_target(frag: Frag, ctx: EvalContext, target: tuple[str, ...]) -> Frag:
@@ -259,11 +317,11 @@ def _enforce_target(frag: Frag, ctx: EvalContext, target: tuple[str, ...]) -> Fr
     return project_frag(frag, ctx, edge="in_file", kind=target, include_self=True)
 
 
-def _returned_target(frag: Frag) -> tuple[str, ...]:
+def _returned_target(frag: Frag) -> tuple[str, ...] | None:
     """Recognise a generated script that explicitly returned only file nodes."""
     if frag and all(element.kind == "file" for element in frag.nodes.values()):
         return ("file",)
-    return ()
+    return None
 
 
 def _rank(frag: Frag, limit: int) -> list[Hit]:
@@ -338,9 +396,11 @@ def _codegen(
     project: str,
     vocabulary: Sequence[tuple[str, int]],
     llm: Any,
-    target: tuple[str, ...],
+    target: tuple[str, ...] | None,
     _target_was_explicit: bool,
-) -> tuple[Frag, str, list[str], tuple[str, ...]]:
+    _judge: bool,
+    _limit: int,
+) -> tuple[Frag, str, list[str], tuple[str, ...] | None]:
     """Have the model write the script, then run it behind the whitelist."""
     from codesense.llm import ScriptGenerator
     from codesense.ql import ScriptError, run_script
@@ -365,7 +425,7 @@ def _codegen(
         answer,
         source,
         [f"{source.count(chr(10)) + 1}-line generated script"],
-        target or _returned_target(answer),
+        target if target is not None else _returned_target(answer),
     )
 
 
@@ -375,9 +435,11 @@ def _planned(
     project: str,
     vocabulary: Sequence[tuple[str, int]],
     llm: Any,
-    target: tuple[str, ...],
+    target: tuple[str, ...] | None,
     target_was_explicit: bool,
-) -> tuple[Frag, str, list[str], tuple[str, ...]]:
+    judge: bool,
+    limit: int,
+) -> tuple[Frag, str, list[str], tuple[str, ...] | None]:
     """Model proposes, statistics validate, the planner orders."""
     from codesense.llm import QueryUnderstanding
     from codesense.ql.compile import build_spec, plan, to_script
@@ -386,25 +448,39 @@ def _planned(
     understood = QueryUnderstanding(llm).understand(query, project or "the project", vocab)
     if understood is None:
         raise RuntimeError("the model could not interpret the query")
-    understood_target = None if target_was_explicit else understood.get("target")
-    spec, validation_notes = build_spec(
-        query,
-        understood["terms"],
-        ctx,
-        concept=understood.get("concept", ""),
-        annotations=understood.get("annotations", ()),
-        groups=understood.get("groups"),
-        relations=understood.get("relations", ()),
-        target=target or understood_target,
-    )
-    execution = plan(spec, ctx)
-    state = execution.run(ctx)
-    return (
-        state.current,
-        to_script(execution, spec),
-        [*validation_notes, *execution.reasoning],
-        spec.target,
-    )
+    if target_was_explicit:
+        route_target = target
+    elif "target" in understood:
+        route_target = normalise_target(understood["target"])
+    else:
+        route_target = None
+    try:
+        # Planned intent is the sole judging layer for this route. Disabling
+        # it here keeps judge=False from silently invoking the model.
+        concept = str(understood.get("concept", "") or "") if judge else ""
+        if judge and not concept:
+            concept = query
+        spec, validation_notes = build_spec(
+            query,
+            understood["terms"],
+            ctx,
+            concept=concept,
+            annotations=understood.get("annotations", ()),
+            groups=understood.get("groups"),
+            relations=understood.get("relations", ()),
+            target=route_target,
+            limit=limit,
+        )
+        execution = plan(spec, ctx)
+        state = execution.run(ctx)
+        return (
+            state.current,
+            to_script(execution, spec),
+            [*validation_notes, *execution.reasoning],
+            spec.target,
+        )
+    except Exception as exc:
+        raise _PlannedFailure(route_target, exc) from exc
 
 
 def _lexical(
@@ -413,8 +489,10 @@ def _lexical(
     project: str,
     vocabulary: Sequence[tuple[str, int]],
     llm: Any,
-    target: tuple[str, ...],
+    target: tuple[str, ...] | None,
     _target_was_explicit: bool,
+    _judge: bool,
+    _limit: int,
 ) -> tuple[Frag, str, list[str], tuple[str, ...]]:
     """The query's own words, grounded through the expansion table.
 
@@ -426,9 +504,15 @@ def _lexical(
     the query -- what sits structurally near a strong hit is more likely to be
     relevant, on every query.
     """
+    effective_target = target if target is not None else _query_target(query)
     words = _query_terms(query, ctx)
     if not words:
-        return Frag(), "", ["no word in the query appears in this project's vocabulary"], target
+        return (
+            Frag(),
+            "",
+            ["no word in the query appears in this project's vocabulary"],
+            effective_target,
+        )
     unit = QueryUnit(
         "query",
         concept=query,
@@ -436,9 +520,9 @@ def _lexical(
     )
     frag = eval_unit(unit, ctx)
     if not len(frag):
-        return frag, "", [f"no hits for {', '.join(words)}"], target
+        return frag, "", [f"no hits for {', '.join(words)}"], effective_target
     frag = _cohere(frag, ctx)
-    return frag, "", [f"matched on {', '.join(words)}"], target
+    return frag, "", [f"matched on {', '.join(words)}"], effective_target
 
 
 def _query_terms(query: str, ctx: EvalContext) -> list[str]:

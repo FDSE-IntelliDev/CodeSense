@@ -95,6 +95,7 @@ def build_spec(
     groups: Mapping[str, Sequence[str]] | None = None,
     relations: Sequence[tuple[str, str] | tuple[str, str, Sequence[str]]] = (),
     target: object = None,
+    limit: int | None = None,
 ) -> tuple[QuerySpec, list[str]]:
     """Assemble the model's proposals into a spec, returning the validation
     record alongside it.
@@ -162,6 +163,7 @@ def build_spec(
             concept=concept,
             kinds=infer_kinds(values, ctx),
             target=normalise_target(target),
+            limit=limit,
         ),
         notes,
     )

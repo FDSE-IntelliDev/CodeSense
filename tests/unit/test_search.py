@@ -9,11 +9,13 @@ worse than one that quietly does less.
 from __future__ import annotations
 
 import importlib
+from collections.abc import Sequence
 
 import pytest
 
 from codesense.index import Index
-from codesense.ql.frag import Evidence, Frag, UnitHit
+from codesense.ql.frag import Evidence, Frag, UnitHit, Verdict
+from codesense.ql.judge import JudgeItem
 from codesense.ql.operators import score_of
 from codesense.search import ROUTES, Hit, SearchResult, _cohere, _rank, search
 from tests.unit.test_index import make_index
@@ -34,6 +36,17 @@ class Exploding:
 
     def __getattr__(self, name: str) -> object:
         raise RuntimeError("endpoint is down")
+
+
+class CountingJudge:
+    """Keep every candidate while recording each element submitted to intent."""
+
+    def __init__(self) -> None:
+        self.items: list[JudgeItem] = []
+
+    def judge(self, concept: str, items: Sequence[JudgeItem]) -> dict[int, Verdict]:
+        self.items.extend(items)
+        return {item.symbol_id: Verdict("test", "yes", f"matches {concept}", 1.0) for item in items}
 
 
 def make_searchable_index() -> Index:
@@ -79,6 +92,80 @@ def make_searchable_index() -> Index:
         postings.setdefault("unrelated", []).append({"symbol_id": i, "field": "name", "tf": 1})
     index.payload["declaration_count"] += FILLER
     return index
+
+
+def make_file_target_context(owners: Sequence[int]):  # type: ignore[no-untyped-def]
+    """Build a realistic large declaration population with controlled file aggregation."""
+    declaration_count = 1000
+    file_count = max(owners, default=-1) + 1
+    symbols = [
+        {
+            "symbol_id": symbol_id,
+            "name": f"alloc{symbol_id}" if symbol_id <= len(owners) else f"Other{symbol_id}",
+            "kind": "method",
+            "file": (
+                f"src/F{owners[symbol_id - 1]}.java"
+                if symbol_id <= len(owners)
+                else f"src/Other{symbol_id}.java"
+            ),
+            "span": [1, 2],
+            "signature": "",
+            "container": "demo",
+            "doc": "",
+            "language": "java",
+            "modifiers": [],
+        }
+        for symbol_id in range(1, declaration_count + 1)
+    ]
+    symbols.extend(
+        {
+            "symbol_id": declaration_count + file_index + 1,
+            "name": f"F{file_index}.java",
+            "kind": "file",
+            "file": f"src/F{file_index}.java",
+            "span": [1, 2],
+            "signature": "",
+            "container": "",
+            "doc": "",
+            "language": "java",
+            "modifiers": [],
+        }
+        for file_index in range(file_count)
+    )
+    index = make_index()
+    index.payload = {
+        "symbols": symbols,
+        "postings": {
+            "alloc": [
+                {"symbol_id": symbol_id, "field": "name", "tf": 1}
+                for symbol_id in range(1, len(owners) + 1)
+            ]
+        },
+        "edges": [
+            {
+                "source_id": symbol_id,
+                "target_id": declaration_count + owner + 1,
+                "kind": "in_file",
+                "site": [1, 1],
+                "confidence": 1.0,
+                "provenance": "source_path",
+            }
+            for symbol_id, owner in enumerate(owners, 1)
+        ],
+        "declaration_count": declaration_count,
+    }
+    return index.to_context()
+
+
+def planned_understanding(*, target: object, concept: str = "") -> dict[str, object]:
+    return {
+        "terms": {"alloc": 1.0},
+        "groups": {},
+        "relations": (),
+        "annotations": (),
+        "concept": concept,
+        "target": target,
+    }
 
 
 @pytest.fixture
@@ -184,6 +271,144 @@ class TestRouting:
         assert result.target == ()
         assert {hit.kind for hit in result.hits} == {"class", "method"}
 
+    def test_structured_empty_target_suppresses_query_text_inference(
+        self, ctx, monkeypatch: pytest.MonkeyPatch
+    ) -> None:  # type: ignore[no-untyped-def]
+        monkeypatch.setattr(
+            "codesense.llm.QueryUnderstanding.understand",
+            lambda *args: planned_understanding(target=()),
+        )
+
+        result = search(
+            "find methods that write a file using alloc",
+            ctx,
+            route="planned",
+            llm=object(),
+            vocabulary=(("alloc", 2),),
+        )
+
+        assert result.route == "planned"
+        assert result.target == ()
+        assert {hit.kind for hit in result.hits} == {"class", "method"}
+
+    @pytest.mark.parametrize("failure_point", ["build_spec", "plan"])
+    def test_planned_file_target_survives_a_downstream_failure(
+        self,
+        ctx,
+        monkeypatch: pytest.MonkeyPatch,
+        failure_point: str,
+    ) -> None:  # type: ignore[no-untyped-def]
+        monkeypatch.setattr(
+            "codesense.llm.QueryUnderstanding.understand",
+            lambda *args: planned_understanding(target=("file",)),
+        )
+
+        def fail(*args: object, **kwargs: object) -> None:
+            raise RuntimeError(f"forced {failure_point} failure")
+
+        monkeypatch.setattr(f"codesense.ql.compile.{failure_point}", fail)
+
+        result = search(
+            "alloc",
+            ctx,
+            route="planned",
+            llm=object(),
+            vocabulary=(("alloc", 2),),
+        )
+
+        assert result.route == "lexical"
+        assert result.target == ("file",)
+        assert {hit.kind for hit in result.hits} == {"file"}
+        assert any(f"RuntimeError: forced {failure_point} failure" in note for note in result.notes)
+
+    def test_planned_empty_target_survives_failure_and_suppresses_inference(
+        self, ctx, monkeypatch: pytest.MonkeyPatch
+    ) -> None:  # type: ignore[no-untyped-def]
+        monkeypatch.setattr(
+            "codesense.llm.QueryUnderstanding.understand",
+            lambda *args: planned_understanding(target=()),
+        )
+
+        def fail(*args: object, **kwargs: object) -> None:
+            raise RuntimeError("forced plan failure")
+
+        monkeypatch.setattr("codesense.ql.compile.plan", fail)
+
+        result = search(
+            "find methods that write a file using alloc",
+            ctx,
+            route="planned",
+            llm=object(),
+            vocabulary=(("alloc", 2),),
+        )
+
+        assert result.route == "lexical"
+        assert result.target == ()
+        assert {hit.kind for hit in result.hits} == {"class", "method"}
+        assert any("RuntimeError: forced plan failure" in note for note in result.notes)
+
+    @pytest.mark.parametrize("explicit_target", [(), "unsupported"])
+    def test_explicit_empty_target_overrides_planned_target_during_fallback(
+        self,
+        ctx,
+        monkeypatch: pytest.MonkeyPatch,
+        explicit_target: object,
+    ) -> None:  # type: ignore[no-untyped-def]
+        monkeypatch.setattr(
+            "codesense.llm.QueryUnderstanding.understand",
+            lambda *args: planned_understanding(target=("file",)),
+        )
+
+        def fail(*args: object, **kwargs: object) -> None:
+            raise RuntimeError("forced build failure")
+
+        monkeypatch.setattr("codesense.ql.compile.build_spec", fail)
+
+        result = search(
+            "find Java files containing alloc",
+            ctx,
+            route="planned",
+            llm=object(),
+            vocabulary=(("alloc", 2),),
+            target=explicit_target,  # type: ignore[arg-type]
+        )
+
+        assert result.route == "lexical"
+        assert result.target == ()
+        assert {hit.kind for hit in result.hits} == {"class", "method"}
+
+    @pytest.mark.parametrize("judge_enabled", [False, True])
+    def test_planned_judging_obeys_the_public_flag_and_precedes_file_projection(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        judge_enabled: bool,
+    ) -> None:
+        judge = CountingJudge()
+        ctx = make_searchable_index().to_context(judge=judge)
+        monkeypatch.setattr(
+            "codesense.llm.QueryUnderstanding.understand",
+            lambda *args: planned_understanding(
+                target=("file",), concept="declarations that allocate buffers"
+            ),
+        )
+
+        result = search(
+            "alloc",
+            ctx,
+            route="planned",
+            llm=object(),
+            vocabulary=(("alloc", 2),),
+            judge=judge_enabled,
+        )
+
+        assert result.route == "planned"
+        assert result.target == ("file",)
+        if judge_enabled:
+            assert [item.symbol_id for item in judge.items] == [1, 2]
+            assert {item.kind for item in judge.items} == {"class", "method"}
+        else:
+            assert judge.items == []
+
 
 class TestLexicalRoute:
     def test_matches_the_querys_own_words(self, ctx) -> None:  # type: ignore[no-untyped-def]
@@ -228,12 +453,36 @@ class TestResultTarget:
         assert {hit.kind for hit in result.hits} == {"file"}
         assert [hit.file for hit in result.hits] == ["a/Pooled.java"]
 
-    @pytest.mark.parametrize("query", ["alloc file", "alloc files", "alloc 文件"])
-    def test_file_nouns_infer_the_file_target(self, ctx, query: str) -> None:  # type: ignore[no-untyped-def]
+    @pytest.mark.parametrize(
+        "query",
+        [
+            "Find Java files containing alloc references",
+            "List source files with alloc",
+            "Show files matching alloc",
+            "Return a file for alloc",
+            "Which files contain alloc",
+            "列出 Java 文件中包含 alloc 的项",
+            "哪些文件包含 alloc",
+        ],
+    )
+    def test_clear_output_requests_infer_the_file_target(self, ctx, query: str) -> None:  # type: ignore[no-untyped-def]
         result = search(query, ctx, route="lexical")
 
         assert result.target == ("file",)
         assert {hit.kind for hit in result.hits} == {"file"}
+
+    @pytest.mark.parametrize(
+        "query",
+        [
+            "find methods that write a file using alloc",
+            "find methods that write files using alloc",
+        ],
+    )
+    def test_file_in_object_position_does_not_infer_a_file_target(self, ctx, query: str) -> None:  # type: ignore[no-untyped-def]
+        result = search(query, ctx, route="lexical")
+
+        assert result.target == ()
+        assert {hit.kind for hit in result.hits} == {"class", "method"}
 
     @pytest.mark.parametrize("query", ["alloc import", "alloc reference", "alloc references"])
     def test_relation_words_do_not_infer_a_file_target(self, ctx, query: str) -> None:  # type: ignore[no-untyped-def]
@@ -265,12 +514,75 @@ class TestResultTarget:
         assert not result.hits
 
     def test_fallback_preserves_file_target(self, ctx) -> None:  # type: ignore[no-untyped-def]
-        result = search("alloc files", ctx, route="codegen", llm=Exploding())
+        result = search("find files containing alloc", ctx, route="codegen", llm=Exploding())
 
         assert result.route == "lexical"
         assert result.target == ("file",)
         assert {hit.kind for hit in result.hits} == {"file"}
         assert any("lexical approximation" in note for note in result.notes)
+
+    def test_codegen_returned_files_override_object_position_text(
+        self, ctx, monkeypatch: pytest.MonkeyPatch
+    ) -> None:  # type: ignore[no-untyped-def]
+        file_frag = Frag(nodes=ctx.symbols.get_many((3,)))
+        search_module = importlib.import_module("codesense.search")
+        monkeypatch.setattr(
+            search_module,
+            "_codegen",
+            lambda *args: (file_frag, "answer = files", [], ("file",)),
+        )
+
+        result = search(
+            "find methods that write a file using alloc",
+            ctx,
+            route="codegen",
+            llm=object(),
+        )
+
+        assert result.target == ("file",)
+        assert [hit.kind for hit in result.hits] == ["file"]
+
+    def test_public_limit_above_one_hundred_reaches_the_planned_spec(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        ctx = make_file_target_context(tuple(range(120)))
+        monkeypatch.setattr(
+            "codesense.llm.QueryUnderstanding.understand",
+            lambda *args: planned_understanding(target=("file",)),
+        )
+
+        result = search(
+            "alloc",
+            ctx,
+            route="planned",
+            llm=object(),
+            vocabulary=(("alloc", 120),),
+            limit=120,
+        )
+
+        assert len(result.hits) == 120
+        assert "[:120]" in result.script
+
+    def test_small_public_limit_is_applied_after_file_aggregation(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        ctx = make_file_target_context((0, 0, 1))
+        monkeypatch.setattr(
+            "codesense.llm.QueryUnderstanding.understand",
+            lambda *args: planned_understanding(target=("file",)),
+        )
+
+        result = search(
+            "alloc",
+            ctx,
+            route="planned",
+            llm=object(),
+            vocabulary=(("alloc", 3),),
+            limit=2,
+        )
+
+        assert [hit.file for hit in result.hits] == ["src/F0.java", "src/F1.java"]
+        assert result.script.index("project(") < result.script.index("[:2]")
 
 
 class TestStructuralCoherence:
