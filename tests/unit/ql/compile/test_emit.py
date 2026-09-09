@@ -173,6 +173,45 @@ class TestEquivalence:
 
         assert run_script(to_script(execution, spec), ctx) == set(execution.run(ctx).current.nodes)
 
+    def test_unit_named_like_boost_state_does_not_overwrite_its_definition(self) -> None:
+        ctx = relation_context(())
+        unit = weighted_unit("boosted", "source", 1.0)
+        execution = Plan(steps=(EvalUnit(unit, seed=True), Narrow(limit=1)))
+        spec = QuerySpec(query="reserved name", units=(unit,), limit=1)
+        source = to_script(execution, spec)
+
+        assert "boosted_2 = QueryUnit(" in source
+        assert run_script(source, ctx) == set(execution.run(ctx).current.nodes)
+
+    def test_unit_and_match_cache_names_cannot_overwrite_each_other(self) -> None:
+        ctx = relation_context(())
+        first = weighted_unit("a", "source", 1.0)
+        second = weighted_unit("a_matches", "related", 0.7)
+        execution = Plan(
+            steps=(
+                EvalUnit(first, seed=True),
+                EvalUnit(second),
+                Narrow(limit=2),
+            )
+        )
+        spec = QuerySpec(query="cross-group collision", units=(first, second), limit=2)
+        source = to_script(execution, spec)
+
+        assert "a_matches_2 = eval_unit(a, ctx)" in source
+        assert "a_matches_matches = eval_unit(a_matches, ctx)" in source
+        assert run_script(source, ctx) == set(execution.run(ctx).current.nodes)
+
+    @pytest.mark.parametrize("name", ("ctx", "eval_unit", "class", "set"))
+    def test_unit_identifiers_avoid_runtime_import_keyword_and_builtin_names(
+        self, name: str
+    ) -> None:
+        ctx = relation_context(())
+        unit = weighted_unit(name, "source", 1.0)
+        execution = Plan(steps=(EvalUnit(unit, seed=True), Narrow(limit=1)))
+        spec = QuerySpec(query="reserved identifier", units=(unit,), limit=1)
+
+        assert run_script(to_script(execution, spec), ctx) == set(execution.run(ctx).current.nodes)
+
     def test_with_a_file_result_target(self) -> None:
         ctx = make_context(with_file_target=True)
         spec = make_spec(target=["file"])

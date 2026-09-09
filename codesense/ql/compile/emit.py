@@ -15,8 +15,11 @@ operators mean; that belongs to chapter 05.
 
 from __future__ import annotations
 
+import builtins
+import keyword
 import textwrap
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
 
 from codesense.ql.compile.plan import (
     Boost,
@@ -47,6 +50,40 @@ from codesense.ql.satisfiers import AnnotationSatisfier, LexicalSatisfier, Modif
 from codesense.ql.unit import QueryUnit, Term
 '''
 
+_ORCHESTRATION_NAMES = frozenset(("answer", "boosted", "ctx", "frag", "near", "preferred"))
+_IMPORTED_NAMES = frozenset(
+    (
+        "AnnotationSatisfier",
+        "Intent",
+        "LexicalSatisfier",
+        "ModifierSatisfier",
+        "QueryUnit",
+        "Term",
+        "eval_unit",
+        "intent",
+        "project",
+        "reach",
+        "relation_destinations",
+        "score_of",
+        "top",
+    )
+)
+_RESERVED_NAMES = (
+    frozenset(dir(builtins))
+    | frozenset(keyword.kwlist)
+    | frozenset(keyword.softkwlist)
+    | _ORCHESTRATION_NAMES
+    | _IMPORTED_NAMES
+)
+
+
+@dataclass(frozen=True, slots=True)
+class _Identifiers:
+    """One globally allocated namespace for an emitted script."""
+
+    units: Mapping[str, str]
+    matches: Mapping[str, str]
+
 
 def to_script(plan: Plan, spec: QuerySpec, *, index: str = "<unrecorded>") -> str:
     """Render to a script.
@@ -54,6 +91,7 @@ def to_script(plan: Plan, spec: QuerySpec, *, index: str = "<unrecorded>") -> st
     ``index`` goes in the header: the same script gives different results on
     a different index, and without it nothing is reproducible.
     """
+    identifiers = _allocate_identifiers(plan)
     lines = [
         _HEADER.format(
             title=spec.query or "query",
@@ -64,7 +102,7 @@ def to_script(plan: Plan, spec: QuerySpec, *, index: str = "<unrecorded>") -> st
     lines.append("\n# -- query units " + "-" * 46)
     for step in plan.steps:
         if isinstance(step, EvalUnit):
-            lines.append(_unit_source(step.unit))
+            lines.append(_unit_source(step.unit, identifiers.units[step.unit.name]))
 
     lines.append("\n# -- orchestration " + "-" * 44)
     for why in plan.reasoning:
@@ -73,7 +111,7 @@ def to_script(plan: Plan, spec: QuerySpec, *, index: str = "<unrecorded>") -> st
 
     body: list[str] = ["boosted = set()"]
     for step in plan.steps:
-        rendered = _step_source(step)
+        rendered = _step_source(step, identifiers)
         if rendered:
             body.append(rendered)
     lines.append("\n".join(body))
@@ -89,8 +127,8 @@ def _comment(text: str, width: int = 76) -> str:
     return "\n".join(f"# {line}" for line in textwrap.wrap(text, width) or [""])
 
 
-def _unit_source(unit: QueryUnit) -> str:
-    parts = [f'{_ident(unit.name)} = QueryUnit(\n    "{unit.name}",']
+def _unit_source(unit: QueryUnit, identifier: str) -> str:
+    parts = [f'{identifier} = QueryUnit(\n    "{unit.name}",']
     if unit.concept:
         parts.append(f'    concept="{_escape(unit.concept)}",')
     parts.append("    satisfiers=(")
@@ -136,10 +174,10 @@ def _wrap(text: str, indent: str = "        ") -> str:
     )
 
 
-def _step_source(step: Step) -> str:
+def _step_source(step: Step, identifiers: _Identifiers) -> str:
     if isinstance(step, EvalUnit):
-        name = _ident(step.unit.name)
-        matches = _matches_ident(step.unit.name)
+        name = identifiers.units[step.unit.name]
+        matches = identifiers.matches[step.unit.name]
         if step.seed:
             return f"{matches} = eval_unit({name}, ctx)\nfrag = {matches}"
         # Union, not intersection -- units land on different elements
@@ -164,7 +202,8 @@ def _step_source(step: Step) -> str:
             f"# graph constraint: {step.src_name} {relation} {step.dst_name} "
             f"(statistically validated)\n"
             f"boosted |= relation_destinations(\n"
-            f"    {_matches_ident(step.src_name)}, {_matches_ident(step.dst_name)}, ctx,\n"
+            f"    {identifiers.matches[step.src_name]}, "
+            f"{identifiers.matches[step.dst_name]}, ctx,\n"
             f"    edge={step.edge!r}, hops={step.hops!r},\n"
             f") & set(frag.nodes)"
         )
@@ -197,14 +236,38 @@ def _step_source(step: Step) -> str:
     return f"# unknown step: {step.label}"
 
 
-def _ident(name: str) -> str:
-    cleaned = "".join(ch if ch.isalnum() or ch == "_" else "_" for ch in name)
-    return f"unit_{cleaned}" if not cleaned[:1].isalpha() else cleaned
+def _allocate_identifiers(plan: Plan) -> _Identifiers:
+    """Allocate all unit and cache names together, once and deterministically."""
+    unit_names = tuple(
+        dict.fromkeys(step.unit.name for step in plan.steps if isinstance(step, EvalUnit))
+    )
+    used = set(_RESERVED_NAMES)
+    units = {name: _claim_identifier(_identifier_base(name), used) for name in unit_names}
+    matches = {name: _claim_identifier(f"{units[name]}_matches", used) for name in unit_names}
+    return _Identifiers(units=units, matches=matches)
 
 
-def _matches_ident(name: str) -> str:
-    """Name the evaluated fragment without obscuring the editable unit."""
-    return f"{_ident(name)}_matches"
+def _identifier_base(name: str) -> str:
+    """Keep readable Unicode identifiers while replacing punctuation safely."""
+    cleaned = "".join(ch if ch == "_" or ch.isalnum() else "_" for ch in name) or "unit"
+    if cleaned[:1].isdigit():
+        cleaned = f"unit_{cleaned}"
+    if not cleaned.isidentifier():
+        cleaned = "".join(
+            ch if ch.isascii() and (ch.isalnum() or ch == "_") else "_" for ch in cleaned
+        )
+    return cleaned if cleaned.isidentifier() else "unit"
+
+
+def _claim_identifier(base: str, used: set[str]) -> str:
+    """Reserve one unique name in the script's shared global namespace."""
+    candidate = base
+    suffix = 2
+    while candidate in used:
+        candidate = f"{base}_{suffix}"
+        suffix += 1
+    used.add(candidate)
+    return candidate
 
 
 def _escape(text: str) -> str:
