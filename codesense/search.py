@@ -57,13 +57,20 @@ _WORD = re.compile(r"[A-Za-z][A-Za-z0-9]*")
 # File output is intentionally recognised only in a few explicit result
 # forms. A broad ``file`` noun match misreads object-position prose such as
 # "methods that write a file" as a request to return files.
+_FILE_RESULT_CLAUSE = r"(?:containing|with|matching|that|which|whose|where|for|named)\b"
 _FILE_OUTPUT_REQUEST = re.compile(
-    r"^\s*(?:find|list|show|return)\s+(?:(?:a|an|the|java|source)\s+)*files?\b",
+    rf"^\s*(?:find|list|show|return)\s+(?:"
+    rf"(?:(?:java|source)\s+)*files\b|"
+    rf"(?:(?:a|an|the|java|source)\s+)+file\b(?=\s*(?:$|[,.?!:]|{_FILE_RESULT_CLAUSE}))|"
+    rf"file\b(?=\s+{_FILE_RESULT_CLAUSE})"
+    rf")",
     re.IGNORECASE,
 )
 _WHICH_FILES_REQUEST = re.compile(r"^\s*which\s+files?\b", re.IGNORECASE)
+_CHINESE_WHICH_FILES_REQUEST = re.compile(r"^\s*哪些\s*(?:[A-Za-z][A-Za-z0-9._-]*\s*)?文件")
 _CHINESE_FILE_OUTPUT_REQUEST = re.compile(
-    r"^\s*(?:哪些|列出|查找|找出|显示|返回)\s*(?:[A-Za-z][A-Za-z0-9._-]*\s*)?文件"
+    r"^\s*(?:列出|查找|找出|显示|返回)\s*"
+    r"(?:[A-Za-z][A-Za-z0-9._-]*\s*)?文件(?=\s*(?:中|里|包含|引用|导入|$|[,.?!，。？！]))"
 )
 
 #: Words dropped from a query before lexical matching. Kept deliberately tiny:
@@ -307,6 +314,7 @@ def _query_target(query: str) -> tuple[str, ...]:
     if (
         _FILE_OUTPUT_REQUEST.search(query)
         or _WHICH_FILES_REQUEST.search(query)
+        or _CHINESE_WHICH_FILES_REQUEST.search(query)
         or _CHINESE_FILE_OUTPUT_REQUEST.search(query)
     ):
         return ("file",)
@@ -458,7 +466,9 @@ def _planned(
     elif "target" in understood:
         route_target = normalise_target(understood["target"])
     else:
-        route_target = None
+        # Target changes plan shape: infer it before construction so file
+        # projection happens before the public limit, preserving aggregation.
+        route_target = _query_target(query)
     judge_ran = False
 
     def record_step(step: object) -> None:

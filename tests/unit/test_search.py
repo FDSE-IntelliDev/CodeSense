@@ -14,6 +14,7 @@ from collections.abc import Sequence
 import pytest
 
 from codesense.index import Index
+from codesense.llm.config import LlmConfig
 from codesense.ql.frag import Evidence, Frag, UnitHit, Verdict
 from codesense.ql.judge import JudgeItem
 from codesense.ql.operators import score_of
@@ -166,6 +167,32 @@ def planned_understanding(*, target: object, concept: str = "") -> dict[str, obj
         "concept": concept,
         "target": target,
     }
+
+
+class MissingTargetPlanningResponse:
+    """OpenAI-compatible response with a genuinely missing target field."""
+
+    def raise_for_status(self) -> None:
+        return None
+
+    def json(self) -> dict[str, object]:
+        return {
+            "choices": [
+                {
+                    "message": {
+                        "content": (
+                            '{"terms":{"alloc":1.0},"groups":{},"relations":[],'
+                            '"annotations":[],"concept":""}'
+                        )
+                    }
+                }
+            ]
+        }
+
+
+class MissingTargetPlanningSession:
+    def post(self, *_args: object, **_kwargs: object) -> MissingTargetPlanningResponse:
+        return MissingTargetPlanningResponse()
 
 
 @pytest.fixture
@@ -536,7 +563,10 @@ class TestResultTarget:
             "find methods that write files using alloc",
             "find methods that return a file using alloc",
             "find methods that list files using alloc",
+            "find file-writing methods using alloc",
+            "find file handlers using alloc",
             "查找返回文件的 alloc 方法",
+            "查找文件处理 alloc 方法",
         ],
     )
     def test_file_in_object_position_does_not_infer_a_file_target(self, ctx, query: str) -> None:  # type: ignore[no-untyped-def]
@@ -644,6 +674,27 @@ class TestResultTarget:
             limit=2,
         )
 
+        assert [hit.file for hit in result.hits] == ["src/F0.java", "src/F1.java"]
+        assert result.script.index("project(") < result.script.index("[:2]")
+
+    def test_missing_model_target_is_inferred_before_planned_limiting(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The real compiler boundary must preserve missing-target semantics."""
+        ctx = make_file_target_context((0, 0, 1))
+        monkeypatch.setattr("requests.Session", MissingTargetPlanningSession)
+
+        result = search(
+            "Find Java files containing alloc",
+            ctx,
+            route="planned",
+            llm=LlmConfig(api_key="test"),
+            vocabulary=(("alloc", 3),),
+            limit=2,
+        )
+
+        assert result.route == "planned"
+        assert result.target == ("file",)
         assert [hit.file for hit in result.hits] == ["src/F0.java", "src/F1.java"]
         assert result.script.index("project(") < result.script.index("[:2]")
 

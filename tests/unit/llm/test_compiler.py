@@ -84,6 +84,46 @@ def test_two_item_relations_keep_the_legacy_edge_default() -> None:
 
     assert understood is not None
     assert understood["relations"] == [("clients", "page request", ("calls", "contains"))]
+    assert "target" not in understood
+
+
+def test_understanding_omits_target_when_the_model_omits_it() -> None:
+    """Missing and explicitly empty targets have different precedence."""
+
+    class MissingTargetSession(FakeSession):
+        def post(self, *_args: Any, **_kwargs: Any) -> FakeResponse:
+            response = FakeResponse()
+            response.json = lambda: {
+                "choices": [{"message": {"content": '{"terms":{"alloc":1},"relations":[]}'}}]
+            }
+            return response
+
+    understood = QueryUnderstanding(
+        LlmConfig(api_key="test"), session=MissingTargetSession()
+    ).understand("Find Java files containing alloc", "demo", ("alloc",))
+
+    assert understood is not None
+    assert "target" not in understood
+
+
+def test_understanding_preserves_an_explicit_empty_target() -> None:
+    """An explicit empty model decision must suppress later text inference."""
+
+    class EmptyTargetSession(FakeSession):
+        def post(self, *_args: Any, **_kwargs: Any) -> FakeResponse:
+            response = FakeResponse()
+            response.json = lambda: {
+                "choices": [
+                    {"message": {"content": '{"terms":{"alloc":1},"relations":[],"target":[]}'}}
+                ]
+            }
+            return response
+
+    understood = QueryUnderstanding(
+        LlmConfig(api_key="test"), session=EmptyTargetSession()
+    ).understand("Find Java files containing alloc", "demo", ("alloc",))
+
+    assert understood is not None
     assert understood["target"] == ()
 
 
@@ -116,4 +156,4 @@ def test_malformed_relation_edges_are_discarded_conservatively() -> None:
         ("clients", "page request", ("references",)),
         ("a", "b", ("calls", "contains")),
     ]
-    assert understood["target"] == ()
+    assert "target" not in understood

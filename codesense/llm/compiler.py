@@ -179,14 +179,18 @@ class QueryUnderstanding:
             _log.warning("the model gave no usable terms")
             return None
         scored = {str(k).lower(): _score(v) for k, v in terms.items()}
-        return {
+        understood = {
             "terms": scored,
             "groups": _groups(payload.get("groups"), scored),
             "relations": _relations(payload.get("relations")),
-            "target": normalise_target(payload.get("target")),
             "annotations": [a for a in payload.get("annotations", ()) if isinstance(a, str)],
             "concept": str(payload.get("concept") or ""),
         }
+        # Missing means "the model did not decide", while an explicit empty
+        # target is a decision that must suppress later query-text inference.
+        if "target" in payload:
+            understood["target"] = normalise_target(payload["target"])
+        return understood
 
     def _ask(self, prompt: str) -> str | None:
         session = self._session
