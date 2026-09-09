@@ -16,7 +16,17 @@ from __future__ import annotations
 import pytest
 
 from codesense.ql import Edge, Element, IndexField
-from codesense.ql.compile import Boost, Cohere, EvalUnit, Narrow, Plan, QuerySpec, plan, to_script
+from codesense.ql.compile import (
+    Boost,
+    Cohere,
+    EvalUnit,
+    Narrow,
+    Plan,
+    ProjectTarget,
+    QuerySpec,
+    plan,
+    to_script,
+)
 from codesense.ql.context import EvalContext
 from codesense.ql.satisfiers import LexicalSatisfier
 from codesense.ql.store import (
@@ -92,6 +102,7 @@ def relation_context(edges: tuple[Edge, ...]) -> EvalContext:
         Element(3, "also-related", "method", "Other.java", (1, 2)),
         Element(10, "Source.java", "file", "Source.java", (1, 4)),
         Element(11, "Related.java", "file", "Related.java", (1, 4)),
+        Element(12, "Other.java", "file", "Other.java", (1, 4)),
     ]
     return EvalContext(
         symbols=InMemorySymbolStore(elements),
@@ -249,6 +260,40 @@ class TestEquivalence:
 
         assert "project(" in source
         assert run_script(source, ctx) == set(execution.run(ctx).current.nodes)
+
+    def test_relation_boost_survives_file_projection_in_plan_and_script(self) -> None:
+        ctx = relation_context(
+            (
+                Edge(1, 2, "references"),
+                Edge(1, 10, "in_file"),
+                Edge(2, 11, "in_file"),
+                Edge(3, 12, "in_file"),
+            )
+        )
+        src = weighted_unit("src", "source", 0.6)
+        related = weighted_unit("related", "related", 0.7)
+        unrelated = weighted_unit("unrelated", "also-related", 0.9)
+        execution = Plan(
+            steps=(
+                EvalUnit(src, seed=True),
+                EvalUnit(related),
+                EvalUnit(unrelated),
+                Boost("src", "related", edge=("references",), hops=(1, 1)),
+                ProjectTarget(("file",)),
+                Narrow(limit=1),
+            )
+        )
+        spec = QuerySpec(
+            query="files referencing related code",
+            units=(src, related, unrelated),
+            target=("file",),
+            limit=1,
+        )
+
+        planned = set(execution.run(ctx).current.nodes)
+
+        assert planned == {11}
+        assert run_script(to_script(execution, spec), ctx) == {11}
 
     @pytest.mark.parametrize(
         ("edge", "edges"),

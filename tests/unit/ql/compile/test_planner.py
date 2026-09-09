@@ -303,7 +303,8 @@ class TestExecution:
             Element(2, "related", "method", "Related.java", (1, 2)),
             Element(3, "competitor", "method", "Other.java", (1, 2)),
             Element(10, "Source.java", "file", "Source.java", (1, 4)),
-            Element(11, "Other.java", "file", "Other.java", (1, 4)),
+            Element(11, "Related.java", "file", "Related.java", (1, 4)),
+            Element(12, "Other.java", "file", "Other.java", (1, 4)),
         ]
         return EvalContext(
             symbols=InMemorySymbolStore(elements),
@@ -411,6 +412,38 @@ class TestExecution:
         Boost("smaller", "larger", edge=("calls",), hops=(1, 1)).apply(ctx, state)
 
         assert state.boosted == {1}
+
+    def test_file_projection_projects_boosts_before_final_narrow(self) -> None:
+        from codesense.ql.operators import score_of
+
+        ctx = self._relation_context((Edge(2, 11, "in_file"), Edge(3, 12, "in_file")))
+        state = State(current=self._ranked_frag(ctx), boosted={2})
+
+        ProjectTarget(("file",)).apply(ctx, state)
+
+        assert set(state.current.nodes) == {11, 12}
+        assert state.boosted == {11}
+        assert score_of(state.current, 11) == pytest.approx(0.7)
+        Narrow(limit=1).apply(ctx, state)
+        assert set(state.current.nodes) == {11}
+
+    def test_file_projection_keeps_empty_boost_state_empty(self) -> None:
+        ctx = self._relation_context((Edge(2, 11, "in_file"),))
+        state = State(current=self._frag(ctx, 2), boosted=set())
+
+        ProjectTarget(("file",)).apply(ctx, state)
+
+        assert set(state.current.nodes) == {11}
+        assert not state.boosted
+
+    def test_non_file_projection_preserves_matching_boosted_elements(self) -> None:
+        ctx = self._relation_context(())
+        state = State(current=self._frag(ctx, 2, 3), boosted={2})
+
+        ProjectTarget(("method",)).apply(ctx, state)
+
+        assert set(state.current.nodes) == {2, 3}
+        assert state.boosted == {2}
 
     def test_units_union_rather_than_intersect(self) -> None:
         """Intersection kills the answers -- units land on different

@@ -236,7 +236,11 @@ def _step_source(step: Step, identifiers: _Identifiers) -> str:
             f"              threshold={step.threshold:g}, max_items={step.max_items})"
         )
     if isinstance(step, ProjectTarget):
-        return f'frag = project(frag, ctx, edge="in_file", kind={step.target!r}, include_self=True)'
+        return (
+            f'boosted = set(project(frag.induced(boosted), ctx, edge="in_file", '
+            f"kind={step.target!r}, include_self=True).nodes)\n"
+            f'frag = project(frag, ctx, edge="in_file", kind={step.target!r}, include_self=True)'
+        )
     return f"# unknown step: {step.label}"
 
 

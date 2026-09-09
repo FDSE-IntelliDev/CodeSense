@@ -330,8 +330,22 @@ class ProjectTarget(Step):
         return Estimate(rows=state.rows, cost=float(state.rows), detail="one graph hop")
 
     def apply(self, ctx: EvalContext, state: State) -> None:
+        source = state.current
+        # Ranking state lives in the same id domain as ``current``. Project
+        # the boosted subset through the exact public-target contract before
+        # replacing declarations with their owner files.
+        boosted_source = source.induced(state.boosted)
+        state.boosted = set(
+            project(
+                boosted_source,
+                ctx,
+                edge="in_file",
+                kind=self.target,
+                include_self=True,
+            ).nodes
+        )
         state.current = project(
-            state.current,
+            source,
             ctx,
             edge="in_file",
             kind=self.target,
