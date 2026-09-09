@@ -177,6 +177,62 @@ class TestJavaDeclarationScanner:
         ]
         assert [(use.line, use.column) for use in references] == [(4, 4), (5, 15)]
 
+    def test_scoped_type_is_one_qualified_reference_without_child_duplicates(
+        self, scanner: JavaDeclarationScanner
+    ) -> None:
+        result = scanner.scan(
+            """package client;
+class Client {
+    external.Foo field;
+}
+"""
+        )
+
+        assert [
+            (use.name, use.qualified_name, use.line, use.column)
+            for use in result.references
+            if use.relation == "references"
+        ] == [("Foo", "external.Foo", 3, 4)]
+
+    def test_simple_types_use_explicit_import_or_current_package_in_source_order(
+        self, scanner: JavaDeclarationScanner
+    ) -> None:
+        result = scanner.scan(
+            """package client;
+import b.Foo;
+class Client {
+    Foo imported;
+    Bar local;
+    void run() { Foo.make(); }
+}
+"""
+        )
+
+        assert [
+            (use.name, use.qualified_name, use.line, use.column)
+            for use in result.references
+            if use.relation == "references"
+        ] == [
+            ("Foo", "b.Foo", 4, 4),
+            ("Bar", "client.Bar", 5, 4),
+            ("Foo", "b.Foo", 6, 17),
+        ]
+
+    def test_static_member_import_is_not_used_as_a_simple_type_alias(
+        self, scanner: JavaDeclarationScanner
+    ) -> None:
+        result = scanner.scan(
+            """package client;
+import static a.Foo.make;
+class Client { make value; }
+"""
+        )
+        simple_use = next(
+            use for use in result.references if use.relation == "references" and use.name == "make"
+        )
+
+        assert simple_use.qualified_name == "client.make"
+
     def test_invocation_keeps_its_source_line(self, scanner: JavaDeclarationScanner) -> None:
         declarations = scanner.scan(REFERENCE_SOURCE).declarations
         method = next(declaration for declaration in declarations if declaration.name == "list")

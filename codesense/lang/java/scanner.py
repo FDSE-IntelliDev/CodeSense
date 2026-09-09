@@ -100,7 +100,7 @@ class JavaDeclarationScanner:
         package = _package_name(root, data)
         return ScanResult(
             declarations=tuple(self._walk(root, data, package=package)),
-            references=_reference_uses(root, data),
+            references=_reference_uses(root, data, package),
         )
 
     def annotations(self, source: str) -> list[AnnotationUse]:
@@ -207,13 +207,14 @@ def _invocations(node: object, data: bytes) -> tuple[Invocation, ...]:
     return tuple(found)
 
 
-def _reference_uses(root: object, data: bytes) -> tuple[ReferenceUse, ...]:
+def _reference_uses(root: object, data: bytes, package: str) -> tuple[ReferenceUse, ...]:
     """Collect conservative type and import facts in source traversal order.
 
     These are deliberately unresolved syntax observations. The graph builder
     owns project-wide name resolution, where all declarations are available.
     """
     found: dict[tuple[str, int, int, str, str], ReferenceUse] = {}
+    imports = _explicit_type_imports(root, data)
 
     def add(use: ReferenceUse | None) -> None:
         if use is None or not use.name:
@@ -225,18 +226,56 @@ def _reference_uses(root: object, data: bytes) -> tuple[ReferenceUse, ...]:
         node_type = node.type  # type: ignore[attr-defined]
         if node_type == "import_declaration":
             add(_import_use(node, data))
+        elif node_type == "scoped_type_identifier":
+            # The children are path components, not independent type uses.
+            add(_type_use(node, data, qualified_name=_text(node, data)))
+            return
         elif node_type == "type_identifier":
-            add(_type_use(node, data))
+            name = _text(node, data)
+            add(_type_use(node, data, qualified_name=_qualified_type(name, imports, package)))
         elif node_type == "method_invocation":
             receiver = node.child_by_field_name("object")  # type: ignore[attr-defined]
             receiver_name = _text(receiver, data)
             if receiver_name.isidentifier() and receiver_name[:1].isupper():
-                add(_type_use(receiver, data))
+                add(
+                    _type_use(
+                        receiver,
+                        data,
+                        qualified_name=_qualified_type(receiver_name, imports, package),
+                    )
+                )
         for child in node.children:  # type: ignore[attr-defined]
             visit(child)
 
     visit(root)
     return tuple(found.values())
+
+
+def _explicit_type_imports(root: object, data: bytes) -> dict[str, str]:
+    """Map simple names to non-static, non-wildcard explicit imports."""
+    imports: dict[str, str] = {}
+    for node in root.children:  # type: ignore[attr-defined]
+        if node.type != "import_declaration":
+            continue
+        child_types = {child.type for child in node.children}
+        if "static" in child_types or "asterisk" in child_types:
+            continue
+        target = next(
+            (child for child in node.children if child.type in {"identifier", "scoped_identifier"}),
+            None,
+        )
+        qualified_name = _text(target, data)
+        name = qualified_name.rsplit(".", 1)[-1]
+        if name:
+            imports.setdefault(name, qualified_name)
+    return imports
+
+
+def _qualified_type(name: str, imports: dict[str, str], package: str) -> str:
+    """Give a simple Java type its compilation-unit-qualified identity."""
+    if not name:
+        return ""
+    return imports.get(name, f"{package}.{name}" if package else name)
 
 
 def _import_use(node: object, data: bytes) -> ReferenceUse | None:
@@ -265,16 +304,18 @@ def _import_use(node: object, data: bytes) -> ReferenceUse | None:
     )
 
 
-def _type_use(node: object | None, data: bytes) -> ReferenceUse | None:
+def _type_use(node: object | None, data: bytes, *, qualified_name: str = "") -> ReferenceUse | None:
     """Convert a type-shaped AST occurrence to a language-neutral use."""
-    name = _text(node, data)
-    if node is None or not name:
+    spelling = _text(node, data)
+    if node is None or not spelling:
         return None
+    name = spelling.rsplit(".", 1)[-1]
     return ReferenceUse(
         name=name,
         line=node.start_point[0] + 1,  # type: ignore[attr-defined]
         column=node.start_point[1],  # type: ignore[attr-defined]
         target_kind="type",
+        qualified_name=qualified_name,
     )
 
 

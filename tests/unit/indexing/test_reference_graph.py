@@ -201,10 +201,53 @@ def test_real_packages_give_same_named_types_distinct_qualified_identities() -> 
 
     edges = builder.build()
     imported_targets = {item["target_id"] for item in edges if item["kind"] == "imports"}
+    reference_targets = {item["target_id"] for item in edges if item["kind"] == "references"}
 
     assert alpha.declarations[0].qualified_name == "a.Foo"
     assert beta.declarations[0].qualified_name == "b.Foo"
     assert imported_targets == {2}
+    assert reference_targets == {2}
+
+
+@pytest.mark.slow
+def test_absent_qualified_type_does_not_fall_back_to_local_simple_name() -> None:
+    pytest.importorskip("tree_sitter_languages")
+    scanner = JavaDeclarationScanner.for_java()
+    builder = GraphBuilder(frozenset({"class"}), frozenset({"method", "constructor"}))
+    local = scanner.scan("package a; class Foo {}")
+    client = scanner.scan("package client; class Client { external.Foo field; }")
+    builder.observe(local.declarations[0], 1)
+    observed = tuple(
+        (declaration, index + 2) for index, declaration in enumerate(client.declarations)
+    )
+    for declaration, symbol_id in observed:
+        builder.observe(declaration, symbol_id)
+    builder.observe_file("Client.java", 20, observed, client.references)
+
+    edges = builder.build()
+
+    assert not [item for item in edges if item["kind"] == "references"]
+    assert builder.stats.reference_unresolved == 1
+
+
+@pytest.mark.slow
+def test_simple_same_package_type_reference_resolves_exactly() -> None:
+    pytest.importorskip("tree_sitter_languages")
+    scanner = JavaDeclarationScanner.for_java()
+    builder = GraphBuilder(frozenset({"class"}), frozenset({"method", "constructor"}))
+    target = scanner.scan("package client; class Foo {}")
+    client = scanner.scan("package client; class Client { Foo field; }")
+    builder.observe(target.declarations[0], 1)
+    observed = tuple(
+        (declaration, index + 2) for index, declaration in enumerate(client.declarations)
+    )
+    for declaration, symbol_id in observed:
+        builder.observe(declaration, symbol_id)
+    builder.observe_file("Client.java", 20, observed, client.references)
+
+    edges = builder.build()
+
+    assert {item["target_id"] for item in edges if item["kind"] == "references"} == {1}
 
 
 def test_type_references_never_target_same_named_constructor() -> None:
@@ -270,7 +313,7 @@ def test_one_line_reference_is_owned_by_the_smallest_point_span() -> None:
     pytest.importorskip("tree_sitter_languages")
     scanner = JavaDeclarationScanner.for_java()
     builder = GraphBuilder(frozenset({"class"}), frozenset({"method", "constructor"}))
-    target = scanner.scan("package target; class Foo {}")
+    target = scanner.scan("package client; class Foo {}")
     source = scanner.scan(
         "package client; class Outer { class Inner { void run() { Foo value; } } }"
     )
