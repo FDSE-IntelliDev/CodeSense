@@ -20,6 +20,7 @@ from codesense.ql.fields import IndexField
 from codesense.ql.frag import UnitHit
 from codesense.ql.registry import Registry
 from codesense.ql.store.base import Expansion, TermInfo
+from codesense.ql.term_resolution import TermResolver
 from codesense.ql.unit import Term
 
 __all__ = ["SATISFIERS", "Satisfier", "collect_term_hits"]
@@ -71,9 +72,10 @@ def collect_term_hits(
     """
     allowed = None if fields is None else frozenset(fields)
     found: dict[int, list[UnitHit]] = defaultdict(list)
+    resolver = TermResolver(ctx)
 
     for term in terms:
-        for surface in _surfaces(term, ctx):
+        for surface in resolver.surfaces(term.value):
             info = ctx.postings.term_info(surface.target)
             if info is None or _too_generic(surface, info, ctx):
                 continue
@@ -119,16 +121,6 @@ def _too_generic(surface: Expansion, info: TermInfo, ctx: EvalContext) -> bool:
     if surface.reason == _EXACT:
         return False
     return info.icf_ratio < ctx.icf_floor
-
-
-def _surfaces(term: Term, ctx: EvalContext) -> list[Expansion]:
-    """The term itself, followed by the project spellings in the expansion
-    table.
-
-    The term itself always comes first and is never discounted -- when the
-    project spells it that way, there is nothing to discount.
-    """
-    return [Expansion(term.value, 1.0, _EXACT), *ctx.expansion.expand(term.value)]
 
 
 def _detail(term: Term, surface: Expansion) -> str:

@@ -126,6 +126,16 @@ class TestLexicalSatisfier:
         hits = LexicalSatisfier(terms=(Term("buffer"),)).hits("perf", ctx)
         assert "buf←buffer(prefix)" in hits[1][0].detail
 
+    def test_derived_term_keeps_grounding_evidence(self) -> None:
+        ctx = make_context(
+            postings={"buf": [Posting(1, IndexField.NAME)]},
+            expansion={"buffer": [Expansion("buf", 0.91, "prefix")]},
+        )
+
+        hits = LexicalSatisfier(terms=(Term("buffer", source="derived"),)).hits("perf", ctx)
+
+        assert hits[1][0].detail == "buf←buffer(prefix)"
+
     def test_an_explicitly_requested_generic_word_is_down_weighted_not_excluded(self) -> None:
         """The ICF floor governs expansions only.
 
