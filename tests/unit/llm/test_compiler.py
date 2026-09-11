@@ -1,159 +1,141 @@
-"""Contract tests for structured query understanding proposals."""
+"""Provider-boundary tests for structured query understanding."""
 
 from __future__ import annotations
 
-from typing import Any
+import json
+
+import pytest
 
 from codesense.llm.compiler import PROMPT, QueryUnderstanding
 from codesense.llm.config import LlmConfig
+from codesense.llm.schema import QueryUnderstandingResult, TargetKind
 
 
-def test_prompt_allows_all_explicit_supported_relation_kinds() -> None:
-    prompt = " ".join(PROMPT.lower().split())
-    relation_rule = prompt[
-        prompt.index("- propose relations whenever") : prompt.index("- valid edge names")
-    ]
-
-    assert "explicitly expresses a relation between groups" in relation_rule
-    assert all(
-        edge in relation_rule for edge in ("calls", "contains", "references", "imports", "in_file")
-    )
-    assert "otherwise give an empty list" in relation_rule
-    assert "relation verb" in prompt and "does not imply a file" in prompt
+def valid_payload() -> dict[str, object]:
+    return {
+        "units": [
+            {
+                "name": "page_request",
+                "concept": "the PageRequest type",
+                "query_terms": ["PageRequest"],
+                "terms": [
+                    {
+                        "value": "PageRequest",
+                        "source": "literal",
+                        "weight": 1.0,
+                        "related_query_terms": ["PageRequest"],
+                        "reason": "named by the query",
+                    }
+                ],
+            }
+        ],
+        "relations": [
+            {
+                "source": {"kind": "result", "unit": None},
+                "target": {"kind": "unit", "unit": "page_request"},
+                "edges": ["references"],
+            }
+        ],
+        "targets": ["file"],
+        "annotations": [],
+        "criterion": "A file whose code references PageRequest",
+    }
 
 
 class FakeResponse:
-    def raise_for_status(self) -> None:
-        return None
+    def __init__(self, message: dict[str, object], *, error: Exception | None = None) -> None:
+        self._message = message
+        self._error = error
 
-    def json(self) -> dict[str, Any]:
-        return {
-            "choices": [
-                {
-                    "message": {
-                        "content": (
-                            '{"terms":{"page":1.0,"request":1.0},'
-                            '"groups":{"page request":["page","request"]},'
-                            '"relations":[{"src":"clients","dst":"page request",'
-                            '"edge":["references"]}],"target":["file"],'
-                            '"annotations":[],"concept":"Files whose code references PageRequest"}'
-                        )
-                    }
-                }
-            ]
-        }
+    def raise_for_status(self) -> None:
+        if self._error is not None:
+            raise self._error
+
+    def json(self) -> dict[str, object]:
+        return {"choices": [{"message": self._message}]}
 
 
 class FakeSession:
-    def post(self, *_args: Any, **_kwargs: Any) -> FakeResponse:
-        return FakeResponse()
+    def __init__(self, message: dict[str, object], *, error: Exception | None = None) -> None:
+        self.response = FakeResponse(message, error=error)
+        self.calls: list[dict[str, object]] = []
+
+    def post(self, url: str, **kwargs: object) -> FakeResponse:
+        self.calls.append({"url": url, **kwargs})
+        return self.response
 
 
-def test_understanding_keeps_target_and_typed_relation() -> None:
-    config = LlmConfig(api_key="test")
+class BrokenSession:
+    def post(self, _url: str, **_kwargs: object) -> FakeResponse:
+        raise ConnectionError("network unavailable")
 
-    understood = QueryUnderstanding(config, session=FakeSession()).understand(
-        "Find files whose code references PageRequest", "demo", ("page", "request")
+
+def config() -> LlmConfig:
+    return LlmConfig(api_key="test", base_url="https://example.invalid/v1", model="model")
+
+
+def test_prompt_describes_semantic_sources_and_result_roles() -> None:
+    prompt = " ".join(PROMPT.lower().split())
+
+    assert all(source in prompt for source in ("literal", "synonym", "derived"))
+    assert all(edge in prompt for edge in ("calls", "contains", "references", "imports", "in_file"))
+    assert "result endpoint" in prompt
+    assert "outside this sample" in prompt
+    assert "output json" not in prompt
+
+
+def test_understanding_posts_schema_and_returns_a_typed_model() -> None:
+    session = FakeSession({"content": json.dumps(valid_payload())})
+
+    understood = QueryUnderstanding(config(), session=session).understand(
+        "Find files whose code references PageRequest",
+        "demo",
+        (("page", 20), ("request", 8)),
     )
 
-    assert understood is not None
-    assert understood["target"] == ("file",)
-    assert understood["relations"] == [("clients", "page request", ("references",))]
+    assert isinstance(understood, QueryUnderstandingResult)
+    assert understood.targets == [TargetKind.FILE]
+    call = session.calls[0]
+    assert call["url"] == "https://example.invalid/v1/chat/completions"
+    body = call["json"]
+    assert body["response_format"]["type"] == "json_schema"  # type: ignore[index]
+    assert body["response_format"]["json_schema"]["strict"] is True  # type: ignore[index]
+    assert "page:20" in body["messages"][0]["content"]  # type: ignore[index]
+    assert body["temperature"] == 0  # type: ignore[index]
 
 
-def test_two_item_relations_keep_the_legacy_edge_default() -> None:
-    class LegacySession(FakeSession):
-        def post(self, *_args: Any, **_kwargs: Any) -> FakeResponse:
-            response = FakeResponse()
-            response.json = lambda: {
-                "choices": [
-                    {
-                        "message": {
-                            "content": (
-                                '{"terms":{"page":1},"relations":[["clients","page request"]]}'
-                            )
-                        }
-                    }
-                ]
-            }
-            return response
+@pytest.mark.parametrize(
+    "message",
+    [
+        {"refusal": "cannot comply", "content": None},
+        {},
+        {"content": "not json"},
+        {"content": json.dumps({"units": []})},
+    ],
+)
+def test_unusable_provider_messages_return_none(message: dict[str, object]) -> None:
+    session = FakeSession(message)
 
-    understood = QueryUnderstanding(LlmConfig(api_key="test"), session=LegacySession()).understand(
-        "clients calls PageRequest", "demo", ("page", "request")
+    assert QueryUnderstanding(config(), session=session).understand("query", "demo", ()) is None
+
+
+def test_http_failure_returns_none() -> None:
+    session = FakeSession({"content": "unused"}, error=RuntimeError("bad gateway"))
+
+    assert QueryUnderstanding(config(), session=session).understand("query", "demo", ()) is None
+
+
+def test_transport_failure_returns_none() -> None:
+    assert (
+        QueryUnderstanding(config(), session=BrokenSession()).understand("query", "demo", ())
+        is None
     )
 
-    assert understood is not None
-    assert understood["relations"] == [("clients", "page request", ("calls", "contains"))]
-    assert "target" not in understood
 
+def test_complete_message_shape_is_consumed_without_loose_brace_extraction() -> None:
+    content = f"prefix {json.dumps(valid_payload())} suffix"
+    session = FakeSession({"content": content, "refusal": None})
 
-def test_understanding_omits_target_when_the_model_omits_it() -> None:
-    """Missing and explicitly empty targets have different precedence."""
+    understood = QueryUnderstanding(config(), session=session).understand("query", "demo", ())
 
-    class MissingTargetSession(FakeSession):
-        def post(self, *_args: Any, **_kwargs: Any) -> FakeResponse:
-            response = FakeResponse()
-            response.json = lambda: {
-                "choices": [{"message": {"content": '{"terms":{"alloc":1},"relations":[]}'}}]
-            }
-            return response
-
-    understood = QueryUnderstanding(
-        LlmConfig(api_key="test"), session=MissingTargetSession()
-    ).understand("Find Java files containing alloc", "demo", ("alloc",))
-
-    assert understood is not None
-    assert "target" not in understood
-
-
-def test_understanding_preserves_an_explicit_empty_target() -> None:
-    """An explicit empty model decision must suppress later text inference."""
-
-    class EmptyTargetSession(FakeSession):
-        def post(self, *_args: Any, **_kwargs: Any) -> FakeResponse:
-            response = FakeResponse()
-            response.json = lambda: {
-                "choices": [
-                    {"message": {"content": '{"terms":{"alloc":1},"relations":[],"target":[]}'}}
-                ]
-            }
-            return response
-
-    understood = QueryUnderstanding(
-        LlmConfig(api_key="test"), session=EmptyTargetSession()
-    ).understand("Find Java files containing alloc", "demo", ("alloc",))
-
-    assert understood is not None
-    assert understood["target"] == ()
-
-
-def test_malformed_relation_edges_are_discarded_conservatively() -> None:
-    class MalformedSession(FakeSession):
-        def post(self, *_args: Any, **_kwargs: Any) -> FakeResponse:
-            response = FakeResponse()
-            response.json = lambda: {
-                "choices": [
-                    {
-                        "message": {
-                            "content": (
-                                '{"terms":{"page":1},"relations":['
-                                '{"src":"clients","dst":"page request",'
-                                '"edge":["references",7,"not-a-real-edge"]},'
-                                '{"src":"a","dst":"b","edge":null}]}'
-                            )
-                        }
-                    }
-                ]
-            }
-            return response
-
-    understood = QueryUnderstanding(
-        LlmConfig(api_key="test"), session=MalformedSession()
-    ).understand("reference PageRequest", "demo", ("page", "request"))
-
-    assert understood is not None
-    assert understood["relations"] == [
-        ("clients", "page request", ("references",)),
-        ("a", "b", ("calls", "contains")),
-    ]
-    assert "target" not in understood
+    assert understood is None
