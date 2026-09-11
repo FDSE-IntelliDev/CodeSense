@@ -624,17 +624,18 @@ captcha        26        4.19
 `performance` 那行暴露了真正的缺口：命中的 `redis`、`page` 是
 **技术栈相关**的词——LLM 不知道这个项目用 Redis、用分页，就不会说。
 
-### 所以：把项目词表放进 prompt
+### 所以：把代表性项目词表放进 prompt
 
 缺口不用训练来补，**直接给 LLM 看**：
 
 ```
-整个项目词表 302 个词 = 2381 字符 ≈ 595 tokens
+样例项目的高频词表 302 个词 = 2381 字符 ≈ 595 tokens
 ```
 
-595 tokens。每条查询都带上完全可行，而且它是**固定前缀，走 prompt cache**。
+实际实现按 document frequency 降序取有界前缀，并过滤只出现一次的尾部词；
+因此大项目也不会把完整词表塞进 prompt。这段稳定上下文适合走 prompt cache。
 
-于是提示词从「生成相关词」变成「**从这个项目的词表里挑相关词**」：
+提示词要求模型结合 query 与项目代表词提出 literal/synonym/derived term：
 
 ```
 本项目词表（按频次）: get, role, user, mobile, save, auth, ..., redis, oss
@@ -642,9 +643,11 @@ captcha        26        4.19
 → 拆成单元，每个单元从上表里选出相关词并给分
 ```
 
-**这一步把接地问题在构造上消掉了**：输出的词天然就在项目词表里，
-不存在「LLM 说 `department` 但项目写 `dept`」的问题——
-因为词表里只有 `dept`，LLM 只能选 `dept`。
+这一步提高模型提出项目内 surface 的概率，但**不会把词表当输出白名单**。
+模型仍可能说 `department` 而项目只写 `dept`；这并非无效输入，统一的
+`TermResolver` 会通过 expansion table 将 canonical term 接到项目 surface。
+同一个 resolver 被分组/关系统计、代价估计与 lexical satisfier 执行复用，
+接地失败的 term 才会被记录为 ignored；全部无法接地时 planned 路径降级。
 
 **等于第一跳和第二跳合并成了一步。**
 
@@ -652,7 +655,7 @@ captcha        26        4.19
 
 三处，都还需要：
 
-1. **LLM 说了词表外的词时**——比如它坚持输出 `buffer` 而项目只有 `buf`。
+1. **LLM 说了词表外的词时**——这是允许的常态，比如输出 `buffer` 而项目只有 `buf`。
    这时第二跳（cc.en.300 + lexical rules，已实测可用）把它映射进来。
 
 2. **项目大到词表塞不进 prompt 时。** 302 个词是这个项目；
@@ -997,8 +1000,8 @@ Q4a/Q4b「权重怎么定」。
 ## 小结
 
 1. **不增加 LLM 调用次数。** 词的派生搭在已有的那次「查询→单元」调用上，
-   并把项目词表（**实测 595 tokens**）放进 prompt，让 LLM
-   **从项目词表里挑**而不是凭空生成——接地问题在构造上就没有了。
+   并把 df 有界的代表性项目词表放进 prompt。它提供项目上下文而非限制输出；
+   词表外 canonical term 继续通过 expansion table 接地。
 
 2. **全局预训练 + repo 微调，不从零训。** 单项目 302 词 / 103 万 token
    撑不起 128 维；而 `dept ≈ department` 在单个 repo 里学不到

@@ -101,17 +101,22 @@ match(r"\b(io|input|output|performance|latency|disk|swap|block)\b")
 **最有价值的一类。** `performance` → `buffer`、`async`、`cache`、`batch`、`pool`。
 
 这批词由**把查询拆成单元的那一次 LLM 调用顺带给出**——不额外开调用，
-不按单元逐个调。关键是同时**把项目词表放进 prompt**（实测 595 tokens，
-固定前缀可缓存），让它**从项目实际用的词里挑**，而不是凭空生成通用词：
+不按单元逐个调。该调用使用 Pydantic 生成的 strict JSON Schema，直接返回
+`units / relations / targets / criterion`，每个 term 都带 `source`、`weight`、
+`related_query_terms` 和 `reason`，不再靠宽松 JSON 字典猜字段。
+
+prompt 同时提供按 document frequency 降序截取、且至少重复出现两次的代表性项目词表。
+它是帮助模型理解项目习惯的**有界上下文**，不是完整词表，也不是输出白名单：
 
 ```
 本项目词表: get, role, user, save, auth, ..., redis, page, cache
 查询: io performance on disk        → 拆单元 + 每个单元从上表选词
 ```
 
-这样输出的词天然落在项目词表里，不会出现「LLM 说 `department`
-但项目写 `dept`」。词表塞不下的大项目，先用向量和 ICF 收窄候选
-再交给 LLM——细节见 [09](09-grounding.md)。
+模型仍可输出词表外的 `department`。编译后由统一的 `TermResolver` 将 canonical term
+接地到项目中的 `dept` 等 surface；分组统计、relation 校验、代价估计和真正执行共用
+同一套解析结果，避免“统计认为能命中、执行却找不到”的分叉。细节见
+[09](09-grounding.md)。
 
 `buffer` **不是** `performance` 的同义词。关系是：
 
@@ -119,7 +124,7 @@ match(r"\b(io|input|output|performance|latency|disk|swap|block)\b")
 
 | | synonym | derived |
 |---|---|---|
-| 来源 | 词表 / 全局向量 | **LLM 从项目词表中挑选** |
+| 来源 | 词表 / 全局向量 | **LLM 结合 query 与代表性项目词表提出** |
 | 关系 | 语义等价 | 共现指示 |
 | 代码里出现频率 | 低 | **高** |
 | 单独命中可信度 | 高 | **低** |

@@ -1,5 +1,16 @@
 # CodeSense Changelog
 
+## 2026-09-11 — 结构化查询理解与通用结果目标
+
+- planned 的首次 LLM 调用改为 Pydantic 定义的 strict JSON Schema，稳定返回语义 units、
+  relations、targets 与 criterion；term 区分 literal、synonym、derived，并保留权重与理由。
+- prompt 只携带按 document frequency 排序、过滤低频尾部的有界代表词表；模型允许提出
+  词表外 canonical term，再由同一个查询级 `TermResolver` 为统计校验、估算和执行接地。
+- 硬结果目标支持 file、type、class、function、field 等多 kind 有序并集；非文件目标直接
+  过滤元素，包含 file 时才通过 `in_file` 合并所属文件。
+- relation 可用 `$result` 明确绑定返回端点，例如“返回引用 PageRequest 的文件”先反向投影
+  真实 `references` 边，再执行 file target；无对应边是有效空结果而不是猜测或编译失败。
+
 ## 2026-09-09 — 文件结果目标与项目内引用图
 
 - 源文件成为真实的 `Element(kind="file")` 图节点，声明通过 `in_file` 物理归属边投影到

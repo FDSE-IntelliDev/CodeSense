@@ -58,6 +58,19 @@
 
 ## 当前实现的差距
 
+### 当前查询编译链路
+
+现役 planned 路径保持 `Project.search → understand → build_spec → plan → Plan.run`，
+但第一跳已经从宽松 JSON 改为 Pydantic 定义的 strict JSON Schema。模型输出的
+literal/synonym/derived term 是语义提案，可以不在提示词给出的代表性词表中；
+`TermResolver` 负责把它们接地，并在编译统计与执行阶段共享查询内缓存。
+
+硬返回目标是代码元素 kind 的稳定有序并集，例如 `targets=["file", "function"]`
+会保留方法/构造器并投影所属文件。relation 的 `$result` endpoint 则表达“返回关系的
+哪一侧”：例如 `$result --references--> page_request` 先沿 `references` 反向生成真实
+引用者，再执行 `target=file` 得到引用者所属文件。unit-to-unit relation 仍只是经过
+统计校验的排序 boost，两者不混用。
+
 | 需求 | 现状 | 差距 |
 |---|---|---|
 | 符号表 | ✅ 1718 个符号，schema 够用 | 缺 `modifiers` 字段 |
