@@ -94,6 +94,43 @@ class TestExitCodes:
 
 
 class TestQueryOutput:
+    def test_vocabulary_flags_reach_project_open(self, tmp_path: Path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+        from codesense.project import Project
+        from codesense.search import SearchResult
+
+        captured: dict[str, object] = {}
+
+        class Opened:
+            def search(self, *_args: object, **_kwargs: object) -> SearchResult:
+                return SearchResult(query="query")
+
+            def describe(self) -> str:
+                return "demo"
+
+        def open_project(_path: Path, **options: object) -> Opened:
+            captured.update(options)
+            return Opened()
+
+        monkeypatch.setattr(Project, "open", open_project)
+
+        main(
+            [
+                "query",
+                "anything",
+                "--route",
+                "lexical",
+                "--index",
+                str(tmp_path / "index"),
+                "--vocab-size",
+                "17",
+                "--vocab-min-df",
+                "3",
+            ]
+        )
+
+        assert captured["vocab_size"] == 17
+        assert captured["vocab_min_df"] == 3
+
     def test_explicit_index_beats_discovery(self, repo: Path, tmp_path: Path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
         monkeypatch.chdir(tmp_path)
         assert main(["query", "alloc", "--route", "lexical", "--index", str(repo / INDEX_DIR)]) == 0

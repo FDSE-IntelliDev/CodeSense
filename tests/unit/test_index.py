@@ -214,6 +214,28 @@ class TestProject:
         project = Project(make_index())
         assert project.vocabulary is project.vocabulary
 
+    def test_vocabulary_is_bounded_and_filters_singletons(self) -> None:
+        project = Project(make_index(), vocab_size=2, vocab_min_df=2)
+
+        assert project.vocabulary == [("alloc", 2)]
+
+    @pytest.mark.parametrize(
+        ("options", "message"),
+        [({"vocab_size": -1}, "vocab_size"), ({"vocab_min_df": 0}, "vocab_min_df")],
+    )
+    def test_rejects_invalid_vocabulary_parameters(
+        self, options: dict[str, int], message: str
+    ) -> None:
+        with pytest.raises(ValueError, match=message):
+            Project(make_index(), **options)
+
+    def test_open_preserves_vocabulary_parameters(self, tmp_path: Path) -> None:
+        make_index().save(tmp_path)
+
+        project = Project.open(tmp_path, vocab_size=1, vocab_min_df=2)
+
+        assert project.vocabulary == [("alloc", 2)]
+
     def test_no_llm_means_no_judge_injected(self) -> None:
         """The context keeps its NullJudge, so `intent`'s fallback path is
         genuinely exercised."""

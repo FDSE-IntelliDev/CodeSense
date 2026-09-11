@@ -25,7 +25,7 @@ from __future__ import annotations
 import logging
 import re
 import time
-from collections.abc import Sequence
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -38,7 +38,7 @@ from codesense.ql.operators.select import only
 from codesense.ql.satisfiers import AnnotationSatisfier, LexicalSatisfier, ModifierSatisfier
 from codesense.ql.unit import QueryUnit, Term
 
-__all__ = ["Hit", "ROUTES", "SearchResult", "search"]
+__all__ = ["Hit", "ROUTES", "SearchResult", "representative_vocabulary", "search"]
 
 _log = logging.getLogger(__name__)
 
@@ -47,6 +47,27 @@ ROUTES = ("codegen", "planned", "lexical")
 #: How much vocabulary goes into the prompt. The whole thing does not fit for a
 #: large project, and the tail is mostly typos and one-off locals.
 VOCAB_FOR_PROMPT = 1200
+
+
+def representative_vocabulary(
+    vocabulary: Iterable[tuple[str, int]],
+    *,
+    limit: int,
+    min_df: int,
+) -> list[tuple[str, int]]:
+    """Take a bounded repeated-term prefix from df-descending vocabulary."""
+    if limit <= 0:
+        return []
+    selected: list[tuple[str, int]] = []
+    for term, document_frequency in vocabulary:
+        # Index.vocabulary is df-descending, so later entries cannot recover.
+        if document_frequency < min_df:
+            break
+        selected.append((term, document_frequency))
+        if len(selected) >= limit:
+            break
+    return selected
+
 
 #: Candidates handed to `intent`. It costs roughly 5000 lookups per call, so
 #: everything cheap runs first and this is what survives.

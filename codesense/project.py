@@ -34,7 +34,7 @@ from tempfile import TemporaryDirectory
 from typing import Any
 
 from codesense.index import Index, IndexMeta
-from codesense.search import SearchResult, search
+from codesense.search import SearchResult, representative_vocabulary, search
 
 __all__ = ["Project"]
 
@@ -57,6 +57,7 @@ DEFAULT = _Default()
 #: Vocabulary handed to the model. Enough for it to see the domain, small
 #: enough to leave room for the operator spec in the same prompt.
 DEFAULT_VOCAB = 1200
+DEFAULT_VOCAB_MIN_DF = 2
 
 
 class Project:
@@ -67,10 +68,22 @@ class Project:
     memory without touching disk.
     """
 
-    def __init__(self, index: Index, *, llm: Any = None, vocab_size: int = DEFAULT_VOCAB) -> None:
+    def __init__(
+        self,
+        index: Index,
+        *,
+        llm: Any = None,
+        vocab_size: int = DEFAULT_VOCAB,
+        vocab_min_df: int = DEFAULT_VOCAB_MIN_DF,
+    ) -> None:
+        if vocab_size < 0:
+            raise ValueError("vocab_size must be non-negative")
+        if vocab_min_df < 1:
+            raise ValueError("vocab_min_df must be at least 1")
         self.index = index
         self.llm = llm
         self._vocab_size = vocab_size
+        self._vocab_min_df = vocab_min_df
         self._context: Any = None
         self._vocabulary: list[tuple[str, int]] | None = None
 
@@ -92,6 +105,8 @@ class Project:
         preserve_full_model: bool = False,
         strict_profile: bool = False,
         llm: Any = None,
+        vocab_size: int = DEFAULT_VOCAB,
+        vocab_min_df: int = DEFAULT_VOCAB_MIN_DF,
         name: str = "",
         verbose: bool = True,
         **grounding: Any,
@@ -191,12 +206,29 @@ class Project:
         if destination is not None:
             saved = index.save(destination)
             report(f"saved to {saved}")
-        return cls(index, llm=llm)
+        return cls(
+            index,
+            llm=llm,
+            vocab_size=vocab_size,
+            vocab_min_df=vocab_min_df,
+        )
 
     @classmethod
-    def open(cls, index_dir: Path | str, *, llm: Any = None) -> Project:
+    def open(
+        cls,
+        index_dir: Path | str,
+        *,
+        llm: Any = None,
+        vocab_size: int = DEFAULT_VOCAB,
+        vocab_min_df: int = DEFAULT_VOCAB_MIN_DF,
+    ) -> Project:
         """Reopen a saved index. Seconds, not minutes."""
-        return cls(Index.load(Path(index_dir).expanduser()), llm=llm)
+        return cls(
+            Index.load(Path(index_dir).expanduser()),
+            llm=llm,
+            vocab_size=vocab_size,
+            vocab_min_df=vocab_min_df,
+        )
 
     # -- querying --------------------------------------------------------
 
@@ -238,7 +270,11 @@ class Project:
     def vocabulary(self) -> list[tuple[str, int]]:
         """The project's terms with df, commonest first."""
         if self._vocabulary is None:
-            self._vocabulary = self.index.vocabulary(self._vocab_size)
+            self._vocabulary = representative_vocabulary(
+                self.index.vocabulary(),
+                limit=self._vocab_size,
+                min_df=self._vocab_min_df,
+            )
         return self._vocabulary
 
     def _context_overrides(self) -> dict[str, Any]:

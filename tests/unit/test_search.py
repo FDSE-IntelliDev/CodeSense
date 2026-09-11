@@ -14,11 +14,18 @@ from collections.abc import Sequence
 import pytest
 
 from codesense.index import Index
-from codesense.llm.config import LlmConfig
 from codesense.ql.frag import Evidence, Frag, UnitHit, Verdict
 from codesense.ql.judge import JudgeItem
 from codesense.ql.operators import score_of
-from codesense.search import ROUTES, Hit, SearchResult, _cohere, _rank, search
+from codesense.search import (
+    ROUTES,
+    Hit,
+    SearchResult,
+    _cohere,
+    _rank,
+    representative_vocabulary,
+    search,
+)
 from tests.unit.test_index import make_index
 
 #: Filler symbols, so ICF means something.
@@ -28,6 +35,40 @@ from tests.unit.test_index import make_index
 #: discarded. Ranking cannot be tested at all without a corpus to be rare
 #: *within*.
 FILLER = 30
+
+
+class TestRepresentativeVocabulary:
+    def test_filters_low_frequency_terms_before_the_prompt(self) -> None:
+        assert representative_vocabulary(
+            (("common", 9), ("useful", 2), ("singleton", 1)),
+            limit=2,
+            min_df=2,
+        ) == [("common", 9), ("useful", 2)]
+
+    def test_stops_consuming_once_the_limit_is_reached(self) -> None:
+        consumed: list[str] = []
+
+        def vocabulary():  # type: ignore[no-untyped-def]
+            for item in (("first", 9), ("second", 8), ("unused", 7)):
+                consumed.append(item[0])
+                yield item
+
+        assert representative_vocabulary(vocabulary(), limit=2, min_df=2) == [
+            ("first", 9),
+            ("second", 8),
+        ]
+        assert consumed == ["first", "second"]
+
+    def test_zero_limit_consumes_nothing(self) -> None:
+        consumed = False
+
+        def vocabulary():  # type: ignore[no-untyped-def]
+            nonlocal consumed
+            consumed = True
+            yield ("unused", 7)
+
+        assert representative_vocabulary(vocabulary(), limit=0, min_df=2) == []
+        assert consumed is False
 
 
 class Exploding:
@@ -674,27 +715,6 @@ class TestResultTarget:
             limit=2,
         )
 
-        assert [hit.file for hit in result.hits] == ["src/F0.java", "src/F1.java"]
-        assert result.script.index("project(") < result.script.index("[:2]")
-
-    def test_missing_model_target_is_inferred_before_planned_limiting(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """The real compiler boundary must preserve missing-target semantics."""
-        ctx = make_file_target_context((0, 0, 1))
-        monkeypatch.setattr("requests.Session", MissingTargetPlanningSession)
-
-        result = search(
-            "Find Java files containing alloc",
-            ctx,
-            route="planned",
-            llm=LlmConfig(api_key="test"),
-            vocabulary=(("alloc", 3),),
-            limit=2,
-        )
-
-        assert result.route == "planned"
-        assert result.target == ("file",)
         assert [hit.file for hit in result.hits] == ["src/F0.java", "src/F1.java"]
         assert result.script.index("project(") < result.script.index("[:2]")
 

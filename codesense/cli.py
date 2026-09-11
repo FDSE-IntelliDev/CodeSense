@@ -129,7 +129,12 @@ def _query(args: argparse.Namespace) -> int:
         )
         return 2
 
-    project = Project.open(index_dir, llm=_llm(args))
+    project = Project.open(
+        index_dir,
+        llm=_llm(args),
+        vocab_size=args.vocab_size,
+        vocab_min_df=args.vocab_min_df,
+    )
     result = project.search(args.text, route=args.route, limit=args.limit, judge=args.judge)
 
     if args.script:
@@ -273,6 +278,18 @@ def _parser() -> argparse.ArgumentParser:
         help="codegen writes a script, planned plans, lexical uses no model",
     )
     query.add_argument("-n", "--limit", type=int, default=20, help="how many results")
+    query.add_argument(
+        "--vocab-size",
+        type=int,
+        default=1200,
+        help="maximum representative project terms sent to the model",
+    )
+    query.add_argument(
+        "--vocab-min-df",
+        type=int,
+        default=2,
+        help="minimum element frequency for terms sent to the model",
+    )
     query.add_argument(
         "--script", action="store_true", help="print the generated script and the full trace"
     )
