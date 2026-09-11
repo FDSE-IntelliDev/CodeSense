@@ -442,7 +442,11 @@ def _enforce_target(
     """Apply the same hard output contract after every route and fallback."""
     if not target:
         return frag.induced(sid for sid, element in frag.nodes.items() if element.kind != "file")
-    if all(element.kind in target for element in frag.nodes.values()):
+    # A mixed target containing ``file`` must still add owner files even when
+    # every current declaration already satisfies another requested kind.
+    if "file" not in target and all(element.kind in target for element in frag.nodes.values()):
+        return frag
+    if target == ("file",) and all(element.kind == "file" for element in frag.nodes.values()):
         return frag
     direct_kinds = tuple(kind for kind in target if kind != "file")
     direct = frag.induced(

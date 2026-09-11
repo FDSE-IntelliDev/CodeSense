@@ -615,6 +615,14 @@ class TestResultTarget:
         assert {hit.kind for hit in result.hits} == {"file"}
         assert [hit.file for hit in result.hits] == ["a/Pooled.java"]
 
+    def test_mixed_function_and_file_target_adds_owner_files(self) -> None:
+        ctx = make_file_target_context((0,))
+
+        result = search("alloc", ctx, route="lexical", target=("function", "file"))
+
+        assert result.target == ("method", "constructor", "file")
+        assert {hit.kind for hit in result.hits} == {"method", "file"}
+
     @pytest.mark.parametrize(
         "query",
         [
