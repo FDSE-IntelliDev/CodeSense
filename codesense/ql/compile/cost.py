@@ -18,6 +18,7 @@ from dataclasses import dataclass
 from codesense.ql.context import EvalContext
 from codesense.ql.satisfiers.base import Satisfier
 from codesense.ql.satisfiers.lexical import AnnotationSatisfier, LexicalSatisfier, ModifierSatisfier
+from codesense.ql.term_resolution import TermResolver
 from codesense.ql.unit import QueryUnit
 
 __all__ = ["Estimate", "estimate_hop", "estimate_intent", "estimate_unit"]
@@ -53,7 +54,12 @@ class Estimate:
         return f"~{self.rows} rows / cost {self.cost:,.0f}{note}"
 
 
-def estimate_unit(unit: QueryUnit, ctx: EvalContext) -> Estimate:
+def estimate_unit(
+    unit: QueryUnit,
+    ctx: EvalContext,
+    *,
+    resolver: TermResolver | None = None,
+) -> Estimate:
     """Estimate how many symbols a unit will match.
 
     Terms are unioned under an **independence** assumption:
@@ -61,19 +67,19 @@ def estimate_unit(unit: QueryUnit, ctx: EvalContext) -> Estimate:
     `buffer` and `buf` are highly correlated -- but it yields an upper bound,
     and ordering only needs that bound to separate magnitudes.
     """
+    term_resolver = resolver or TermResolver(ctx)
     total = max(ctx.population, 1)
     miss = 1.0
     cost = 0.0
     terms = 0
     for satisfier in unit.satisfiers:
         for term in _terms_of(satisfier):
-            for surface in _surfaces(term, ctx):
-                info = ctx.postings.term_info(surface)
-                if info is None:
-                    continue
-                terms += 1
-                cost += len(ctx.postings.lookup(surface))
-                miss *= 1.0 - min(info.df / total, 1.0)
+            symbol_ids = term_resolver.symbol_ids(term)
+            if not symbol_ids:
+                continue
+            terms += len(term_resolver.surfaces(term))
+            cost += len(term_resolver.postings(term))
+            miss *= 1.0 - min(len(symbol_ids) / total, 1.0)
     rows = round(total * (1.0 - miss))
     return Estimate(rows=rows, cost=cost, detail=f"{terms} terms")
 
@@ -144,7 +150,3 @@ def _terms_of(satisfier: object) -> Sequence[str]:
     if isinstance(satisfier, Satisfier):
         return []
     return []
-
-
-def _surfaces(term: str, ctx: EvalContext) -> list[str]:
-    return [term, *(expansion.target for expansion in ctx.expansion.expand(term))]

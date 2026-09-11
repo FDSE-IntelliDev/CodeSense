@@ -20,6 +20,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 
 from codesense.ql.context import EvalContext
+from codesense.ql.term_resolution import TermResolver
 
 __all__ = ["OVERLAP_FLOOR", "Cluster", "partition"]
 
@@ -48,19 +49,25 @@ class Cluster:
     reason: str = ""
 
 
-def partition(terms: Sequence[str], ctx: EvalContext) -> list[Cluster]:
+def partition(
+    terms: Sequence[str],
+    ctx: EvalContext,
+    *,
+    resolver: TermResolver | None = None,
+) -> list[Cluster]:
     """Group terms by posting overlap.
 
     **Defaults to not splitting**: it splits only when the clustering found
     real structure -- more than one cluster, none of them a lone term --
     and otherwise returns a single cluster.
     """
-    usable = [term for term in terms if ctx.postings.term_info(term) is not None]
+    term_resolver = resolver or TermResolver(ctx)
+    usable = [term for term in terms if term_resolver.surfaces(term)]
     if len(usable) < 4:
         return [Cluster(tuple(usable), "too few terms to split")]
 
     total = max(ctx.population, 1)
-    postings = {term: {p.symbol_id for p in ctx.postings.lookup(term)} for term in usable}
+    postings = {term: set(term_resolver.symbol_ids(term)) for term in usable}
     hubs = {term for term, ids in postings.items() if len(ids) > total * HUB_RATIO}
 
     groups = _connected([term for term in usable if term not in hubs], postings, OVERLAP_FLOOR)

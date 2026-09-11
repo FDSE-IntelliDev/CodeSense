@@ -28,6 +28,7 @@ from codesense.ql.compile.relation_endpoints import is_legacy_relation
 from codesense.ql.compile.spec import QuerySpec
 from codesense.ql.context import EvalContext
 from codesense.ql.satisfiers.lexical import AnnotationSatisfier, LexicalSatisfier, ModifierSatisfier
+from codesense.ql.term_resolution import TermResolver
 from codesense.ql.unit import QueryUnit
 
 __all__ = ["USELESS_RATIO", "plan"]
@@ -108,11 +109,21 @@ class _Sized:
     cost: float
 
 
-def plan(spec: QuerySpec, ctx: EvalContext) -> Plan:
+def plan(
+    spec: QuerySpec,
+    ctx: EvalContext,
+    *,
+    resolver: TermResolver | None = None,
+) -> Plan:
     """Order a spec into a plan by estimated selectivity."""
+    term_resolver = resolver or TermResolver(ctx)
     sized = sorted(
         (
-            _Sized(unit=unit, rows=(guess := estimate_unit(unit, ctx)).rows, cost=guess.cost)
+            _Sized(
+                unit=unit,
+                rows=(guess := estimate_unit(unit, ctx, resolver=term_resolver)).rows,
+                cost=guess.cost,
+            )
             for unit in spec.units
         ),
         key=lambda item: item.rows,

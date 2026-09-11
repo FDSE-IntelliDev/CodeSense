@@ -11,6 +11,7 @@ from codesense.ql.compile import ScoredTerm, build_spec
 from codesense.ql.compile.validate import LIFT_FLOOR, relation_lift, validate_relations
 from codesense.ql.context import EvalContext
 from codesense.ql.store import (
+    Expansion,
     InMemoryEdgeStore,
     InMemoryExpansionTable,
     InMemoryPostingIndex,
@@ -147,6 +148,25 @@ def test_relation_lift_counts_only_the_proposed_edge_kinds() -> None:
     assert relation_lift(["client"], ["page"], calls_only, edge=("calls",))[0] >= LIFT_FLOOR
     assert (
         relation_lift(["client"], ["page"], references_only, edge=("references",))[0] >= LIFT_FLOOR
+    )
+
+
+def test_relation_lift_resolves_canonical_terms_before_counting_edges() -> None:
+    base = make_context((Edge(1, 2, "references"),))
+    ctx = EvalContext(
+        symbols=base.symbols,
+        postings=base.postings,
+        expansion=InMemoryExpansionTable(
+            {
+                "caller": [Expansion("client", 0.9, "ctx")],
+                "pagination": [Expansion("page", 0.9, "ctx")],
+            }
+        ),
+        edges=base.edges,
+    )
+
+    assert relation_lift(["caller"], ["pagination"], ctx, edge=("references",)) == relation_lift(
+        ["client"], ["page"], ctx, edge=("references",)
     )
 
 

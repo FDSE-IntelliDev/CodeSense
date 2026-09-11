@@ -29,6 +29,7 @@ from codesense.ql.compile.relation_endpoints import (
     relation_endpoint_strata,
 )
 from codesense.ql.context import EvalContext
+from codesense.ql.term_resolution import TermResolver
 
 __all__ = ["LIFT_FLOOR", "Relation", "relation_lift", "validate_groups", "validate_relations"]
 
@@ -62,6 +63,7 @@ def relation_lift(
     ctx: EvalContext,
     *,
     edge: Sequence[str] = ("calls", "contains"),
+    resolver: TermResolver | None = None,
 ) -> tuple[float, str]:
     """How many times denser the edges between two term groups are than chance.
 
@@ -69,13 +71,18 @@ def relation_lift(
     kinds use the same heuristic with separate source and destination
     populations. It is crude, but ample for telling 4.75x from 0.
     """
+    term_resolver = resolver or TermResolver(ctx)
     declarations = ctx.population
     kinds = tuple(dict.fromkeys(edge)) or ("calls", "contains")
     legacy = is_legacy_relation(kinds)
     if legacy and declarations < 2:
         return 0.0, "too few symbols"
-    src_declarations = {p.symbol_id for term in src_terms for p in ctx.postings.lookup(term)}
-    dst_declarations = {p.symbol_id for term in dst_terms for p in ctx.postings.lookup(term)}
+    src_declarations = {
+        symbol_id for term in src_terms for symbol_id in term_resolver.symbol_ids(term)
+    }
+    dst_declarations = {
+        symbol_id for term in dst_terms for symbol_id in term_resolver.symbol_ids(term)
+    }
     if not src_declarations or not dst_declarations:
         return 0.0, "one side matched nothing"
 
@@ -147,6 +154,7 @@ def validate_relations(
     ctx: EvalContext,
     *,
     floor: float = LIFT_FLOOR,
+    resolver: TermResolver | None = None,
 ) -> tuple[list[Relation], list[str]]:
     """Keep the relations that actually hold in this codebase.
 
@@ -162,7 +170,13 @@ def validate_relations(
         if src not in groups or dst not in groups or src == dst:
             rejected.append(f"{src}->{dst}: names a group that does not exist")
             continue
-        lift, detail = relation_lift(groups[src], groups[dst], ctx, edge=edge)
+        lift, detail = relation_lift(
+            groups[src],
+            groups[dst],
+            ctx,
+            edge=edge,
+            resolver=resolver,
+        )
         if lift >= floor:
             kept.append(Relation(src=src, dst=dst, lift=lift, edge=edge, detail=detail))
         else:
@@ -174,7 +188,11 @@ def validate_relations(
 
 
 def validate_groups(
-    proposed: dict[str, Sequence[str]], ctx: EvalContext, *, floor: float = OVERLAP_FLOOR
+    proposed: dict[str, Sequence[str]],
+    ctx: EvalContext,
+    *,
+    floor: float = OVERLAP_FLOOR,
+    resolver: TermResolver | None = None,
 ) -> tuple[dict[str, list[str]], list[str]]:
     """Check the model's groups: do the terms really land on the same symbols?
 
@@ -186,8 +204,9 @@ def validate_groups(
     Groups without enough cohesion are folded back: **one broad unit beats
     several narrow ones that dilute the answer.**
     """
+    term_resolver = resolver or TermResolver(ctx)
     usable = {
-        name: [t for t in terms if ctx.postings.term_info(t) is not None]
+        name: [term for term in terms if term_resolver.surfaces(term)]
         for name, terms in proposed.items()
     }
     usable = {name: terms for name, terms in usable.items() if terms}
@@ -198,7 +217,7 @@ def validate_groups(
     notes: list[str] = []
     loose: list[str] = []
     for name, terms in usable.items():
-        cohesion = _cohesion(terms, ctx)
+        cohesion = _cohesion(terms, ctx, resolver=term_resolver)
         if len(terms) >= 2 and cohesion >= floor:
             kept[name] = terms
         else:
@@ -218,9 +237,15 @@ def validate_groups(
     return kept, notes
 
 
-def _cohesion(terms: Sequence[str], ctx: EvalContext) -> float:
+def _cohesion(
+    terms: Sequence[str],
+    ctx: EvalContext,
+    *,
+    resolver: TermResolver | None = None,
+) -> float:
     """Mean pairwise Jaccard within a group."""
-    postings = [{p.symbol_id for p in ctx.postings.lookup(term)} for term in terms]
+    term_resolver = resolver or TermResolver(ctx)
+    postings = [set(term_resolver.symbol_ids(term)) for term in terms]
     pairs = [
         (postings[i], postings[j])
         for i in range(len(postings))
