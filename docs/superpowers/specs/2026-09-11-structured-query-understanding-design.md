@@ -175,7 +175,7 @@ model validator 另外保证：
 - `kind="unit"` 的 endpoint 引用已存在 unit，`kind="result"` 时 unit 必须为 null；
 - relation 两端不能引用同一 unit，也不能同时为 result；
 - 一次查询最多包含一个带 result endpoint 的 relation；
-- 同一 unit 内 `(value, source)` 不重复；
+- canonical `value.casefold()` 在整份响应中唯一，重复项保留首次出现；去重后 unit 仍须至少有一个 term；
 - targets 保持首次出现顺序并去重。
 
 局部重复属于可安全归一化的数据，不让一次查询因此降级；未知枚举、缺字段、额外字段、空 unit
@@ -290,6 +290,12 @@ unit 提议转换成现有 `groups`。两端都是 unit 的 relation 转换成�
 `codesense.ql.compile.validate`；带 result endpoint 的 relation 进入第 8.3 节定义的结果绑定
 步骤。任何 relation 都不会仅因来自严格 Schema 而跳过项目事实校验。
 
+通过统计校验的 model group 名称直接成为 `QueryUnit.name`，不再改写为位置相关的 `u0/u1`；
+没有 model groups、由统计自动 partition 时仍使用 `q/uN`。如果 group 校验把某个提议折叠进另一
+group，build adapter 根据该组保留下来的 grounded terms 把 relation endpoint 映射到最终 unit。
+result-bound relation 的 anchor group 若完全无法接地，则编译失败并走现有 lexical 降级，不能静默
+改成另一个结果语义。
+
 ## 6. 代表性项目词表
 
 项目词表在 Prompt 中承担两项作用：
@@ -317,7 +323,16 @@ limit 后停止：
 
 ```python
 def representative_vocabulary(vocabulary, *, limit, min_df):
-    return [(term, df) for term, df in vocabulary if df >= min_df][:limit]
+    if limit <= 0:
+        return []
+    selected = []
+    for term, df in vocabulary:
+        if df < min_df:  # input is df-descending, so all later rows are lower
+            break
+        selected.append((term, df))
+        if len(selected) >= limit:
+            break
+    return selected
 ```
 
 `vocab_size` 继续控制上限，新增 `vocab_min_df` 控制重复阈值，默认值为 2。两者通过 CLI、
@@ -508,8 +523,9 @@ planned 路由的 provider 必须支持 JSON Schema，不支持时使用已有 l
 1. Pydantic Schema 通过无参数缓存函数生成一次。
 2. Prompt vocabulary 在达到 limit 后停止，不复制完整词表。
 3. `resolved_surfaces()` 每个 canonical term 在一次编译中会被 build、validation、cost 多次使用，
-   因此使用以 `(term, id(ctx.postings), id(ctx.expansion))` 为一次查询局部键的缓存，而不是无界
-   模块全局缓存。
+   因此 `_planned` 为一次查询创建一个 `TermResolver(ctx)`，并把它传给 `build_spec()` 与 `plan()`；
+   resolver 内以 canonical term 为键缓存 surface/posting/symbol 结果，查询结束即释放，不使用无界模块
+   全局缓存。
 4. surface 和 posting 去重使用 dict/set，单 term 复杂度为 `O(S + P)`；grounding 的
    `max_targets` 已限制 S。
 5. result-bound relation 使用 EdgeStore 的方向索引和现有 `project()`，复杂度为
