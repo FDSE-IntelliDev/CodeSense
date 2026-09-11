@@ -24,6 +24,8 @@ from codesense.ql.compile import (
     Plan,
     ProjectTarget,
     QuerySpec,
+    ResolveResultRelation,
+    ResultRelation,
     plan,
     to_script,
 )
@@ -260,6 +262,50 @@ class TestEquivalence:
 
         assert "project(" in source
         assert run_script(source, ctx) == set(execution.run(ctx).current.nodes)
+
+    def test_mixed_file_and_method_target_is_equivalent(self) -> None:
+        ctx = relation_context((Edge(1, 10, "in_file"), Edge(2, 11, "in_file")))
+        unit = weighted_unit("source", "source", 1.0)
+        execution = Plan(steps=(EvalUnit(unit, seed=True), ProjectTarget(("method", "file"))))
+        spec = QuerySpec(
+            query="methods and their files",
+            units=(unit,),
+            target=("method", "file"),
+        )
+
+        planned = set(execution.run(ctx).current.nodes)
+
+        assert planned == {1, 10}
+        assert run_script(to_script(execution, spec), ctx) == planned
+
+    @pytest.mark.parametrize(
+        ("result_side", "expected", "direction"),
+        [("source", {1}, "backward"), ("target", {2}, "forward")],
+    )
+    def test_result_relation_emission_matches_plan(
+        self, result_side: str, expected: set[int], direction: str
+    ) -> None:
+        ctx = relation_context((Edge(1, 2, "references"),))
+        anchor_value = "related" if result_side == "source" else "source"
+        anchor = weighted_unit("anchor", anchor_value, 1.0)
+        execution = Plan(
+            steps=(
+                EvalUnit(anchor, seed=True),
+                ResolveResultRelation("anchor", result_side, ("references",)),
+            )
+        )
+        spec = QuerySpec(
+            query="relational result",
+            units=(anchor,),
+            result_relation=ResultRelation("anchor", result_side, ("references",)),
+        )
+
+        source = to_script(execution, spec)
+
+        assert f'direction="{direction}"' in source
+        assert "edge=('references',)" in source
+        assert set(execution.run(ctx).current.nodes) == expected
+        assert run_script(source, ctx) == expected
 
     def test_relation_boost_survives_file_projection_in_plan_and_script(self) -> None:
         ctx = relation_context(

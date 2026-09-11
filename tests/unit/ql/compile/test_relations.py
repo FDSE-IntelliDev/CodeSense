@@ -7,7 +7,7 @@ from collections.abc import Sequence
 import pytest
 
 from codesense.ql import Edge, Element, IndexField
-from codesense.ql.compile import ScoredTerm, build_spec
+from codesense.ql.compile import ResultRelation, ScoredTerm, build_spec
 from codesense.ql.compile.validate import LIFT_FLOOR, relation_lift, validate_relations
 from codesense.ql.context import EvalContext
 from codesense.ql.store import (
@@ -193,6 +193,57 @@ def test_accepted_relation_retains_edge_and_build_spec_copies_it() -> None:
     )
 
     assert spec.graph[0].edge == ("references",)
+
+
+def test_build_spec_keeps_a_result_bound_relation_out_of_graph_boosts() -> None:
+    ctx = make_context(())
+
+    spec, _ = build_spec(
+        "things referencing page",
+        [ScoredTerm("client"), ScoredTerm("page")],
+        ctx,
+        groups={
+            "clients": ["client", "client_alias"],
+            "pages": ["page", "page_alias"],
+        },
+        result_relation=ResultRelation(unit="pages", result_side="source", edge=("references",)),
+    )
+
+    assert spec.graph == ()
+    assert spec.result_relation == ResultRelation(
+        unit="pages", result_side="source", edge=("references",)
+    )
+
+
+def test_result_relation_anchor_tracks_a_group_folded_into_another_unit() -> None:
+    ctx = make_context(())
+
+    spec, _ = build_spec(
+        "things referencing page",
+        [ScoredTerm("client"), ScoredTerm("client_alias"), ScoredTerm("page")],
+        ctx,
+        groups={"clients": ["client", "client_alias"], "pages": ["page"]},
+        result_relation=ResultRelation(unit="pages", result_side="source", edge=("references",)),
+    )
+
+    assert [unit.name for unit in spec.units] == ["clients"]
+    assert spec.result_relation is not None
+    assert spec.result_relation.unit == "clients"
+
+
+def test_result_relation_rejects_an_ungrounded_anchor_group() -> None:
+    ctx = make_context(())
+
+    with pytest.raises(ValueError, match="result relation anchor"):
+        build_spec(
+            "things referencing missing",
+            [ScoredTerm("client"), ScoredTerm("missing")],
+            ctx,
+            groups={"clients": ["client"], "missing": ["missing"]},
+            result_relation=ResultRelation(
+                unit="missing", result_side="source", edge=("references",)
+            ),
+        )
 
 
 def test_imports_projects_the_source_declaration_group_to_owning_files() -> None:

@@ -30,6 +30,7 @@ from codesense.ql.compile.plan import (
     Narrow,
     Plan,
     ProjectTarget,
+    ResolveResultRelation,
     Step,
 )
 from codesense.ql.compile.relation_endpoints import is_legacy_relation
@@ -51,7 +52,19 @@ from codesense.ql.satisfiers import AnnotationSatisfier, LexicalSatisfier, Modif
 from codesense.ql.unit import QueryUnit, Term
 '''
 
-_ORCHESTRATION_NAMES = frozenset(("answer", "boosted", "ctx", "frag", "near", "preferred"))
+_ORCHESTRATION_NAMES = frozenset(
+    (
+        "answer",
+        "boosted",
+        "boosted_frag",
+        "ctx",
+        "frag",
+        "near",
+        "preferred",
+        "target_boosted",
+        "target_source",
+    )
+)
 _IMPORTED_NAMES = frozenset(
     (
         "AnnotationSatisfier",
@@ -211,6 +224,18 @@ def _step_source(step: Step, identifiers: _Identifiers) -> str:
             f"    edge={step.edge!r}, hops={step.hops!r},\n"
             f") & set(frag.nodes)"
         )
+    if isinstance(step, ResolveResultRelation):
+        anchor = identifiers.matches[step.unit]
+        return (
+            f"frag = project(\n"
+            f'    {anchor}, ctx, edge={step.edge!r}, direction="{step.direction}",\n'
+            f")\n"
+            f"boosted_frag = project(\n"
+            f"    {anchor}.induced(boosted), ctx, edge={step.edge!r}, "
+            f'direction="{step.direction}",\n'
+            f")\n"
+            f"boosted = set(boosted_frag.nodes)"
+        )
     if isinstance(step, Narrow):
         if not step.limit:
             return ""
@@ -236,10 +261,22 @@ def _step_source(step: Step, identifiers: _Identifiers) -> str:
             f"              threshold={step.threshold:g}, max_items={step.max_items})"
         )
     if isinstance(step, ProjectTarget):
+        direct = tuple(kind for kind in step.target if kind != "file")
+        if "file" not in step.target:
+            return (
+                f"frag = frag.induced(s for s, e in frag.nodes.items() if e.kind in {direct!r})\n"
+                f"boosted &= set(frag.nodes)"
+            )
         return (
-            f'boosted = set(project(frag.induced(boosted), ctx, edge="in_file", '
-            f"kind={step.target!r}, include_self=True).nodes)\n"
-            f'frag = project(frag, ctx, edge="in_file", kind={step.target!r}, include_self=True)'
+            f"target_source = frag\n"
+            f"target_boosted = target_source.induced(boosted)\n"
+            f"frag = target_source.induced(\n"
+            f"    s for s, e in target_source.nodes.items() if e.kind in {direct!r}\n"
+            f') | project(target_source, ctx, edge="in_file", kind="file", include_self=True)\n'
+            f"boosted = set((target_boosted.induced(\n"
+            f"    s for s, e in target_boosted.nodes.items() if e.kind in {direct!r}\n"
+            f') | project(target_boosted, ctx, edge="in_file", kind="file", '
+            f"include_self=True)).nodes)"
         )
     return f"# unknown step: {step.label}"
 

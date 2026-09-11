@@ -22,6 +22,7 @@ from codesense.ql.compile.plan import (
     Narrow,
     Plan,
     ProjectTarget,
+    ResolveResultRelation,
     Step,
 )
 from codesense.ql.compile.relation_endpoints import is_legacy_relation
@@ -133,6 +134,18 @@ def plan(
     steps: list[Step] = []
 
     useful, dropped = _partition(sized, total)
+    if spec.result_relation is not None:
+        anchor = next(
+            (item for item in dropped if item.unit.name == spec.result_relation.unit),
+            None,
+        )
+        if anchor is not None:
+            dropped.remove(anchor)
+            useful.append(anchor)
+            useful.sort(key=lambda item: item.rows)
+            why.append(
+                f"keeping broad unit {anchor.unit.name!r}: it anchors the hard result relation"
+            )
     for item in dropped:
         why.append(
             f"dropping unit {item.unit.name!r}: an estimated {item.rows} matches "
@@ -156,6 +169,14 @@ def plan(
     )
 
     steps, why = _add_graph(spec, {item.unit.name: item.rows for item in useful}, steps, why)
+
+    if spec.result_relation is not None:
+        relation = spec.result_relation
+        steps.append(ResolveResultRelation(relation.unit, relation.result_side, relation.edge))
+        why.append(
+            f"resolve the relation's returned {relation.result_side} endpoint from "
+            f"anchor unit {relation.unit!r}"
+        )
 
     steps.append(Cohere())
     why.append(

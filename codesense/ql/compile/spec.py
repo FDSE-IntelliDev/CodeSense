@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Literal
 
 from codesense.ql.satisfiers import AnnotationSatisfier, LexicalSatisfier, ModifierSatisfier
 from codesense.ql.unit import QueryUnit, Term
@@ -18,6 +18,7 @@ from codesense.ql.unit import QueryUnit, Term
 __all__ = [
     "GraphConstraint",
     "QuerySpec",
+    "ResultRelation",
     "normalise_hops",
     "normalise_kinds",
     "normalise_target",
@@ -48,6 +49,26 @@ KIND_ALIASES: dict[str, tuple[str, ...]] = {
     "annotation": ("annotation_type",),
 }
 
+#: Public result contracts are deliberately stricter than soft kind hints.
+#: Unknown target values are ignored instead of becoming accidental hard
+#: filters.  Unlike ``KIND_ALIASES``, ``class`` means exactly class here;
+#: callers can request the broader ``type`` contract explicitly.
+TARGET_ALIASES: dict[str, tuple[str, ...]] = {
+    "file": ("file",),
+    "type": ("class", "interface", "enum", "record", "annotation_type"),
+    "class": ("class",),
+    "interface": ("interface",),
+    "enum": ("enum",),
+    "record": ("record",),
+    "annotation": ("annotation_type",),
+    "annotation_type": ("annotation_type",),
+    "function": ("method", "constructor"),
+    "method": ("method", "constructor"),
+    "constructor": ("constructor",),
+    "field": ("field",),
+    "variable": ("field",),
+}
+
 
 def normalise_kinds(raw: object) -> tuple[str, ...]:
     """Map the model's kinds onto the index's, passing unknown ones through."""
@@ -64,14 +85,25 @@ def normalise_kinds(raw: object) -> tuple[str, ...]:
 
 
 def normalise_target(raw: object) -> tuple[str, ...]:
-    """Accept only the result target implemented by the current index."""
+    """Map supported hard result contracts onto indexed element kinds.
+
+    Several target values form a stable-order union. Unknown model output is
+    ignored because turning it into a hard filter would silently erase all
+    results.
+    """
     if isinstance(raw, str):
         values = [raw]
     elif isinstance(raw, (list, tuple, set, frozenset)):
         values = list(raw)
     else:
         values = []
-    return ("file",) if any(str(value).strip().lower() == "file" for value in values) else ()
+    found: dict[str, None] = {}
+    for value in values:
+        if not isinstance(value, str):
+            continue
+        for kind in TARGET_ALIASES.get(value.strip().lower(), ()):
+            found.setdefault(kind, None)
+    return tuple(found)
 
 
 def normalise_hops(raw: object) -> tuple[int, int]:
@@ -116,6 +148,24 @@ class GraphConstraint:
 
 
 @dataclass(frozen=True, slots=True)
+class ResultRelation:
+    """A graph relation whose named side anchors the returned endpoint."""
+
+    unit: str
+    result_side: Literal["source", "target"]
+    edge: tuple[str, ...]
+
+    def __post_init__(self) -> None:
+        if self.result_side not in {"source", "target"}:
+            raise ValueError("result_side must be 'source' or 'target'")
+        if not self.unit:
+            raise ValueError("a result relation must name its anchor unit")
+        if not self.edge:
+            raise ValueError("a result relation must name at least one edge")
+        object.__setattr__(self, "edge", tuple(dict.fromkeys(self.edge)))
+
+
+@dataclass(frozen=True, slots=True)
 class QuerySpec:
     """The complete structure of one query."""
 
@@ -125,6 +175,7 @@ class QuerySpec:
     concept: str = ""
     kinds: tuple[str, ...] = ()
     target: tuple[str, ...] = ()
+    result_relation: ResultRelation | None = None
     limit: int | None = None
 
     def __post_init__(self) -> None:
@@ -135,6 +186,8 @@ class QuerySpec:
         if len(names) != len(set(names)):
             raise ValueError(f"duplicate unit names: {names}")
         known = set(names)
+        if self.result_relation is not None and self.result_relation.unit not in known:
+            raise ValueError("result relation names an unknown unit")
         for constraint in self.graph:
             unknown = {constraint.src, constraint.dst} - known
             if unknown:
@@ -162,8 +215,22 @@ class QuerySpec:
             concept=str(payload.get("concept") or ""),
             kinds=normalise_kinds(payload.get("kinds")),
             target=normalise_target(payload.get("target")),
+            result_relation=_result_relation(payload.get("result_relation")),
             limit=payload.get("limit"),
         )
+
+
+def _result_relation(raw: object) -> ResultRelation | None:
+    if raw is None or isinstance(raw, ResultRelation):
+        return raw
+    if not isinstance(raw, dict):
+        raise ValueError("result_relation must be an object")
+    edge = raw.get("edge", ())
+    return ResultRelation(
+        unit=str(raw.get("unit") or ""),
+        result_side=str(raw.get("result_side") or ""),  # type: ignore[arg-type]
+        edge=tuple(edge) if isinstance(edge, (list, tuple)) else (),
+    )
 
 
 def _unit(payload: dict[str, Any]) -> QueryUnit:

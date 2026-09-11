@@ -5,6 +5,7 @@ The focus is **ordering** -- the one place the compiler optimises.
 
 from __future__ import annotations
 
+import importlib
 from collections.abc import Sequence
 
 import pytest
@@ -12,17 +13,20 @@ import pytest
 from codesense.ql import Edge, Element, Frag, IndexField
 from codesense.ql.compile import (
     Boost,
+    Cohere,
     EvalUnit,
     Intent,
     Narrow,
     ProjectTarget,
     QuerySpec,
+    ResolveResultRelation,
+    ResultRelation,
     estimate_unit,
     plan,
 )
 from codesense.ql.compile.partition import partition
 from codesense.ql.compile.plan import State
-from codesense.ql.compile.spec import normalise_hops, normalise_kinds
+from codesense.ql.compile.spec import normalise_hops, normalise_kinds, normalise_target
 from codesense.ql.compile.validate import relation_lift, validate_relations
 from codesense.ql.context import EvalContext
 from codesense.ql.store import (
@@ -445,6 +449,88 @@ class TestExecution:
         assert set(state.current.nodes) == {2, 3}
         assert state.boosted == {2}
 
+    def test_non_file_target_filters_without_graph_projection(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        ctx = self._relation_context(())
+        state = State(current=self._frag(ctx, 2, 3), boosted={2})
+
+        def unexpected_projection(*args: object, **kwargs: object) -> Frag:
+            raise AssertionError("non-file targets must not traverse in_file edges")
+
+        plan_module = importlib.import_module("codesense.ql.compile.plan")
+        monkeypatch.setattr(plan_module, "project", unexpected_projection)
+
+        ProjectTarget(("method",)).apply(ctx, state)
+
+        assert set(state.current.nodes) == {2, 3}
+        assert state.boosted == {2}
+
+    def test_mixed_target_unions_direct_elements_and_owner_files(self) -> None:
+        ctx = self._relation_context((Edge(2, 11, "in_file"), Edge(3, 12, "in_file")))
+        state = State(current=self._frag(ctx, 2, 3), boosted={2})
+
+        ProjectTarget(("method", "file")).apply(ctx, state)
+
+        assert set(state.current.nodes) == {2, 3, 11, 12}
+        assert state.boosted == {2, 11}
+
+    def test_result_relation_resolves_the_requested_side_before_file_target(self) -> None:
+        ctx = self._relation_context(
+            (Edge(2, 3, "references"), Edge(2, 11, "in_file"), Edge(3, 12, "in_file"))
+        )
+        anchor = self._frag(ctx, 3)
+        state = State(units={"page_request": anchor}, current=anchor)
+
+        ResolveResultRelation("page_request", "source", ("references",)).apply(ctx, state)
+        ProjectTarget(("file",)).apply(ctx, state)
+
+        assert set(state.current.nodes) == {11}
+
+    def test_result_relation_with_no_real_edge_returns_an_empty_fragment(self) -> None:
+        ctx = self._relation_context(())
+        anchor = self._frag(ctx, 3)
+        state = State(units={"page_request": anchor}, current=anchor)
+
+        ResolveResultRelation("page_request", "source", ("references",)).apply(ctx, state)
+
+        assert not state.current
+
+    def test_planner_resolves_result_relation_before_coherence_and_target(self) -> None:
+        ctx = make_context({"rare": (1,), "common": (2,)})
+
+        steps = plan(
+            spec(
+                result_relation=ResultRelation(
+                    unit="narrow", result_side="source", edge=("references",)
+                ),
+                target="file",
+            ),
+            ctx,
+        ).steps
+
+        resolved = next(
+            i for i, step in enumerate(steps) if isinstance(step, ResolveResultRelation)
+        )
+        coherence = next(i for i, step in enumerate(steps) if isinstance(step, Cohere))
+        target = next(i for i, step in enumerate(steps) if isinstance(step, ProjectTarget))
+        assert resolved < coherence < target
+
+    def test_planner_never_drops_the_hard_result_relation_anchor(self) -> None:
+        ctx = make_context({"common": 950, "rare": 1})
+
+        steps = plan(
+            spec(
+                result_relation=ResultRelation(
+                    unit="wide", result_side="source", edge=("references",)
+                )
+            ),
+            ctx,
+        ).steps
+
+        evaluated = {step.unit.name for step in steps if isinstance(step, EvalUnit)}
+        assert "wide" in evaluated
+
     def test_units_union_rather_than_intersect(self) -> None:
         """Intersection kills the answers -- units land on different
         elements."""
@@ -498,11 +584,17 @@ class TestSpecRobustness:
         ("raw", "expected"),
         [
             ("file", ("file",)),
-            (["FILE", "unknown"], ("file",)),
+            ("class", ("class",)),
+            ("type", ("class", "interface", "enum", "record", "annotation_type")),
+            ("function", ("method", "constructor")),
+            (
+                ["FILE", "function", "file", "method", "unknown"],
+                ("file", "method", "constructor"),
+            ),
             (None, ()),
         ],
     )
-    def test_target_accepts_only_the_supported_file_contract(
+    def test_target_normalises_supported_result_kinds(
         self, raw: object, expected: tuple[str, ...]
     ) -> None:
         payload = {
@@ -513,6 +605,9 @@ class TestSpecRobustness:
             payload["target"] = raw
 
         assert QuerySpec.from_dict(payload).target == expected
+
+    def test_unknown_result_targets_are_ignored(self) -> None:
+        assert normalise_target(["widget", 3, None]) == ()
 
     def test_duplicate_unit_names_raise(self) -> None:
         with pytest.raises(ValueError, match="duplicate"):

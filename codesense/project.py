@@ -239,9 +239,10 @@ class Project:
         route: str = "codegen",
         limit: int = 30,
         target: str | Sequence[str] | None = None,
+        trace: bool = True,
         **kwargs: Any,
     ) -> SearchResult:
-        """Run a query. See `codesense.search.search` for the routes."""
+        """Run a query, printing stage progress unless ``trace=False``."""
         return search(
             query,
             self.context,
@@ -251,6 +252,7 @@ class Project:
             route=route,
             limit=limit,
             target=target,
+            trace=trace,
             **kwargs,
         )
 

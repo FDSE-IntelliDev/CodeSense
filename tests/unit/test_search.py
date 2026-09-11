@@ -14,6 +14,7 @@ from collections.abc import Sequence
 import pytest
 
 from codesense.index import Index
+from codesense.llm import QueryUnderstandingResult
 from codesense.ql.frag import Evidence, Frag, UnitHit, Verdict
 from codesense.ql.judge import JudgeItem
 from codesense.ql.operators import score_of
@@ -199,41 +200,32 @@ def make_file_target_context(owners: Sequence[int]):  # type: ignore[no-untyped-
     return index.to_context()
 
 
-def planned_understanding(*, target: object, concept: str = "") -> dict[str, object]:
-    return {
-        "terms": {"alloc": 1.0},
-        "groups": {},
-        "relations": (),
-        "annotations": (),
-        "concept": concept,
-        "target": target,
-    }
-
-
-class MissingTargetPlanningResponse:
-    """OpenAI-compatible response with a genuinely missing target field."""
-
-    def raise_for_status(self) -> None:
-        return None
-
-    def json(self) -> dict[str, object]:
-        return {
-            "choices": [
+def planned_understanding(*, target: object = (), concept: str = "") -> QueryUnderstandingResult:
+    targets = [target] if isinstance(target, str) else list(target)  # type: ignore[arg-type]
+    return QueryUnderstandingResult.model_validate(
+        {
+            "units": [
                 {
-                    "message": {
-                        "content": (
-                            '{"terms":{"alloc":1.0},"groups":{},"relations":[],'
-                            '"annotations":[],"concept":""}'
-                        )
-                    }
+                    "name": "allocation",
+                    "concept": "allocation code",
+                    "query_terms": ["alloc"],
+                    "terms": [
+                        {
+                            "value": "alloc",
+                            "source": "literal",
+                            "weight": 1.0,
+                            "related_query_terms": ["alloc"],
+                            "reason": "literal query term",
+                        }
+                    ],
                 }
-            ]
+            ],
+            "relations": [],
+            "targets": targets,
+            "annotations": [],
+            "criterion": concept or "matches allocation code",
         }
-
-
-class MissingTargetPlanningSession:
-    def post(self, *_args: object, **_kwargs: object) -> MissingTargetPlanningResponse:
-        return MissingTargetPlanningResponse()
+    )
 
 
 @pytest.fixture
@@ -242,6 +234,76 @@ def ctx():  # type: ignore[no-untyped-def]
 
 
 class TestRouting:
+    def test_search_reports_key_stages_by_default(self, ctx, capsys) -> None:  # type: ignore[no-untyped-def]
+        result = search("Find Java files containing alloc", ctx, route="lexical")
+
+        output = capsys.readouterr().out
+        assert result.hits
+        assert "[codesense.search] search.start" in output
+        assert "[codesense.search] route.start route='lexical'" in output
+        assert "[codesense.search] lexical.terms" in output
+        assert "[codesense.search] operator.start name='eval_unit'" in output
+        assert "[codesense.search] operator.start name='top'" in output
+        assert "[codesense.search] operator.start name='reach'" in output
+        assert "[codesense.search] operator.start name='project'" in output
+        assert "[codesense.search] target.enforce.done" in output
+        assert "[codesense.search] search.done route='lexical'" in output
+
+    def test_search_stage_reporting_can_be_disabled(self, ctx, capsys) -> None:  # type: ignore[no-untyped-def]
+        result = search("alloc", ctx, route="lexical", trace=False)
+
+        assert result.hits
+        assert capsys.readouterr().out == ""
+
+    def test_planned_search_reports_every_execution_step(
+        self, ctx, monkeypatch: pytest.MonkeyPatch, capsys
+    ) -> None:  # type: ignore[no-untyped-def]
+        monkeypatch.setattr(
+            "codesense.llm.QueryUnderstanding.understand",
+            lambda *args: planned_understanding(),
+        )
+
+        result = search(
+            "alloc",
+            ctx,
+            route="planned",
+            llm=object(),
+            vocabulary=(("alloc", 2),),
+        )
+
+        output = capsys.readouterr().out
+        assert result.hits
+        assert "[codesense.search] planned.understand.start" in output
+        assert "[codesense.search] planned.plan.ready" in output
+        assert "[codesense.search] operator.start step=" in output
+        assert "[codesense.search] operator.done step=" in output
+        assert "predicted=" in output
+        assert "actual=" in output
+
+    def test_codegen_search_reports_generation_execution_and_operators(
+        self, ctx, monkeypatch: pytest.MonkeyPatch, capsys
+    ) -> None:  # type: ignore[no-untyped-def]
+        source = (
+            'unit = QueryUnit("q", satisfiers='
+            '(LexicalSatisfier(terms=(Term("alloc"),)),))\n'
+            "answer = top(eval_unit(unit, ctx), 10)\n"
+        )
+        monkeypatch.setattr(
+            "codesense.llm.ScriptGenerator.generate",
+            lambda *args, **kwargs: source,
+        )
+
+        result = search("alloc", ctx, route="codegen", llm=object())
+
+        output = capsys.readouterr().out
+        assert result.hits
+        assert "[codesense.search] codegen.generate.start" in output
+        assert "[codesense.search] codegen.generate.done" in output
+        assert "[codesense.search] codegen.execute.start" in output
+        assert "[codesense.search] operator.start name='eval_unit'" in output
+        assert "[codesense.search] operator.done name='top'" in output
+        assert "[codesense.search] codegen.execute.done" in output
+
     def test_rejects_an_unknown_route(self, ctx) -> None:  # type: ignore[no-untyped-def]
         with pytest.raises(ValueError, match="route must be one of"):
             search("x", ctx, route="telepathy")
@@ -264,13 +326,7 @@ class TestRouting:
     ) -> None:  # type: ignore[no-untyped-def]
         monkeypatch.setattr(
             "codesense.llm.QueryUnderstanding.understand",
-            lambda *args: {
-                "terms": {"alloc": 1.0},
-                "groups": {},
-                "relations": (),
-                "annotations": (),
-                "concept": "",
-            },
+            lambda *args: planned_understanding(),
         )
 
         result = search(
@@ -289,14 +345,7 @@ class TestRouting:
     ) -> None:  # type: ignore[no-untyped-def]
         monkeypatch.setattr(
             "codesense.llm.QueryUnderstanding.understand",
-            lambda *args: {
-                "terms": {"alloc": 1.0},
-                "groups": {},
-                "relations": (),
-                "annotations": (),
-                "concept": "",
-                "target": ["file"],
-            },
+            lambda *args: planned_understanding(target=("file",)),
         )
 
         result = search(
@@ -311,18 +360,12 @@ class TestRouting:
         assert result.target == ("file",)
         assert {hit.kind for hit in result.hits} == {"file"}
 
-    def test_planned_missing_target_defers_to_lexical_output_inference(
+    def test_planned_empty_target_suppresses_query_text_inference(
         self, ctx, monkeypatch: pytest.MonkeyPatch
     ) -> None:  # type: ignore[no-untyped-def]
         monkeypatch.setattr(
             "codesense.llm.QueryUnderstanding.understand",
-            lambda *args: {
-                "terms": {"alloc": 1.0},
-                "groups": {},
-                "relations": (),
-                "annotations": (),
-                "concept": "",
-            },
+            lambda *args: planned_understanding(),
         )
 
         result = search(
@@ -334,22 +377,15 @@ class TestRouting:
         )
 
         assert result.route == "planned"
-        assert result.target == ("file",)
-        assert {hit.kind for hit in result.hits} == {"file"}
+        assert result.target == ()
+        assert {hit.kind for hit in result.hits} == {"class", "method"}
 
     def test_explicit_empty_target_overrides_the_planned_target(
         self, ctx, monkeypatch: pytest.MonkeyPatch
     ) -> None:  # type: ignore[no-untyped-def]
         monkeypatch.setattr(
             "codesense.llm.QueryUnderstanding.understand",
-            lambda *args: {
-                "terms": {"alloc": 1.0},
-                "groups": {},
-                "relations": (),
-                "annotations": (),
-                "concept": "",
-                "target": ["file"],
-            },
+            lambda *args: planned_understanding(target=("file",)),
         )
 
         result = search(

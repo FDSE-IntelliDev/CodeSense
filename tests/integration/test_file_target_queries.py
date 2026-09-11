@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 from codesense import Project
-from codesense.llm import ScriptGenerator
+from codesense.llm import QueryUnderstanding, QueryUnderstandingResult, ScriptGenerator
 from codesense.ql.operators import eval_unit, only
 from codesense.ql.operators import project as project_op
 from codesense.ql.satisfiers import LexicalSatisfier
@@ -137,3 +137,58 @@ def test_codegen_import_query_returns_only_the_importing_file(
     assert [hit.file for hit in result.hits] == ["Controller.java"]
     assert all(hit.kind == "file" for hit in result.hits)
     assert "PageRequest.java" not in {hit.file for hit in result.hits}
+
+
+def test_planned_reference_query_returns_the_relational_file_target(
+    project: Project,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The typed IR binds returned files to the source side of references."""
+    understood = QueryUnderstandingResult.model_validate(
+        {
+            "units": [
+                {
+                    "name": "page_request",
+                    "concept": "the PageRequest class",
+                    "query_terms": ["PageRequest"],
+                    "terms": [
+                        {
+                            "value": "page",
+                            "source": "derived",
+                            "weight": 0.8,
+                            "related_query_terms": ["PageRequest"],
+                            "reason": "identifier component",
+                        },
+                        {
+                            "value": "request",
+                            "source": "derived",
+                            "weight": 0.8,
+                            "related_query_terms": ["PageRequest"],
+                            "reason": "identifier component",
+                        },
+                    ],
+                }
+            ],
+            "relations": [
+                {
+                    "source": {"kind": "result", "unit": None},
+                    "target": {"kind": "unit", "unit": "page_request"},
+                    "edges": ["references"],
+                }
+            ],
+            "targets": ["file"],
+            "annotations": [],
+            "criterion": "files containing a reference to PageRequest",
+        }
+    )
+    monkeypatch.setattr(QueryUnderstanding, "understand", lambda *_args, **_kwargs: understood)
+
+    result = project.search(QUERY, route="planned")
+
+    assert result.route == "planned"
+    assert result.target == ("file",)
+    assert [hit.file for hit in result.hits] == ["Controller.java"]
+    assert all(hit.kind == "file" for hit in result.hits)
+    assert "PageRequest.java" not in {hit.file for hit in result.hits}
+    assert 'direction="backward"' in result.script
+    assert 'edge="in_file"' in result.script

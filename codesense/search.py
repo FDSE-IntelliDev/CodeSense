@@ -25,8 +25,9 @@ from __future__ import annotations
 import logging
 import re
 import time
-from collections.abc import Iterable, Sequence
+from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass, field
+from functools import wraps
 from typing import Any
 
 from codesense.ql.compile.spec import normalise_target
@@ -41,6 +42,8 @@ from codesense.ql.unit import QueryUnit, Term
 __all__ = ["Hit", "ROUTES", "SearchResult", "representative_vocabulary", "search"]
 
 _log = logging.getLogger(__name__)
+
+Progress = Callable[..., None]
 
 ROUTES = ("codegen", "planned", "lexical")
 
@@ -231,6 +234,7 @@ def search(
     limit: int = 30,
     judge: bool = False,
     target: str | Sequence[str] | None = None,
+    trace: bool = True,
 ) -> SearchResult:
     """Run a query.
 
@@ -241,10 +245,23 @@ def search(
     ``judge`` turns on the `intent` operator. Off by default because it is the
     one operator that costs money per result, and because under a recall metric
     it can only remove candidates.
+
+    ``trace`` prints compact progress events for route stages and operators.
+    It is on by default so long-running searches remain observable; callers
+    that require quiet stdout can pass ``trace=False``.
     """
     if route not in ROUTES:
         raise ValueError(f"route must be one of {ROUTES}, got {route!r}")
     started = time.perf_counter()
+    progress: Progress | None = _write_progress if trace else None
+    _notify(
+        progress,
+        "search.start",
+        route=route,
+        target=target if target is not None else "auto",
+        limit=limit,
+        query=_short_query(query),
+    )
     route_judge_ran = False
     target_was_explicit = target is not None
     # ``None`` means no route has decided yet; ``()`` is a deliberate empty
@@ -252,9 +269,11 @@ def search(
     requested_target = normalise_target(target) if target_was_explicit else None
     if llm is None and route != "lexical":
         _log.info("no LLM configured; falling back to the lexical route")
+        _notify(progress, "route.fallback", route=route, fallback="lexical", reason="no LLM")
         route = "lexical"
 
     runner = {"codegen": _codegen, "planned": _planned, "lexical": _lexical}[route]
+    _notify(progress, "route.start", route=route)
     try:
         frag, script, notes, route_target = runner(
             query,
@@ -266,9 +285,17 @@ def search(
             target_was_explicit,
             judge,
             limit,
+            progress,
         )
     except _PlannedFailure as exc:
         _log.exception("route %s failed", route)
+        _notify(
+            progress,
+            "route.fallback",
+            route=route,
+            fallback="lexical",
+            reason=f"{type(exc.cause).__name__}: {exc.cause}",
+        )
         route_judge_ran = exc.judge_ran
         fallback_target = requested_target if target_was_explicit else exc.target
         frag, script, notes, route_target = _lexical(
@@ -281,6 +308,7 @@ def search(
             target_was_explicit,
             judge,
             limit,
+            progress,
         )
         notes = [
             f"{route} failed ({type(exc.cause).__name__}: {exc.cause}); fell back to lexical",
@@ -289,6 +317,13 @@ def search(
         route = "lexical"
     except Exception as exc:  # noqa: BLE001 -- a failed route degrades, never crashes
         _log.exception("route %s failed", route)
+        _notify(
+            progress,
+            "route.fallback",
+            route=route,
+            fallback="lexical",
+            reason=f"{type(exc).__name__}: {exc}",
+        )
         frag, script, notes, route_target = _lexical(
             query,
             ctx,
@@ -299,9 +334,12 @@ def search(
             target_was_explicit,
             judge,
             limit,
+            progress,
         )
         notes = [f"{route} failed ({type(exc).__name__}: {exc}); fell back to lexical", *notes]
         route = "lexical"
+
+    _notify(progress, "route.done", route=route, candidates=len(frag), target=route_target)
 
     effective_target = (
         requested_target
@@ -310,24 +348,76 @@ def search(
         if route_target is not None
         else _query_target(query)
     )
+    _notify(progress, "target.resolved", target=effective_target or "default")
     if judge and not route_judge_ran and route != "planned" and len(frag) and ctx.judge is not None:
+        before_judge = len(frag)
+        _notify(progress, "operator.start", name="intent", candidates=before_judge)
+        judged_started = time.perf_counter()
         frag, notes = _judge(frag, query, ctx, notes)
-    frag = _enforce_target(frag, ctx, effective_target)
+        _notify(
+            progress,
+            "operator.done",
+            name="intent",
+            candidates=before_judge,
+            actual=len(frag),
+            elapsed=time.perf_counter() - judged_started,
+        )
+    before_target = len(frag)
+    _notify(
+        progress,
+        "target.enforce.start",
+        target=effective_target or "default",
+        candidates=before_target,
+    )
+    frag = _enforce_target(frag, ctx, effective_target, progress=progress)
+    _notify(
+        progress,
+        "target.enforce.done",
+        target=effective_target or "default",
+        candidates=before_target,
+        actual=len(frag),
+    )
     if route == "lexical" and effective_target:
         notes = [
             *notes,
-            "file target is a lexical approximation; relation semantics were not verified",
+            "requested target is a lexical approximation; relation semantics were not verified",
         ]
 
+    hits = _rank(frag, limit)
+    elapsed = time.perf_counter() - started
+    _notify(progress, "search.done", route=route, hits=len(hits), elapsed=elapsed)
     return SearchResult(
         query=query,
-        hits=_rank(frag, limit),
+        hits=hits,
         route=route,
         script=script,
         notes=notes,
         target=effective_target,
-        elapsed=time.perf_counter() - started,
+        elapsed=elapsed,
     )
+
+
+def _write_progress(stage: str, **fields: object) -> None:
+    """Print one compact, immediately visible search progress event."""
+    details = " ".join(f"{name}={_progress_value(value)}" for name, value in fields.items())
+    suffix = f" {details}" if details else ""
+    print(f"[codesense.search] {stage}{suffix}", flush=True)
+
+
+def _notify(progress: Progress | None, stage: str, **fields: object) -> None:
+    if progress is not None:
+        progress(stage, **fields)
+
+
+def _progress_value(value: object) -> str:
+    if isinstance(value, float):
+        return f"{value:.4f}s"
+    return repr(value)
+
+
+def _short_query(query: str, limit: int = 160) -> str:
+    compact = " ".join(query.split())
+    return compact if len(compact) <= limit else f"{compact[: limit - 1]}…"
 
 
 def _query_target(query: str) -> tuple[str, ...]:
@@ -342,13 +432,27 @@ def _query_target(query: str) -> tuple[str, ...]:
     return ()
 
 
-def _enforce_target(frag: Frag, ctx: EvalContext, target: tuple[str, ...]) -> Frag:
+def _enforce_target(
+    frag: Frag,
+    ctx: EvalContext,
+    target: tuple[str, ...],
+    *,
+    progress: Progress | None = None,
+) -> Frag:
     """Apply the same hard output contract after every route and fallback."""
     if not target:
         return frag.induced(sid for sid, element in frag.nodes.items() if element.kind != "file")
     if all(element.kind in target for element in frag.nodes.values()):
         return frag
-    return project_frag(frag, ctx, edge="in_file", kind=target, include_self=True)
+    direct_kinds = tuple(kind for kind in target if kind != "file")
+    direct = frag.induced(
+        symbol_id for symbol_id, element in frag.nodes.items() if element.kind in direct_kinds
+    )
+    if "file" not in target:
+        return direct
+    traced_project = _traced_operator("project", project_frag, progress)
+    files = traced_project(frag, ctx, edge="in_file", kind="file", include_self=True)
+    return direct | files
 
 
 def _returned_target(frag: Frag) -> tuple[str, ...] | None:
@@ -399,13 +503,17 @@ def _judge(frag: Frag, query: str, ctx: EvalContext, notes: list[str]) -> tuple[
     return judged, [*notes, f"intent judged {len(narrowed)} candidates, kept {len(judged)}"]
 
 
-def _namespace(ctx: EvalContext, judge: bool = False) -> dict[str, Any]:
+def _namespace(
+    ctx: EvalContext,
+    judge: bool = False,
+    progress: Progress | None = None,
+) -> dict[str, Any]:
     """What a generated script may reach.
 
     `intent` is stubbed out unless judging is on, so a script that calls it
     does not silently spend money during an ordinary search.
     """
-    return {
+    namespace = {
         "ctx": ctx,
         "eval_unit": eval_unit,
         "hop": hop,
@@ -422,6 +530,42 @@ def _namespace(ctx: EvalContext, judge: bool = False) -> dict[str, Any]:
         "AnnotationSatisfier": AnnotationSatisfier,
         "ModifierSatisfier": ModifierSatisfier,
     }
+    for name in ("eval_unit", "hop", "reach", "project", "degree", "only", "top", "intent"):
+        namespace[name] = _traced_operator(name, namespace[name], progress)
+    return namespace
+
+
+def _traced_operator(name: str, operator: Any, progress: Progress | None) -> Any:
+    """Wrap generated-script operators without tracing hot per-symbol helpers."""
+    if progress is None:
+        return operator
+
+    @wraps(operator)
+    def traced(*args: object, **kwargs: object) -> object:
+        inputs = [len(value) for value in (*args, *kwargs.values()) if isinstance(value, Frag)]
+        _notify(progress, "operator.start", name=name, inputs=inputs or "none")
+        started = time.perf_counter()
+        try:
+            result = operator(*args, **kwargs)
+        except Exception as exc:
+            _notify(
+                progress,
+                "operator.failed",
+                name=name,
+                error=f"{type(exc).__name__}: {exc}",
+                elapsed=time.perf_counter() - started,
+            )
+            raise
+        _notify(
+            progress,
+            "operator.done",
+            name=name,
+            actual=len(result) if isinstance(result, Frag) else type(result).__name__,
+            elapsed=time.perf_counter() - started,
+        )
+        return result
+
+    return traced
 
 
 def _codegen(
@@ -434,12 +578,15 @@ def _codegen(
     _target_was_explicit: bool,
     _judge: bool,
     _limit: int,
+    progress: Progress | None,
 ) -> tuple[Frag, str, list[str], tuple[str, ...] | None]:
     """Have the model write the script, then run it behind the whitelist."""
     from codesense.llm import ScriptGenerator
     from codesense.ql import ScriptError, run_script
 
     vocab = list(vocabulary)[:VOCAB_FOR_PROMPT]
+    _notify(progress, "codegen.generate.start", vocabulary=len(vocab), symbols=ctx.symbols.count())
+    generated_started = time.perf_counter()
     source = ScriptGenerator(llm).generate(
         query,
         project or "the project",
@@ -449,12 +596,26 @@ def _codegen(
     )
     if not source:
         raise RuntimeError("the model returned no script")
+    _notify(
+        progress,
+        "codegen.generate.done",
+        lines=source.count("\n") + 1,
+        elapsed=time.perf_counter() - generated_started,
+    )
+    _notify(progress, "codegen.execute.start")
+    executed_started = time.perf_counter()
     try:
-        answer = run_script(source, _namespace(ctx))
+        answer = run_script(source, _namespace(ctx, progress=progress))
     except ScriptError as exc:
         raise RuntimeError(f"generated script rejected: {exc}") from exc
     if not isinstance(answer, Frag):
         raise TypeError(f"the script produced a {type(answer).__name__}, not a Frag")
+    _notify(
+        progress,
+        "codegen.execute.done",
+        candidates=len(answer),
+        elapsed=time.perf_counter() - executed_started,
+    )
     return (
         answer,
         source,
@@ -473,23 +634,29 @@ def _planned(
     target_was_explicit: bool,
     judge: bool,
     limit: int,
+    progress: Progress | None,
 ) -> tuple[Frag, str, list[str], tuple[str, ...] | None]:
     """Model proposes, statistics validate, the planner orders."""
-    from codesense.llm import QueryUnderstanding
-    from codesense.ql.compile import Intent, build_spec, plan, to_script
+    from codesense.llm import EndpointKind, QueryUnderstanding
+    from codesense.ql.compile import Intent, ResultRelation, build_spec, plan, to_script
+    from codesense.ql.term_resolution import TermResolver
 
-    vocab = [term for term, _ in list(vocabulary)[:VOCAB_FOR_PROMPT]]
+    vocab = list(vocabulary)[:VOCAB_FOR_PROMPT]
+    _notify(progress, "planned.understand.start", vocabulary=len(vocab))
+    understood_started = time.perf_counter()
     understood = QueryUnderstanding(llm).understand(query, project or "the project", vocab)
     if understood is None:
         raise RuntimeError("the model could not interpret the query")
-    if target_was_explicit:
-        route_target = target
-    elif "target" in understood:
-        route_target = normalise_target(understood["target"])
-    else:
-        # Target changes plan shape: infer it before construction so file
-        # projection happens before the public limit, preserving aggregation.
-        route_target = _query_target(query)
+    _notify(
+        progress,
+        "planned.understand.done",
+        terms=sum(len(unit.terms) for unit in understood.units),
+        relations=len(understood.relations),
+        elapsed=time.perf_counter() - understood_started,
+    )
+    # Structured output always makes this decision explicitly. An empty list
+    # suppresses the weaker query-text heuristic unless the caller overrides it.
+    route_target = target if target_was_explicit else normalise_target(understood.targets)
     judge_ran = False
 
     def record_step(step: object) -> None:
@@ -498,24 +665,68 @@ def _planned(
             judge_ran = True
 
     try:
+        terms = tuple(
+            Term(
+                value=item.value.casefold(),
+                source=item.source.value,
+                weight=item.weight,
+                reason=item.reason,
+            )
+            for unit in understood.units
+            for item in unit.terms
+        )
+        groups = {
+            unit.name: [item.value.casefold() for item in unit.terms] for unit in understood.units
+        }
+        relations: list[tuple[str, str, tuple[str, ...]]] = []
+        result_relation: ResultRelation | None = None
+        for relation in understood.relations:
+            edges = tuple(edge.value for edge in relation.edges)
+            if relation.source.kind is EndpointKind.RESULT:
+                assert relation.target.unit is not None
+                result_relation = ResultRelation(relation.target.unit, "source", edges)
+            elif relation.target.kind is EndpointKind.RESULT:
+                assert relation.source.unit is not None
+                result_relation = ResultRelation(relation.source.unit, "target", edges)
+            else:
+                assert relation.source.unit is not None and relation.target.unit is not None
+                relations.append((relation.source.unit, relation.target.unit, edges))
+
         # Planned intent is the sole judging layer for this route. Disabling
         # it here keeps judge=False from silently invoking the model.
-        concept = str(understood.get("concept", "") or "") if judge else ""
-        if judge and not concept:
-            concept = query
+        concept = understood.criterion if judge else ""
+        _notify(progress, "planned.spec.start", target=route_target or "default")
+        planned_started = time.perf_counter()
+        resolver = TermResolver(ctx)
         spec, validation_notes = build_spec(
             query,
-            understood["terms"],
+            terms,
             ctx,
             concept=concept,
-            annotations=understood.get("annotations", ()),
-            groups=understood.get("groups"),
-            relations=understood.get("relations", ()),
+            annotations=understood.annotations,
+            groups=groups,
+            relations=relations,
+            result_relation=result_relation,
             target=route_target,
             limit=limit,
+            resolver=resolver,
         )
-        execution = plan(spec, ctx)
-        state = execution.run(ctx, after_step=record_step)
+        execution = plan(spec, ctx, resolver=resolver)
+        _notify(
+            progress,
+            "planned.plan.ready",
+            steps=len(execution.steps),
+            elapsed=time.perf_counter() - planned_started,
+        )
+        _notify(progress, "planned.execute.start", steps=len(execution.steps))
+        executed_started = time.perf_counter()
+        state = execution.run(ctx, after_step=record_step, progress=progress)
+        _notify(
+            progress,
+            "planned.execute.done",
+            candidates=len(state.current),
+            elapsed=time.perf_counter() - executed_started,
+        )
         return (
             state.current,
             to_script(execution, spec),
@@ -536,6 +747,7 @@ def _lexical(
     _target_was_explicit: bool,
     _judge: bool,
     _limit: int,
+    progress: Progress | None,
 ) -> tuple[Frag, str, list[str], tuple[str, ...]]:
     """The query's own words, grounded through the expansion table.
 
@@ -549,6 +761,7 @@ def _lexical(
     """
     effective_target = target if target is not None else _query_target(query)
     words = _query_terms(query, ctx)
+    _notify(progress, "lexical.terms", terms=words, target=effective_target or "default")
     if not words:
         return (
             Frag(),
@@ -561,10 +774,28 @@ def _lexical(
         concept=query,
         satisfiers=(LexicalSatisfier(terms=tuple(Term(w) for w in words), weight=0.5),),
     )
+    _notify(progress, "operator.start", name="eval_unit", inputs="query")
+    evaluated_started = time.perf_counter()
     frag = eval_unit(unit, ctx)
+    _notify(
+        progress,
+        "operator.done",
+        name="eval_unit",
+        actual=len(frag),
+        elapsed=time.perf_counter() - evaluated_started,
+    )
     if not len(frag):
         return frag, "", [f"no hits for {', '.join(words)}"], effective_target
-    frag = _cohere(frag, ctx)
+    _notify(progress, "operator.start", name="cohere", candidates=len(frag))
+    coherence_started = time.perf_counter()
+    frag = _cohere(frag, ctx, progress=progress)
+    _notify(
+        progress,
+        "operator.done",
+        name="cohere",
+        actual=len(frag),
+        elapsed=time.perf_counter() - coherence_started,
+    )
     return frag, "", [f"matched on {', '.join(words)}"], effective_target
 
 
@@ -585,7 +816,14 @@ def _query_terms(query: str, ctx: EvalContext) -> list[str]:
     return found
 
 
-def _cohere(frag: Frag, ctx: EvalContext, seeds: int = 20, boost: float = 0.6) -> Frag:
+def _cohere(
+    frag: Frag,
+    ctx: EvalContext,
+    seeds: int = 20,
+    boost: float = 0.6,
+    *,
+    progress: Progress | None = None,
+) -> Frag:
     """Weight up candidates structurally near the strongest hits.
 
     Weighting, not filtering -- `reach` produces no scores, so replacing the
@@ -593,7 +831,16 @@ def _cohere(frag: Frag, ctx: EvalContext, seeds: int = 20, boost: float = 0.6) -
     increment is evidence rather than temporary ordering so the final rank,
     displayed score and explanation all observe the same boost.
     """
-    near = reach(top(frag, seeds), ctx, edge=["calls", "contains"], direction="any", hops=(1, 2))
+    traced_top = _traced_operator("top", top, progress)
+    traced_reach = _traced_operator("reach", reach, progress)
+    seeds_frag = traced_top(frag, seeds)
+    near = traced_reach(
+        seeds_frag,
+        ctx,
+        edge=["calls", "contains"],
+        direction="any",
+        hops=(1, 2),
+    )
     boosted = set(near.nodes) & set(frag.nodes)
     if not boosted:
         return frag

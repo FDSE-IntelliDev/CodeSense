@@ -34,6 +34,7 @@ __all__ = [
     "Narrow",
     "Plan",
     "ProjectTarget",
+    "ResolveResultRelation",
     "State",
     "Step",
     "Trace",
@@ -327,29 +328,66 @@ class ProjectTarget(Step):
         self.label = f"target({'/'.join(self.target)})"
 
     def estimate(self, ctx: EvalContext, state: State) -> Estimate:
-        return Estimate(rows=state.rows, cost=float(state.rows), detail="one graph hop")
+        detail = "one graph hop" if "file" in self.target else "kind filter"
+        return Estimate(rows=state.rows, cost=float(state.rows), detail=detail)
 
     def apply(self, ctx: EvalContext, state: State) -> None:
         source = state.current
-        # Ranking state lives in the same id domain as ``current``. Project
-        # the boosted subset through the exact public-target contract before
-        # replacing declarations with their owner files.
+        # Ranking state lives in the same id domain as ``current``. Apply the
+        # exact same target mapping to the boosted subset before replacing the
+        # public candidates.
         boosted_source = source.induced(state.boosted)
+        state.boosted = set(_apply_target(boosted_source, ctx, self.target).nodes)
+        state.current = _apply_target(source, ctx, self.target)
+
+
+def _apply_target(source: Frag, ctx: EvalContext, target: tuple[str, ...]) -> Frag:
+    """Filter direct element targets and optionally add their owner files."""
+    direct_kinds = tuple(kind for kind in target if kind != "file")
+    direct = source.induced(
+        symbol_id for symbol_id, element in source.nodes.items() if element.kind in direct_kinds
+    )
+    if "file" not in target:
+        return direct
+    files = project(source, ctx, edge="in_file", kind="file", include_self=True)
+    return direct | files
+
+
+@dataclass(slots=True)
+class ResolveResultRelation(Step):
+    """Replace lexical candidates with the endpoint bound to ``$result``."""
+
+    unit: str
+    result_side: str
+    edge: tuple[str, ...]
+    label: str = ""
+
+    def __post_init__(self) -> None:
+        self.label = f"result({self.result_side} of {self.unit} via {'/'.join(self.edge)})"
+
+    @property
+    def direction(self) -> str:
+        return "backward" if self.result_side == "source" else "forward"
+
+    def estimate(self, ctx: EvalContext, state: State) -> Estimate:
+        return estimate_hop(state.unit_rows(self.unit), ctx, hops=(1, 1))
+
+    def apply(self, ctx: EvalContext, state: State) -> None:
+        anchor = state.units.get(self.unit, Frag())
+        boosted_anchor = anchor.induced(state.boosted)
+        state.current = project(
+            anchor,
+            ctx,
+            edge=self.edge,
+            direction=self.direction,
+        )
         state.boosted = set(
             project(
-                boosted_source,
+                boosted_anchor,
                 ctx,
-                edge="in_file",
-                kind=self.target,
-                include_self=True,
+                edge=self.edge,
+                direction=self.direction,
             ).nodes
-        )
-        state.current = project(
-            source,
-            ctx,
-            edge="in_file",
-            kind=self.target,
-            include_self=True,
         )
 
 
@@ -396,6 +434,7 @@ class Plan:
         *,
         skip: tuple[type[Step], ...] = (),
         after_step: Callable[[Step], None] | None = None,
+        progress: Callable[..., None] | None = None,
     ) -> State:
         """Execute. ``skip`` omits expensive steps on a dry run, usually
         `Intent`.
@@ -406,19 +445,53 @@ class Plan:
         state = State()
         for step in self.steps:
             if isinstance(step, skip):
-                state.trace.append(
-                    Trace(step.label, 0, len(state.current), 0.0, skipped="skipped (dry run)")
+                trace = Trace(
+                    step.label,
+                    0,
+                    len(state.current),
+                    0.0,
+                    skipped="skipped (dry run)",
                 )
+                state.trace.append(trace)
+                if progress is not None:
+                    progress("operator.skip", step=step.label, reason=trace.skipped)
                 continue
             if state.stopped:
-                state.trace.append(Trace(step.label, 0, 0, 0.0, skipped="working set empty"))
+                trace = Trace(step.label, 0, 0, 0.0, skipped="working set empty")
+                state.trace.append(trace)
+                if progress is not None:
+                    progress("operator.skip", step=step.label, reason=trace.skipped)
                 continue
             predicted = step.estimate(ctx, state).rows
+            if progress is not None:
+                progress("operator.start", step=step.label, predicted=predicted)
             started = time.perf_counter()
-            step.apply(ctx, state)
-            state.trace.append(
-                Trace(step.label, predicted, len(state.current), time.perf_counter() - started)
+            try:
+                step.apply(ctx, state)
+            except Exception as exc:
+                if progress is not None:
+                    progress(
+                        "operator.failed",
+                        step=step.label,
+                        error=f"{type(exc).__name__}: {exc}",
+                        elapsed=time.perf_counter() - started,
+                    )
+                raise
+            trace = Trace(
+                step.label,
+                predicted,
+                len(state.current),
+                time.perf_counter() - started,
             )
+            state.trace.append(trace)
+            if progress is not None:
+                progress(
+                    "operator.done",
+                    step=step.label,
+                    predicted=predicted,
+                    actual=trace.actual,
+                    elapsed=trace.seconds,
+                )
             if after_step is not None:
                 after_step(step)
         return state

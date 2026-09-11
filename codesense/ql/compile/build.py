@@ -20,7 +20,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 
 from codesense.ql.compile.partition import Cluster, partition
-from codesense.ql.compile.spec import GraphConstraint, QuerySpec, normalise_target
+from codesense.ql.compile.spec import GraphConstraint, QuerySpec, ResultRelation, normalise_target
 from codesense.ql.compile.validate import validate_groups, validate_relations
 from codesense.ql.context import EvalContext
 from codesense.ql.fields import IndexField
@@ -107,6 +107,7 @@ def build_spec(
     annotations: Sequence[str] = (),
     groups: Mapping[str, Sequence[str]] | None = None,
     relations: Sequence[tuple[str, str] | tuple[str, str, Sequence[str]]] = (),
+    result_relation: ResultRelation | None = None,
     target: object = None,
     limit: int | None = None,
     resolver: TermResolver | None = None,
@@ -134,7 +135,14 @@ def build_spec(
     by_value: dict[str, Term] = {}
     for item in known:
         by_value.setdefault(item.value, item)
+    mapped_result_relation: ResultRelation | None = None
     if groups:
+        mapped_result_relation = _map_result_relation(
+            result_relation,
+            groups,
+            ctx,
+            resolver=term_resolver,
+        )
         checked, group_notes = validate_groups(dict(groups), ctx, resolver=term_resolver)
         notes += group_notes
         named_clusters = [
@@ -152,7 +160,24 @@ def build_spec(
         constraints = tuple(
             GraphConstraint(src=r.src, dst=r.dst, edge=r.edge) for r in kept_relations
         )
+        if mapped_result_relation is not None:
+            anchor_terms = {
+                term for term in groups[mapped_result_relation.unit] if term_resolver.surfaces(term)
+            }
+            final_name = next(
+                (name for name, members in checked.items() if anchor_terms & set(members)),
+                None,
+            )
+            if final_name is None:
+                raise ValueError("result relation anchor could not be mapped to a query unit")
+            mapped_result_relation = ResultRelation(
+                unit=final_name,
+                result_side=mapped_result_relation.result_side,
+                edge=mapped_result_relation.edge,
+            )
     else:
+        if result_relation is not None:
+            raise ValueError("result relation anchor requires named semantic groups")
         clusters = partition(values, ctx, resolver=term_resolver)
         named_clusters = [
             ("q" if len(clusters) == 1 else f"u{index}", cluster)
@@ -187,10 +212,28 @@ def build_spec(
             concept=concept,
             kinds=infer_kinds(values, ctx, resolver=term_resolver),
             target=normalise_target(target),
+            result_relation=mapped_result_relation,
             limit=limit,
         ),
         notes,
     )
+
+
+def _map_result_relation(
+    relation: ResultRelation | None,
+    groups: Mapping[str, Sequence[str]],
+    ctx: EvalContext,
+    *,
+    resolver: TermResolver,
+) -> ResultRelation | None:
+    """Validate a proposal anchor before statistical group fold-back."""
+    if relation is None:
+        return None
+    if relation.unit not in groups:
+        raise ValueError("result relation anchor names an unknown semantic group")
+    if not any(resolver.surfaces(term) for term in groups[relation.unit]):
+        raise ValueError("result relation anchor has no grounded terms")
+    return relation
 
 
 def _normalise(
