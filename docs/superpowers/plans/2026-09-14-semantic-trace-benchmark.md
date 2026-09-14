@@ -4,11 +4,42 @@
 
 **Goal:** 把 resolved 的 Open-SWE-Traces Java 轨迹转换为“一条轨迹一条语义 query”，并用隐藏 reference patch 中修改的既有生产 Java 文件和可确定函数作为评测答案。
 
-**Architecture:** Open-SWE adapter 负责确定性解析原始 issue、trace 和 patch ground truth；`query_mining` 只把 issue 与搜索事件局部窗口交给 LLM，生成唯一语义 query；扁平 `PreparedQuery` 随后由批量 evaluator、静态 viewer 和实时 viewer 直接消费。答案始终来自程序解析 patch，LLM 不接触 patch，也不生成答案。
+**Architecture:** Open-SWE adapter 负责确定性解析原始 issue、trace 和 patch ground truth；`query_mining` 只把 issue 与搜索事件局部窗口交给 LLM，生成唯一语义 query；扁平 `PreparedQuery` 随后由批量 evaluator、动态 JSONL query viewer 和实时评测 viewer 直接消费。答案始终来自程序解析 patch，LLM 不接触 patch，也不生成答案。
 
 **Tech Stack:** Python 3.10+、标准库 `dataclasses/json/re/pathlib`、pytest、ruff、现有 OpenAI-compatible HTTP generator、现有 CodeSense `Project.search()`。
 
 **Spec:** `docs/superpowers/specs/2026-09-14-semantic-trace-benchmark-design.md`
+
+## Current Progress（2026-09-14）
+
+| Task | 状态 | 结果/提交 |
+|---|---|---|
+| 1. reference patch ground truth | ✅ 已完成 | `4b8420a feat: derive Java search gold from reference patches` |
+| 2. 单条语义 query 与扁平 schema | ✅ 已完成 | `3b593fb feat: mine one semantic query per Java trace` |
+| 3. 动态 query JSONL viewer | ✅ 已完成 | `8b698a1 feat: serve semantic queries from live JSONL` |
+| 4. 扁平 benchmark evaluator | ✅ 已完成 | `786db2a feat: evaluate flat semantic query records` |
+| 5. 实时评测 viewer schema 迁移 | ✅ 已完成 | `7668bb0 feat: stream flat semantic query evaluations` |
+| 6. 端到端验收、README、CHANGELOG 和全仓门禁 | ⏳ 未完成 | 尚无提交 |
+
+当前定向回归：
+
+```text
+conda run -n codesearch pytest -q tests/unit/evaluation tests/unit/test_evaluation_script.py
+54 passed
+```
+
+### Remaining Work
+
+仅剩 Task 6，具体包括：
+
+1. 新增 `tests/unit/evaluation/test_semantic_trace_pipeline.py`，用 fake generator 验证
+   resolved Java trace → patch gold → 单条 semantic query 的完整无网络链路，并确认 patch 不进入 prompt；
+2. 把 `evaluation/README.md` 中仍然描述 `searches[]`、`answers[]` 和 `final_answer` 的旧流程
+   改成顶层 `query + answer`、一条 trace 一条 query 的当前流程；
+3. 在 `CHANGELOG.md` 增加本次 Open-SWE-Traces 语义检索 benchmark 条目，同时保留文件中
+   已有的其他未提交记录；
+4. 执行 schema/prompt 泄漏扫描、`ruff check .`、`ruff format --check .` 和全量 `pytest`；
+5. 只提交 Task 6 的测试与文档，并核对未触碰的既有工作区改动。
 
 ## Global Constraints
 
@@ -53,7 +84,7 @@
 - Consumes: Open-SWE record 的 `metadata.reference_patch.patch` unified diff 文本。
 - Produces: `extract_patch_locations(patch: str) -> tuple[CodeLocation, ...]`；`TraceCase.answer: tuple[CodeLocation, ...]`；`TraceCase.gold_error: str | None`。
 
-- [ ] **Step 1: 给 adapter fixture 加入 reference patch，并写失败测试**
+- [x] **Step 1: 给 adapter fixture 加入 reference patch，并写失败测试**
 
 在 `tests/unit/evaluation/test_open_swe_traces.py` 的 `_record()` 中加入：
 
@@ -139,7 +170,7 @@ def test_normalize_record_preserves_the_complete_original_issue() -> None:
 
 给测试文件补充 `from evaluation.models import CodeLocation`。
 
-- [ ] **Step 2: 运行 adapter 测试，确认因字段和解析函数缺失而失败**
+- [x] **Step 2: 运行 adapter 测试，确认因字段和解析函数缺失而失败**
 
 Run:
 
@@ -149,7 +180,7 @@ conda run -n codesearch pytest -q tests/unit/evaluation/test_open_swe_traces.py
 
 Expected: FAIL，错误至少包含 `TraceCase` 没有 `answer`/`gold_error`，或 patch 尚未解析。
 
-- [ ] **Step 3: 扩展 `TraceCase` 的 patch gold 字段和序列化测试**
+- [x] **Step 3: 扩展 `TraceCase` 的 patch gold 字段和序列化测试**
 
 把 `CodeLocation` 放到 `TraceCase` 之前定义，并在 `TraceCase` 末尾增加默认字段，避免其他测试
 fixture 立即失效：
@@ -207,7 +238,7 @@ def test_trace_case_serializes_patch_gold() -> None:
     ]
 ```
 
-- [ ] **Step 4: 在 Open-SWE adapter 中实现最小 unified diff parser**
+- [x] **Step 4: 在 Open-SWE adapter 中实现最小 unified diff parser**
 
 在 `evaluation/trace_adapters/open_swe_traces.py` 增加 `re`、`PurePosixPath` 和 `Sequence`
 导入，导入 `CodeLocation`，并导出解析函数：
@@ -333,7 +364,7 @@ def _reference_patch(record: Mapping[str, object]) -> str | None:
     return _as_optional_text(reference.get("patch"))
 ```
 
-- [ ] **Step 5: 运行 Task 1 测试并修正格式**
+- [x] **Step 5: 运行 Task 1 测试并修正格式**
 
 Run:
 
@@ -345,7 +376,7 @@ conda run -n codesearch ruff format --check evaluation/models.py evaluation/trac
 
 Expected: 全部 PASS。
 
-- [ ] **Step 6: 只提交 patch gold 相关文件**
+- [x] **Step 6: 只提交 patch gold 相关文件**
 
 ```bash
 git add evaluation/models.py evaluation/trace_adapters/open_swe_traces.py tests/unit/evaluation/test_models.py tests/unit/evaluation/test_open_swe_traces.py
@@ -367,7 +398,7 @@ git commit -m "feat: derive Java search gold from reference patches"
 - Consumes: Task 1 的 `TraceCase.answer`、`TraceCase.gold_error` 和 `TraceEvent`。
 - Produces: `search_context(events: Sequence[TraceEvent]) -> tuple[TraceEvent, ...]`；`mine_query(case: TraceCase, generator: QueryGenerator, *, prompt_version: str = "semantic-query-v1") -> MiningOutcome`；扁平 `PreparedQuery.to_dict()`。
 
-- [ ] **Step 1: 把 model 和 mining 测试改成最终扁平契约**
+- [x] **Step 1: 把 model 和 mining 测试改成最终扁平契约**
 
 在 `tests/unit/evaluation/test_models.py` 中把旧 `SearchQuery` fixture 改为：
 
@@ -520,7 +551,7 @@ def test_mine_query_accepts_explicit_invalid_trace_without_retry() -> None:
 
 测试导入列表同步加入 `MiningOutcome`。
 
-- [ ] **Step 2: 运行 model/mining 测试，确认旧 schema 导致失败**
+- [x] **Step 2: 运行 model/mining 测试，确认旧 schema 导致失败**
 
 ```bash
 conda run -n codesearch pytest -q tests/unit/evaluation/test_models.py tests/unit/evaluation/test_query_mining.py
@@ -528,7 +559,7 @@ conda run -n codesearch pytest -q tests/unit/evaluation/test_models.py tests/uni
 
 Expected: FAIL，错误指向 `PreparedQuery` 参数、缺少 `mine_query` 或旧 prompt 内容。
 
-- [ ] **Step 3: 将 `PreparedQuery` 改成唯一 query + answer**
+- [x] **Step 3: 将 `PreparedQuery` 改成唯一 query + answer**
 
 在 `evaluation/models.py` 删除 `SearchQuery`，更新 `__all__`，把 `PreparedQuery` 定义为：
 
@@ -563,7 +594,7 @@ class PreparedQuery:
         }
 ```
 
-- [ ] **Step 4: 用搜索局部窗口和已确认 few-shot 重写 prompt**
+- [x] **Step 4: 用搜索局部窗口和已确认 few-shot 重写 prompt**
 
 在 `evaluation/query_mining.py` 删除 `_TraceExtraction`、`SearchQuery`、`find_episodes()`、最终
 assistant answer 校验和 LLM locations 解析。新增：
@@ -643,7 +674,7 @@ Do not return files, functions, answers, shell commands, code fences, or multipl
 """.strip()
 ```
 
-- [ ] **Step 5: 实现单 query 响应解析和轻量校验**
+- [x] **Step 5: 实现单 query 响应解析和轻量校验**
 
 新增固定模式和 helper：
 
@@ -699,7 +730,7 @@ def _query_error(query: str, answer: Sequence[CodeLocation]) -> str | None:
 补充 `PurePosixPath` 导入。保留 `_json_payload()` 对 JSON code fence 的兼容，因为这只是响应
 格式容错，不是第二次模型调用。
 
-- [ ] **Step 6: 实现 `mine_query()`，保证一次调用和稳定 skip reason**
+- [x] **Step 6: 实现 `mine_query()`，保证一次调用和稳定 skip reason**
 
 ```python
 def mine_query(
@@ -753,7 +784,7 @@ def mine_query(
 `is_search_event`、`mine_query`、`search_context`。不要保留旧 `mine_queries()` 兼容层，因为当前
 仓库内调用点会在本任务一起迁移。
 
-- [ ] **Step 7: 更新硬编码 mining 入口和 dry-run**
+- [x] **Step 7: 更新硬编码 mining 入口和 dry-run**
 
 在 `scripts/mine_trace_queries.py` 修改：
 
@@ -816,7 +847,7 @@ def _prompt_rows(case, prompt_version: str) -> list[dict[str, object]]:
 
 prompt record 不序列化 patch 文本或 `answer`。
 
-- [ ] **Step 8: 运行 Task 2 定向测试和 lint**
+- [x] **Step 8: 运行 Task 2 定向测试和 lint**
 
 ```bash
 conda run -n codesearch pytest -q tests/unit/evaluation/test_models.py tests/unit/evaluation/test_query_mining.py
@@ -826,7 +857,7 @@ conda run -n codesearch ruff format --check evaluation/models.py evaluation/quer
 
 Expected: 全部 PASS；测试确认 generator 每个 case 只被调用一次。
 
-- [ ] **Step 9: 只提交 semantic mining 相关文件**
+- [x] **Step 9: 只提交 semantic mining 相关文件**
 
 ```bash
 git add evaluation/models.py evaluation/query_mining.py scripts/mine_trace_queries.py tests/unit/evaluation/test_models.py tests/unit/evaluation/test_query_mining.py
@@ -849,9 +880,11 @@ git commit -m "feat: mine one semantic query per Java trace"
 
 **Interfaces:**
 - Consumes: `PreparedQuery.to_dict()` 的顶层 `issue_statement`、`query`、`answer`、`source_event_indices`、`source_events`、`provenance.query_reason`。
-- Produces: `render_query_viewer(records: Sequence[Mapping[str, object]]) -> str`，输出安全转义的独立 HTML。
+- Produces: `read_query_records(path: Path) -> list[dict[str, object]]`、`query_viewer_page()`、
+  `QueryFileViewer.start(path, port)` 和每次请求都重新读取 JSONL 的 `/api/cases`；页面继续通过
+  `textContent` 安全渲染，并每 2 秒自动刷新。
 
-- [ ] **Step 1: 用新 schema 重写 viewer fixture 和失败断言**
+- [x] **Step 1: 用新 schema 重写 viewer fixture 和失败断言**
 
 把 `tests/unit/evaluation/test_query_viewer.py` 的 record 改成：
 
@@ -883,7 +916,7 @@ record = {
 断言页面包含 issue、唯一 query、query reason、patch answer；只有事件 1/2/3 的
 `data-search-event="true"`，事件 4 不高亮；页头显示 `1 条 trace · 1 条语义 query`。
 
-- [ ] **Step 2: 运行 viewer 测试，确认旧 nested searches 渲染失败**
+- [x] **Step 2: 运行 viewer 测试，确认旧 nested searches 渲染失败**
 
 ```bash
 conda run -n codesearch pytest -q tests/unit/evaluation/test_query_viewer.py
@@ -891,7 +924,7 @@ conda run -n codesearch pytest -q tests/unit/evaluation/test_query_viewer.py
 
 Expected: FAIL，页面缺少顶层 query、issue 或事件高亮不符合新 schema。
 
-- [ ] **Step 3: 修改 renderer，只渲染一个 query 和一组答案**
+- [x] **Step 3: 修改 renderer，只渲染一个 query 和一组答案**
 
 在 `render_query_viewer()` 中删除 `record.get("searches")` 遍历，改为：
 
@@ -951,7 +984,7 @@ return f"""<section class="case" id="{case_id}">
 `index in selected` 决定黄色高亮和 `用于 query 构造` 标记。保留 `_text()` 的 `html.escape`
 路径，任何 issue、query、trace、文件和函数都不得直接插入未转义 HTML。
 
-- [ ] **Step 4: 运行静态 viewer 测试和 lint**
+- [x] **Step 4: 运行动态 viewer 测试和 lint**
 
 ```bash
 conda run -n codesearch pytest -q tests/unit/evaluation/test_query_viewer.py
@@ -961,11 +994,11 @@ conda run -n codesearch ruff format --check evaluation/query_viewer.py tests/uni
 
 Expected: 全部 PASS，包括恶意 `<script>` 内容保持 inert。
 
-- [ ] **Step 5: 提交静态 viewer 迁移**
+- [x] **Step 5: 提交动态 viewer 迁移**
 
 ```bash
 git add evaluation/query_viewer.py tests/unit/evaluation/test_query_viewer.py
-git commit -m "feat: show semantic trace queries in the static viewer"
+git commit -m "feat: serve semantic queries from live JSONL"
 ```
 
 ---
@@ -980,7 +1013,7 @@ git commit -m "feat: show semantic trace queries in the static viewer"
 - Consumes: 顶层 `query: str`、`answer: list[{file, functions}]`、`source_event_indices: list[int]`。
 - Produces: `_evaluate_query(project, record, *, routes, limit, include_test_files=False) -> dict[str, object]`；report 中 `cases` 一条输入对应一条 case result。
 
-- [ ] **Step 1: 把 evaluator 测试 fixture 改成单 query schema**
+- [x] **Step 1: 把 evaluator 测试 fixture 改成单 query schema**
 
 把 `_evaluate_search` 测试改名并传入：
 
@@ -1020,7 +1053,7 @@ benchmark.write_text(
 断言 `len(report["cases"]) == 1`、viewer 只收到一个 key `"1"`，并且
 `viewer.records[0]["evaluation"] == report["cases"][0]["evaluation"]`。
 
-- [ ] **Step 2: 运行 evaluator 测试，确认 nested loop 造成失败**
+- [x] **Step 2: 运行 evaluator 测试，确认 nested loop 造成失败**
 
 ```bash
 conda run -n codesearch pytest -q tests/unit/test_evaluation_script.py
@@ -1028,7 +1061,7 @@ conda run -n codesearch pytest -q tests/unit/test_evaluation_script.py
 
 Expected: FAIL，缺少 `_evaluate_query` 或 main 没有读取顶层 query。
 
-- [ ] **Step 3: 将 `_evaluate_search()` 改成顶层 `_evaluate_query()`**
+- [x] **Step 3: 将 `_evaluate_search()` 改成顶层 `_evaluate_query()`**
 
 实现使用最终字段名：
 
@@ -1081,7 +1114,7 @@ def _evaluate_query(
 `_failed_search()` 同步改名为 `_failed_query()`，读取顶层 `query`、`answer` 和
 `source_event_indices`。
 
-- [ ] **Step 4: 去掉 main 的 nested `searches` 循环**
+- [x] **Step 4: 去掉 main 的 nested `searches` 循环**
 
 每条 input record 只构造一次 `evaluation`：
 
@@ -1125,7 +1158,7 @@ results = [
 保留 `_score()` 的文件/函数语义不变；当 `gold_functions` 为空时函数 Precision/Recall 仍为
 `None`。不要在这一任务修改项目下载、索引或 viewer 生命周期。
 
-- [ ] **Step 5: 运行 evaluator 测试和 lint**
+- [x] **Step 5: 运行 evaluator 测试和 lint**
 
 ```bash
 conda run -n codesearch pytest -q tests/unit/test_evaluation_script.py
@@ -1135,7 +1168,7 @@ conda run -n codesearch ruff format --check scripts/evaluation.py tests/unit/tes
 
 Expected: 全部 PASS；测试确认每条 JSONL 只发布一次 viewer event。
 
-- [ ] **Step 6: 提交 evaluator schema 迁移**
+- [x] **Step 6: 提交 evaluator schema 迁移**
 
 ```bash
 git add scripts/evaluation.py tests/unit/test_evaluation_script.py
@@ -1154,7 +1187,7 @@ git commit -m "feat: evaluate flat semantic query records"
 - Consumes: Task 4 发布的 `{key, query_id, repo, instance_id, trajectory_id, evaluation}`；`evaluation` 包含 `query`、`answer`、`routes`。
 - Produces: 现有 `LiveEvaluationViewer` HTTP/SSE API 不变；页面正确渲染扁平 schema。
 
-- [ ] **Step 1: 更新实时页面 contract 测试**
+- [x] **Step 1: 更新实时页面 contract 测试**
 
 在 `tests/unit/evaluation/test_live_results.py` 保留 store/SSE/HTTP 测试不变，只将示例 record
 从 `search` 改成 `evaluation`：
@@ -1180,7 +1213,7 @@ assert "evaluation.answer" in page
 assert "search.answers" not in page
 ```
 
-- [ ] **Step 2: 运行 live viewer 测试，确认旧 JS 字段导致失败**
+- [x] **Step 2: 运行 live viewer 测试，确认旧 JS 字段导致失败**
 
 ```bash
 conda run -n codesearch pytest -q tests/unit/evaluation/test_live_results.py
@@ -1188,7 +1221,7 @@ conda run -n codesearch pytest -q tests/unit/evaluation/test_live_results.py
 
 Expected: FAIL，页面仍读取 `record.search` 或 `search.answers`。
 
-- [ ] **Step 3: 只迁移 embedded JavaScript 的数据字段**
+- [x] **Step 3: 只迁移 embedded JavaScript 的数据字段**
 
 保留 `LiveResultStore`、HTTP handler、SSE 和生命周期实现不变。将页面 helper 改成：
 
@@ -1252,7 +1285,7 @@ function renderRecord(record) {
 上面注释所指的是原函数中已经存在的 DOM 代码，原样保留，不新建 HTML 字符串注入路径。
 继续只用 `textContent`，不得引入 `innerHTML`。
 
-- [ ] **Step 4: 运行 live viewer 测试和 lint**
+- [x] **Step 4: 运行 live viewer 测试和 lint**
 
 ```bash
 conda run -n codesearch pytest -q tests/unit/evaluation/test_live_results.py
@@ -1262,7 +1295,7 @@ conda run -n codesearch ruff format --check evaluation/live_results.py tests/uni
 
 Expected: 全部 PASS，HTTP/SSE 行为和安全 DOM 断言保持不变。
 
-- [ ] **Step 5: 提交实时 viewer 迁移**
+- [x] **Step 5: 提交实时 viewer 迁移**
 
 ```bash
 git add evaluation/live_results.py tests/unit/evaluation/test_live_results.py
