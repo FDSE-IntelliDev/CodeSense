@@ -19,27 +19,30 @@
 | 3. 动态 query JSONL viewer | ✅ 已完成 | `8b698a1 feat: serve semantic queries from live JSONL` |
 | 4. 扁平 benchmark evaluator | ✅ 已完成 | `786db2a feat: evaluate flat semantic query records` |
 | 5. 实时评测 viewer schema 迁移 | ✅ 已完成 | `7668bb0 feat: stream flat semantic query evaluations` |
-| 6. 端到端验收、README、CHANGELOG 和全仓门禁 | ⏳ 未完成 | 尚无提交 |
+| 6. 端到端验收、README、CHANGELOG 和全仓门禁 | ✅ 已完成 | `cad57a6 docs: finalize semantic trace benchmark workflow` |
 
 当前定向回归：
 
 ```text
 conda run -n codesearch pytest -q tests/unit/evaluation tests/unit/test_evaluation_script.py
-54 passed
+55 passed
 ```
 
-### Remaining Work
+### Completion Verification
 
-仅剩 Task 6，具体包括：
+Task 6 已完成：
 
-1. 新增 `tests/unit/evaluation/test_semantic_trace_pipeline.py`，用 fake generator 验证
+1. 已新增 `tests/unit/evaluation/test_semantic_trace_pipeline.py`，用 fake generator 验证
    resolved Java trace → patch gold → 单条 semantic query 的完整无网络链路，并确认 patch 不进入 prompt；
-2. 把 `evaluation/README.md` 中仍然描述 `searches[]`、`answers[]` 和 `final_answer` 的旧流程
-   改成顶层 `query + answer`、一条 trace 一条 query 的当前流程；
-3. 在 `CHANGELOG.md` 增加本次 Open-SWE-Traces 语义检索 benchmark 条目，同时保留文件中
-   已有的其他未提交记录；
-4. 执行 schema/prompt 泄漏扫描、`ruff check .`、`ruff format --check .` 和全量 `pytest`；
-5. 只提交 Task 6 的测试与文档，并核对未触碰的既有工作区改动。
+2. 已把 `evaluation/README.md` 改成顶层 `query + answer`、一条 trace 一条 query 的当前流程；
+3. 已在 `CHANGELOG.md` 增加本次 Open-SWE-Traces 语义检索 benchmark 条目，同时保留文件中
+   已有的其他记录；
+4. schema 扫描仅命中测试中的旧字段负向断言；`evaluation/query_mining.py` 无
+   `reference_patch` 或 `diff --git` prompt 泄漏路径；
+5. `ruff check .` 通过，`ruff format --check .` 为 143 files already formatted；
+6. 全量测试为 `775 passed, 39 deselected`。
+
+本计划已无剩余实现任务。
 
 ## Global Constraints
 
@@ -1315,7 +1318,7 @@ git commit -m "feat: stream flat semantic query evaluations"
 - Consumes: Task 1–5 的 adapter、`mine_query()`、扁平序列化和 evaluator schema。
 - Produces: 一个不调用真实网络/LLM 的 trace → semantic query JSON fixture 验收；面向手动实验的最终文档。
 
-- [ ] **Step 1: 写完整的无网络 pipeline fixture**
+- [x] **Step 1: 写完整的无网络 pipeline fixture**
 
 创建 `tests/unit/evaluation/test_semantic_trace_pipeline.py`：
 
@@ -1398,7 +1401,7 @@ def test_resolved_trace_becomes_one_semantic_query_with_hidden_patch_gold() -> N
     assert "diff --git" not in generator.prompts[0]
 ```
 
-- [ ] **Step 2: 运行完整 evaluation 测试集合**
+- [x] **Step 2: 运行完整 evaluation 测试集合**
 
 ```bash
 conda run -n codesearch pytest -q tests/unit/evaluation tests/unit/test_evaluation_script.py
@@ -1407,7 +1410,7 @@ conda run -n codesearch pytest -q tests/unit/evaluation tests/unit/test_evaluati
 Expected: 全部 PASS。若 fixture 暴露接口不一致，只修改 Task 1–5 已定义的字段和调用点，不增加
 旧 schema 兼容分支。
 
-- [ ] **Step 3: 更新实验 README**
+- [x] **Step 3: 更新实验 README**
 
 将 `evaluation/README.md` 开头的旧 multi-search 说明替换为：
 
@@ -1425,7 +1428,7 @@ prompt。
 把运行说明中的输出名改为 `codesense-semantic-query.jsonl`；批量搜索部分改成“一条 JSONL
 记录运行一次 query”，保留硬编码参数、项目缓存、Top-20、viewer 和 route fallback 说明。
 
-- [ ] **Step 4: 在 CHANGELOG 顶部记录完成的功能**
+- [x] **Step 4: 在 CHANGELOG 顶部记录完成的功能**
 
 在 `CHANGELOG.md` 标题后增加：
 
@@ -1440,7 +1443,7 @@ prompt。
   schema。
 ```
 
-- [ ] **Step 5: 运行新增集成测试、全仓测试和三个门禁**
+- [x] **Step 5: 运行新增集成测试、全仓测试和三个门禁**
 
 ```bash
 conda run -n codesearch pytest -q tests/unit/evaluation/test_semantic_trace_pipeline.py
@@ -1456,7 +1459,7 @@ Expected: 四条命令全部退出 0。若全仓存在与本功能无关的既�
 conda run -n codesearch pytest -q tests/unit/evaluation tests/unit/test_evaluation_script.py
 ```
 
-- [ ] **Step 6: 检查 schema 残留和 prompt 泄漏**
+- [x] **Step 6: 检查 schema 残留和 prompt 泄漏**
 
 ```bash
 rg -n 'record\.get\("searches"\)|record\.get\("final_answer"\)|search\.answers|searches\[\]' evaluation scripts tests/unit/evaluation tests/unit/test_evaluation_script.py
@@ -1467,14 +1470,14 @@ git diff --check
 Expected: 第一条在现役实现和相应测试中无旧 schema 命中；第二条不显示任何把 patch 内容插入
 prompt 的代码（校验参数或注释提及该名称可以人工确认）；`git diff --check` 无输出。
 
-- [ ] **Step 7: 只提交集成测试和文档**
+- [x] **Step 7: 只提交集成测试和文档**
 
 ```bash
 git add tests/unit/evaluation/test_semantic_trace_pipeline.py evaluation/README.md CHANGELOG.md
 git commit -m "docs: finalize semantic trace benchmark workflow"
 ```
 
-- [ ] **Step 8: 核对最终提交和工作区，不误报无关改动**
+- [x] **Step 8: 核对最终提交和工作区，不误报无关改动**
 
 ```bash
 git log --oneline -6
