@@ -1,5 +1,14 @@
 # CodeSense Changelog
 
+## 2026-09-14 — Open-SWE-Traces 语义检索 Benchmark
+
+- resolved Java trace 改为一条轨迹生成一条行为、职责、状态变化或失效机制导向的英语语义
+  query；prompt 使用完整 issue 和搜索事件局部窗口，并加入语义 query 正反 few-shot。
+- reference patch 在程序侧提取被修改的既有生产 Java 文件和可确定函数作为隐藏答案；新增、
+  删除和测试文件不进入主 gold，LLM 不接触 patch，也不生成答案。
+- query 数据、批量 evaluator、动态 JSONL 审阅页和实时评测页统一迁移到顶层
+  `query + answer` 扁平 schema；每条记录按选定 route 执行 Top 20 搜索。
+
 ## 2026-09-11 — 结构化查询理解与通用结果目标
 
 - planned 的首次 LLM 调用改为 Pydantic 定义的 strict JSON Schema，稳定返回语义 units、
@@ -11,6 +20,18 @@
 - relation 可用 `$result` 明确绑定返回端点，例如“返回引用 PageRequest 的文件”先反向投影
   真实 `references` 边，再执行 file target；无对应边是有效空结果而不是猜测或编译失败。
 
+## 2026-09-10 — 评测结果实时页面
+
+- 所有 `Project.search()` 默认输出 route、target、LLM、规划、算子执行、投影和排名等阶段
+  日志；planned 逐步报告预测量、实际量与耗时，codegen 跟踪生成脚本调用的主要 QL 算子，
+  需要静默调用时可传入 `trace=False`。
+- `scripts/evaluation.py` 新增可选的本地实时 viewer，只在终端输出访问地址，不自动打开
+  浏览器；每完成一条 query 就推送 gold answer、各 route 搜索结果和现有 `_score()` 指标。
+- 单页累计展示全部 query：绿色为命中的文件或函数，红色为漏检 gold，灰色为额外结果，
+  并在评测结束时展示 route 汇总。
+- viewer 使用标准库 loopback HTTP + SSE；端口占用、推送失败或浏览器断连不影响评测，
+  原 JSON 报告结构保持不变。
+
 ## 2026-09-09 — 文件结果目标与项目内引用图
 
 - 源文件成为真实的 `Element(kind="file")` 图节点，声明通过 `in_file` 物理归属边投影到
@@ -20,6 +41,21 @@
 - codegen、planned 与 lexical 路由接入文件目标契约，新增 PageRequest 真实 Java 项目的
   图直查、references 脚本和 imports 脚本端到端验收。
 - 直接路径/glob postings 与任意文件内容正则仍不在本次支持范围内。
+
+## 2026-08-25 — trace-wide query mining
+
+- 一个 trace 只调用一次 LLM；模型一次返回多个搜索 query，并保留事件序号。
+- 每个 instance 输出一条 `PreparedQuery`，多个搜索项嵌套在 `searches` 中，不再拆成多条记录。
+- prompt 只包含各搜索事件前一条、搜索事件本身和后一条 assistant/tool 记录（含工具输出），最后回答缺少
+  Java 文件或函数证据时跳过整条 trace。
+- 每个 query 使用结构化 `answers` 记录文件与函数关系，turn 级结果使用同结构的
+  `final_answer`；不再保存自然语言 `result` 或互相独立的 `files/functions`。
+- dry-run 按 trace 输出单个 prompt。
+- Open-SWE adapter 只保留严格整数 `resolved == 1` 的轨迹，批量读取时跳过失败、未知和
+  缺失状态的记录。
+- 新增硬编码参数的 `scripts/evaluation.py`：自动复用或浅克隆 benchmark 仓库，缓存
+  lexical 索引，并对 `lexical`、`planned`、`codegen` 的 Top 20 结果计算文件和函数级
+  Precision/Recall。
 
 ## 2026-08-06 — finetune 轻量化 Demo
 
