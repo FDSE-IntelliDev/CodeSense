@@ -6,7 +6,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
 
-__all__ = ["CodeLocation", "PreparedQuery", "SearchQuery", "TraceCase", "TraceEvent"]
+__all__ = ["CodeLocation", "PreparedQuery", "TraceCase", "TraceEvent"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -67,27 +67,15 @@ class CodeLocation:
 
 
 @dataclass(frozen=True, slots=True)
-class SearchQuery:
-    event_indices: tuple[int, ...]
-    query: str
-    answers: tuple[CodeLocation, ...]
-
-    def to_dict(self) -> dict[str, object]:
-        return {
-            "event_indices": list(self.event_indices),
-            "query": self.query,
-            "answers": [answer.to_dict() for answer in self.answers],
-        }
-
-
-@dataclass(frozen=True, slots=True)
 class PreparedQuery:
     query_id: str
     repo: str
     instance_id: str
     trajectory_id: str
-    searches: tuple[SearchQuery, ...]
-    final_answer: tuple[CodeLocation, ...]
+    issue_statement: str
+    query: str
+    answer: tuple[CodeLocation, ...]
+    source_event_indices: tuple[int, ...]
     strategy: str
     source_events: tuple[TraceEvent, ...]
     provenance: Mapping[str, object]
@@ -98,8 +86,10 @@ class PreparedQuery:
             "repo": self.repo,
             "instance_id": self.instance_id,
             "trajectory_id": self.trajectory_id,
-            "searches": [search.to_dict() for search in self.searches],
-            "final_answer": [answer.to_dict() for answer in self.final_answer],
+            "issue_statement": self.issue_statement,
+            "query": self.query,
+            "answer": [location.to_dict() for location in self.answer],
+            "source_event_indices": list(self.source_event_indices),
             "strategy": self.strategy,
             "source_events": [event.to_dict() for event in self.source_events],
             "provenance": dict(self.provenance),

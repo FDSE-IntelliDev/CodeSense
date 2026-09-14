@@ -1,4 +1,4 @@
-from evaluation.models import CodeLocation, PreparedQuery, SearchQuery, TraceCase, TraceEvent
+from evaluation.models import CodeLocation, PreparedQuery, TraceCase, TraceEvent
 
 
 def test_trace_event_serializes_all_event_fields() -> None:
@@ -43,57 +43,36 @@ def test_trace_case_serializes_patch_gold() -> None:
 def test_prepared_query_serializes_source_events_and_provenance() -> None:
     event = TraceEvent(0, "assistant", "rg watermark", "rg", "rg watermark", None)
     query = PreparedQuery(
-        query_id="trace-1:0",
+        query_id="trace-1",
         repo="acme/project",
         instance_id="issue-1",
         trajectory_id="trace-1",
-        searches=(
-            SearchQuery(
-                event_indices=(0, 1),
-                query="Find code that applies backpressure when a buffer fills",
-                answers=(
-                    CodeLocation(
-                        file="src/main/java/Buffer.java",
-                        functions=("Buffer#write",),
-                    ),
-                ),
-            ),
+        issue_statement="Navigation mode can leave stale state.",
+        query=(
+            "Find the logic that can leave navigation state inconsistent when switching "
+            "between cursor-based and page-based access."
         ),
-        final_answer=(
-            CodeLocation(
-                file="src/main/java/Buffer.java",
-                functions=("Buffer#write",),
-            ),
-        ),
-        strategy="generated",
+        answer=(CodeLocation("src/main/java/Navigation.java", ("afterCursor",)),),
+        source_event_indices=(0,),
+        strategy="semantic-generated",
         source_events=(event,),
-        provenance={"prompt_version": "trace-query-v1", "model": "qwen-plus"},
+        provenance={"prompt_version": "semantic-query-v1", "query_reason": "behavioral"},
     )
 
     payload = query.to_dict()
 
-    assert payload["query_id"] == "trace-1:0"
-    assert payload["strategy"] == "generated"
-    assert payload["searches"] == [
-        {
-            "event_indices": [0, 1],
-            "query": "Find code that applies backpressure when a buffer fills",
-            "answers": [
-                {
-                    "file": "src/main/java/Buffer.java",
-                    "functions": ["Buffer#write"],
-                }
-            ],
-        }
+    assert payload["query_id"] == "trace-1"
+    assert payload["strategy"] == "semantic-generated"
+    assert payload["issue_statement"] == "Navigation mode can leave stale state."
+    assert payload["query"].startswith("Find the logic")
+    assert payload["answer"] == [
+        {"file": "src/main/java/Navigation.java", "functions": ["afterCursor"]}
     ]
-    assert payload["final_answer"] == [
-        {
-            "file": "src/main/java/Buffer.java",
-            "functions": ["Buffer#write"],
-        }
-    ]
+    assert payload["source_event_indices"] == [0]
     assert payload["source_events"] == [event.to_dict()]
     assert payload["provenance"] == {
-        "prompt_version": "trace-query-v1",
-        "model": "qwen-plus",
+        "prompt_version": "semantic-query-v1",
+        "query_reason": "behavioral",
     }
+    assert "searches" not in payload
+    assert "final_answer" not in payload
