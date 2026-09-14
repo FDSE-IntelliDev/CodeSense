@@ -33,7 +33,7 @@
 | `evaluation/trace_adapters/open_swe_traces.py` | Open-SWE 记录规范化、strict resolved 过滤和 unified diff ground truth 提取 |
 | `evaluation/query_mining.py` | 搜索事件识别、局部窗口、semantic prompt、LLM 响应解析和 query 校验 |
 | `scripts/mine_trace_queries.py` | 硬编码参数入口、dry-run、逐 trace 生成和 skip reason 汇总 |
-| `evaluation/query_viewer.py` | 生成 query 数据集的静态审计 HTML |
+| `evaluation/query_viewer.py` | 动态读取 query JSONL 的本地自动刷新 Web viewer |
 | `scripts/evaluation.py` | 仓库准备、每条扁平 query 的多 route Top-20 搜索与指标汇总 |
 | `evaluation/live_results.py` | evaluator 运行时的本地 HTTP/SSE 展示 |
 | `evaluation/README.md` | 新 pipeline、schema 和调试方式 |
@@ -835,7 +835,13 @@ git commit -m "feat: mine one semantic query per Java trace"
 
 ---
 
-### Task 3: 将静态 query viewer 迁移到扁平记录
+### Task 3: 将 query viewer 改为动态读取 JSONL 的本地服务
+
+> 2026-09-14 范围调整：用户确认不新增 `scripts/query_viewer.py`，直接让
+> `evaluation/query_viewer.py` 可执行。原先“一次生成静态 HTML”的步骤由以下验收契约替代：
+> 每个 `/api/cases` 请求重新读取 query JSONL，浏览器每 2 秒轮询；页面展示顶层 issue、query、
+> query reason、answer 和高亮 source events；服务只绑定 `127.0.0.1`。实现与测试仍限制在本
+> Task 的两个文件中。
 
 **Files:**
 - Modify: `evaluation/query_viewer.py`

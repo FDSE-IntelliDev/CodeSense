@@ -350,8 +350,10 @@ gold 的 case 计算。
 
 ### Viewer
 
-- `evaluation/query_viewer.py` 展示完整 issue、原始 trace、被选中的事件、唯一 query 和 patch
-  answer；
+- `evaluation/query_viewer.py` 本身是可执行的本地 Web viewer；它不再生成静态 HTML 文件，
+  而是在每次 `/api/cases` 请求时重新读取指定 query JSONL，浏览器默认每 2 秒刷新；
+- query viewer 展示完整 issue、原始 trace、被选中的事件、唯一 query 和 patch answer，只绑定
+  `127.0.0.1`，输入路径和端口在模块顶部手动设置；
 - `evaluation/live_results.py` 从顶层 query/answer 渲染一张 case 卡片，不再遍历 nested
   searches；
 - viewer 只展示现有数据，不重新推导答案或指标。
@@ -415,4 +417,3 @@ pytest
 - evaluator 和两个 viewer 均能读取新 schema；
 - 旧 query JSONL 不被静默覆盖；
 - 单元测试及仓库规定检查通过，或对已有且与本次无关的失败做明确区分。
-
