@@ -1,4 +1,4 @@
-from evaluation.models import PreparedQuery, TraceEvent
+from evaluation.models import CodeLocation, PreparedQuery, SearchQuery, TraceCase, TraceEvent
 
 
 def test_trace_event_serializes_all_event_fields() -> None:
@@ -21,6 +21,25 @@ def test_trace_event_serializes_all_event_fields() -> None:
     }
 
 
+def test_trace_case_serializes_patch_gold() -> None:
+    case = TraceCase(
+        "owner/repo",
+        "java",
+        "issue-1",
+        "trace-1",
+        "Fix navigation state.",
+        None,
+        (),
+        {},
+        (CodeLocation("src/main/java/Navigation.java", ("afterCursor",)),),
+        None,
+    )
+
+    assert case.to_dict()["answer"] == [
+        {"file": "src/main/java/Navigation.java", "functions": ["afterCursor"]}
+    ]
+
+
 def test_prepared_query_serializes_source_events_and_provenance() -> None:
     event = TraceEvent(0, "assistant", "rg watermark", "rg", "rg watermark", None)
     query = PreparedQuery(
@@ -28,11 +47,25 @@ def test_prepared_query_serializes_source_events_and_provenance() -> None:
         repo="acme/project",
         instance_id="issue-1",
         trajectory_id="trace-1",
-        episode_index=0,
-        query="Find code that applies backpressure when a buffer fills",
+        searches=(
+            SearchQuery(
+                event_indices=(0, 1),
+                query="Find code that applies backpressure when a buffer fills",
+                answers=(
+                    CodeLocation(
+                        file="src/main/java/Buffer.java",
+                        functions=("Buffer#write",),
+                    ),
+                ),
+            ),
+        ),
+        final_answer=(
+            CodeLocation(
+                file="src/main/java/Buffer.java",
+                functions=("Buffer#write",),
+            ),
+        ),
         strategy="generated",
-        anchor_event=0,
-        raw_action="rg watermark src/main/java",
         source_events=(event,),
         provenance={"prompt_version": "trace-query-v1", "model": "qwen-plus"},
     )
@@ -41,6 +74,24 @@ def test_prepared_query_serializes_source_events_and_provenance() -> None:
 
     assert payload["query_id"] == "trace-1:0"
     assert payload["strategy"] == "generated"
+    assert payload["searches"] == [
+        {
+            "event_indices": [0, 1],
+            "query": "Find code that applies backpressure when a buffer fills",
+            "answers": [
+                {
+                    "file": "src/main/java/Buffer.java",
+                    "functions": ["Buffer#write"],
+                }
+            ],
+        }
+    ]
+    assert payload["final_answer"] == [
+        {
+            "file": "src/main/java/Buffer.java",
+            "functions": ["Buffer#write"],
+        }
+    ]
     assert payload["source_events"] == [event.to_dict()]
     assert payload["provenance"] == {
         "prompt_version": "trace-query-v1",

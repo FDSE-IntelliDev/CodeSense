@@ -6,7 +6,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
 
-__all__ = ["PreparedQuery", "TraceCase", "TraceEvent"]
+__all__ = ["CodeLocation", "PreparedQuery", "SearchQuery", "TraceCase", "TraceEvent"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -39,6 +39,8 @@ class TraceCase:
     base_commit: str | None
     events: tuple[TraceEvent, ...]
     raw: Mapping[str, object]
+    answer: tuple[CodeLocation, ...] = ()
+    gold_error: str | None = None
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -50,6 +52,31 @@ class TraceCase:
             "base_commit": self.base_commit,
             "events": [event.to_dict() for event in self.events],
             "raw": dict(self.raw),
+            "answer": [location.to_dict() for location in self.answer],
+            "gold_error": self.gold_error,
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class CodeLocation:
+    file: str
+    functions: tuple[str, ...]
+
+    def to_dict(self) -> dict[str, object]:
+        return {"file": self.file, "functions": list(self.functions)}
+
+
+@dataclass(frozen=True, slots=True)
+class SearchQuery:
+    event_indices: tuple[int, ...]
+    query: str
+    answers: tuple[CodeLocation, ...]
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "event_indices": list(self.event_indices),
+            "query": self.query,
+            "answers": [answer.to_dict() for answer in self.answers],
         }
 
 
@@ -59,11 +86,9 @@ class PreparedQuery:
     repo: str
     instance_id: str
     trajectory_id: str
-    episode_index: int
-    query: str
+    searches: tuple[SearchQuery, ...]
+    final_answer: tuple[CodeLocation, ...]
     strategy: str
-    anchor_event: int
-    raw_action: str
     source_events: tuple[TraceEvent, ...]
     provenance: Mapping[str, object]
 
@@ -73,11 +98,9 @@ class PreparedQuery:
             "repo": self.repo,
             "instance_id": self.instance_id,
             "trajectory_id": self.trajectory_id,
-            "episode_index": self.episode_index,
-            "query": self.query,
+            "searches": [search.to_dict() for search in self.searches],
+            "final_answer": [answer.to_dict() for answer in self.final_answer],
             "strategy": self.strategy,
-            "anchor_event": self.anchor_event,
-            "raw_action": self.raw_action,
             "source_events": [event.to_dict() for event in self.source_events],
             "provenance": dict(self.provenance),
         }
