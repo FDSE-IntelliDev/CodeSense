@@ -42,6 +42,7 @@ _log = logging.getLogger(__name__)
 
 PROMPT = """\
 Interpret this query for a code retrieval system.
+Return exactly one JSON object matching the supplied response schema.
 
 Codebase: {project}
 Query: {query}

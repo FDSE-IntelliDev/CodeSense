@@ -74,14 +74,14 @@ def config() -> LlmConfig:
     return LlmConfig(api_key="test", base_url="https://example.invalid/v1", model="model")
 
 
-def test_prompt_describes_semantic_sources_and_result_roles() -> None:
+def test_prompt_describes_semantic_sources_result_roles_and_json_output() -> None:
     prompt = " ".join(PROMPT.lower().split())
 
     assert all(source in prompt for source in ("literal", "synonym", "derived"))
     assert all(edge in prompt for edge in ("calls", "contains", "references", "imports", "in_file"))
     assert "result endpoint" in prompt
     assert "outside this sample" in prompt
-    assert "output json" not in prompt
+    assert "json" in prompt
 
 
 def test_understanding_posts_schema_and_returns_a_typed_model() -> None:
