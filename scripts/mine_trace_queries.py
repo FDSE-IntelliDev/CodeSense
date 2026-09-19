@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import sys
 from collections import Counter
+from contextlib import suppress
 from pathlib import Path
 
 # Edit these values before running this script. The API key is still read from
@@ -22,10 +23,13 @@ MODEL = "qwen3.7-plus"
 TIMEOUT = 300.0
 PROMPT_VERSION = "semantic-query-v1"
 # Keep the repository-local evaluation package importable when this file is
-# launched as ``python scripts/mine_trace_queries.py``.
+# launched as ``python scripts/mine_trace_queries.py``. The scripts directory
+# contains evaluation.py, so the repository root must precede it even when an
+# IDE has already added the root later in sys.path.
 _ROOT = Path(__file__).resolve().parents[1]
-if str(_ROOT) not in sys.path:
-    sys.path.insert(0, str(_ROOT))
+with suppress(ValueError):
+    sys.path.remove(str(_ROOT))
+sys.path.insert(0, str(_ROOT))
 
 
 def main() -> int:
