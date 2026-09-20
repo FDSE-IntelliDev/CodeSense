@@ -28,21 +28,31 @@ import logging
 from codesense.lang.base import (
     AnnotationUse,
     Declaration,
+    IndexedDeclaration,
     Invocation,
     Language,
     LanguageRegistry,
     ReferenceUse,
+    RelationBatch,
+    RelationContext,
+    RelationDiagnostics,
+    RelationFact,
     ScanResult,
 )
 
 __all__ = [
     "AnnotationUse",
     "Declaration",
+    "IndexedDeclaration",
     "Invocation",
     "LANGUAGES",
     "Language",
     "LanguageRegistry",
     "ReferenceUse",
+    "RelationBatch",
+    "RelationContext",
+    "RelationDiagnostics",
+    "RelationFact",
     "ScanResult",
 ]
 

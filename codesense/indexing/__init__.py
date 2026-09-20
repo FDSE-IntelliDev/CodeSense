@@ -16,6 +16,7 @@ from codesense.indexing.graph import GraphBuilder, GraphStats, TypeTable
 from codesense.indexing.grounding import GroundingConfig, ground_vocabulary
 from codesense.indexing.pipeline import BuildResult, Stats, build_index
 from codesense.indexing.postings import PostingTable, declaration_terms
+from codesense.indexing.relations import build_relation_edges, deduplicate_edge_rows
 
 __all__ = [
     "BuildResult",
@@ -27,6 +28,8 @@ __all__ = [
     "TypeTable",
     "build_expansion_table",
     "build_index",
+    "build_relation_edges",
     "declaration_terms",
+    "deduplicate_edge_rows",
     "ground_vocabulary",
 ]

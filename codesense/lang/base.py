@@ -26,8 +26,13 @@ from typing import Protocol, runtime_checkable
 __all__ = [
     "AnnotationUse",
     "Declaration",
+    "IndexedDeclaration",
     "Invocation",
     "Language",
+    "RelationBatch",
+    "RelationContext",
+    "RelationDiagnostics",
+    "RelationFact",
     "ReferenceUse",
     "ScanResult",
 ]
@@ -104,6 +109,54 @@ class Declaration:
     #: separate from ``container``, whose value remains purely structural.
     qualified_name: str = ""
 
+    #: Normalized callable parameter types used by language relation resolvers.
+    parameter_types: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class IndexedDeclaration:
+    """A declaration paired with its stable project symbol identifier."""
+
+    symbol_id: int
+    file: str
+    declaration: Declaration
+
+
+@dataclass(frozen=True, slots=True)
+class RelationContext:
+    """The read-only project declaration view supplied to one adapter."""
+
+    declarations: tuple[IndexedDeclaration, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class RelationFact:
+    """One language-resolved relation ready for generic index validation."""
+
+    source_id: int
+    target_id: int
+    kind: str
+    site: tuple[int, int] | None = None
+    confidence: float = 1.0
+    provenance: str = ""
+
+
+@dataclass(frozen=True, slots=True)
+class RelationDiagnostics:
+    """Aggregate reasons why an adapter declined to emit relation facts."""
+
+    unresolved: int = 0
+    ambiguous: int = 0
+    skipped: int = 0
+
+
+@dataclass(frozen=True, slots=True)
+class RelationBatch:
+    """Relation facts and diagnostics produced by one language adapter."""
+
+    facts: tuple[RelationFact, ...] = ()
+    diagnostics: RelationDiagnostics = field(default_factory=RelationDiagnostics)
+
 
 @dataclass(frozen=True, slots=True)
 class ReferenceUse:
@@ -175,6 +228,10 @@ class Language(Protocol):
 
         Return an empty mapping when the language has nothing of the sort.
         """
+        ...
+
+    def derive_relations(self, context: RelationContext) -> RelationBatch:
+        """Resolve language-specific project relations after symbol IDs exist."""
         ...
 
 

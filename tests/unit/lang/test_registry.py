@@ -13,9 +13,12 @@ import pytest
 from codesense.lang import (
     LANGUAGES,
     Declaration,
+    IndexedDeclaration,
     Language,
     LanguageRegistry,
     ReferenceUse,
+    RelationBatch,
+    RelationContext,
     ScanResult,
 )
 
@@ -41,11 +44,23 @@ class ToyLanguage:
     def expansions(self) -> dict:
         return {}
 
+    def derive_relations(self, context: RelationContext) -> RelationBatch:
+        assert all(item.declaration.kind == "function" for item in context.declarations)
+        return RelationBatch()
+
 
 class TestProtocol:
     def test_scan_fact_types_are_language_neutral(self) -> None:
         use = ReferenceUse(name="Widget", line=3, target_kind="type")
         assert ScanResult(declarations=(), references=(use,)).references == (use,)
+
+    def test_relation_fact_types_are_language_neutral(self) -> None:
+        declaration = Declaration("Child", "class", supertypes=("Base",))
+        indexed = IndexedDeclaration(2, "Child.toy", declaration)
+        context = RelationContext((indexed,))
+
+        assert context.declarations == (indexed,)
+        assert RelationBatch().facts == ()
 
     def test_a_minimal_adapter_satisfies_the_protocol(self) -> None:
         assert isinstance(ToyLanguage(), Language)
