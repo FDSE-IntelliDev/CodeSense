@@ -240,6 +240,39 @@ class Client { make value; }
         assert call.receiver == "PageRequest"
         assert call.line == 5
 
+    def test_supertypes_keep_only_direct_root_types_and_include_interface_extends(
+        self, scanner: JavaDeclarationScanner
+    ) -> None:
+        result = scanner.scan(
+            """class T {}
+class Child<T> extends Base<T> implements One, pkg.Two {}
+interface Sub extends One, pkg.Two {}
+enum Mode implements One { VALUE }
+record Row(int id) implements One {}
+"""
+        )
+        declarations = {item.name: item for item in result.declarations}
+
+        assert declarations["Child"].supertypes == ("Base", "One", "Two")
+        assert "T" not in declarations["Child"].supertypes
+        assert declarations["Sub"].supertypes == ("One", "Two")
+        assert declarations["Mode"].supertypes == ("One",)
+        assert declarations["Row"].supertypes == ("One",)
+
+    def test_method_parameter_types_are_erased_without_parsing_the_display_signature(
+        self, scanner: JavaDeclarationScanner
+    ) -> None:
+        result = scanner.scan(
+            """class Worker {
+    @Override
+    void save(java.util.List<User> users, String... names, int[] flags) {}
+}
+"""
+        )
+        method = next(item for item in result.declarations if item.name == "save")
+
+        assert method.parameter_types == ("java.util.List", "String[]", "int[]")
+
     def test_scan_parses_the_source_once(self) -> None:
         tree_sitter_languages = pytest.importorskip("tree_sitter_languages")
 

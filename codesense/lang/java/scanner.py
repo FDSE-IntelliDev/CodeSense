@@ -12,7 +12,6 @@ guess.
 
 from __future__ import annotations
 
-import re
 from collections.abc import Iterator, Sequence
 
 from codesense.lang.base import AnnotationUse, Declaration, Invocation, ReferenceUse, ScanResult
@@ -45,8 +44,6 @@ _ANNOTATION_NODES = frozenset({"marker_annotation", "annotation"})
 _TYPE_KINDS = frozenset({"class", "interface", "enum", "record", "annotation_type"})
 
 _DOC_PREFIX = "/**"
-
-_WORD = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 
 #: Declarations with a body, worth collecting calls from.
 _CALLABLE_KINDS = frozenset({"method", "constructor"})
@@ -156,6 +153,7 @@ class JavaDeclarationScanner:
             calls=_invocations(node, data) if kind in _CALLABLE_KINDS else (),
             local_types=_local_types(node, data) if kind in _CALLABLE_KINDS else (),
             supertypes=_supertypes(node, data) if kind in _TYPE_KINDS else (),
+            parameter_types=_parameter_types(node, data) if kind in _CALLABLE_KINDS else (),
         )
 
 
@@ -342,13 +340,92 @@ def _local_types(node: object, data: bytes) -> tuple[tuple[str, str], ...]:
 
 
 def _supertypes(node: object, data: bytes) -> tuple[str, ...]:
-    """Type names listed in `extends` / `implements`."""
+    """Direct root type names listed in `extends` / `implements`."""
+    clauses = [
+        child
+        for child in (
+            node.child_by_field_name("superclass"),  # type: ignore[attr-defined]
+            node.child_by_field_name("interfaces"),  # type: ignore[attr-defined]
+        )
+        if child is not None
+    ]
+    clauses.extend(
+        child
+        for child in node.children  # type: ignore[attr-defined]
+        if child.type == "extends_interfaces"
+    )
+    found: dict[str, None] = {}
+    for clause in clauses:
+        for type_node in _direct_supertype_nodes(clause):
+            name = _root_type_name(type_node, data)
+            if name:
+                found.setdefault(name, None)
+    return tuple(found)
+
+
+def _direct_supertype_nodes(clause: object) -> tuple[object, ...]:
+    """Return direct type expressions without descending into arguments."""
+    named = tuple(clause.named_children)  # type: ignore[attr-defined]
+    type_list = next((child for child in named if child.type == "type_list"), None)
+    if type_list is not None:
+        return tuple(type_list.named_children)  # type: ignore[attr-defined]
+    return named[:1]
+
+
+def _root_type_name(node: object, data: bytes) -> str:
+    """Normalize one type expression to its trailing simple root name."""
+    if node.type == "generic_type":  # type: ignore[attr-defined]
+        node = next(
+            (
+                child
+                for child in node.named_children  # type: ignore[attr-defined]
+                if child.type != "type_arguments"
+            ),
+            node,
+        )
+    return _text(node, data).rsplit(".", 1)[-1]
+
+
+def _parameter_types(node: object, data: bytes) -> tuple[str, ...]:
+    """Extract normalized callable parameter types from the Java AST."""
+    parameters = node.child_by_field_name("parameters")  # type: ignore[attr-defined]
+    if parameters is None:
+        return ()
     found: list[str] = []
-    for field_name in ("superclass", "interfaces"):
-        child = node.child_by_field_name(field_name)  # type: ignore[attr-defined]
-        if child is not None:
-            found.extend(_WORD.findall(_text(child, data)))
-    return tuple(dict.fromkeys(n for n in found if n and n[0].isupper()))
+    for parameter in parameters.named_children:  # type: ignore[attr-defined]
+        if parameter.type not in {"formal_parameter", "spread_parameter"}:
+            continue
+        type_node = parameter.child_by_field_name("type")
+        if type_node is None and parameter.type == "spread_parameter":
+            type_node = next(
+                (
+                    child
+                    for child in parameter.named_children
+                    if child.type != "variable_declarator"
+                ),
+                None,
+            )
+        value = _text(type_node, data)
+        if value:
+            found.append(
+                _normalize_parameter_type(value, varargs=parameter.type == "spread_parameter")
+            )
+    return tuple(found)
+
+
+def _normalize_parameter_type(value: str, *, varargs: bool) -> str:
+    """Erase generic arguments and normalize Java varargs to arrays."""
+    kept: list[str] = []
+    depth = 0
+    for character in value:
+        if character == "<":
+            depth += 1
+        elif character == ">":
+            depth = max(0, depth - 1)
+        elif depth == 0 and not character.isspace():
+            kept.append(character)
+    normalized = "".join(kept)
+    return f"{normalized}[]" if varargs and not normalized.endswith("[]") else normalized
 
 
 def _own_body(node: object) -> Iterator[object]:
