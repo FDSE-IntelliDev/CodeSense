@@ -1,5 +1,16 @@
 # CodeSense Changelog
 
+## 2026-09-20 — Java 类型与方法关系
+
+- Java adapter 复用修正后的 `Declaration.supertypes`，构建低置信度、可解释的
+  `extends` / `implements` 类型边，并用方法名、参数数量和擦除参数类型近似推导
+  `overrides` / `implements` 方法边。
+- 语言 adapter 新增项目级 `derive_relations()` 阶段；通用 indexing 层统一校验、去重、
+  统计和持久化 relation facts，为后续语言复用同一关系存储流程。
+- planned、codegen 与 QL 文档开放新 edge vocabulary；边方向统一为 concrete -> abstract，
+  可从抽象类型或方法反向投影实现。
+- 索引格式提升到 v3，旧索引需要重新构建。
+
 ## 2026-09-14 — Open-SWE-Traces 语义检索 Benchmark
 
 - resolved Java trace 改为一条轨迹生成一条行为、职责、状态变化或失效机制导向的英语语义
