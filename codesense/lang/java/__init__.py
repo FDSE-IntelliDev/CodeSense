@@ -17,6 +17,7 @@ from collections.abc import Mapping, Sequence
 from codesense.lang.base import Declaration, RelationBatch, RelationContext, ScanResult
 from codesense.lang.java.annotations import arg_tokens, posting_terms
 from codesense.lang.java.frameworks import META_ANNOTATIONS, expansions_for, meta_expansion_table
+from codesense.lang.java.relations import derive_java_relations
 from codesense.lang.java.scanner import JAVA_MODIFIERS, JavaDeclarationScanner, modifier_terms
 
 __all__ = [
@@ -25,6 +26,7 @@ __all__ = [
     "JavaDeclarationScanner",
     "JavaLanguage",
     "arg_tokens",
+    "derive_java_relations",
     "expansions_for",
     "meta_expansion_table",
     "modifier_terms",
@@ -99,5 +101,5 @@ class JavaLanguage:
         return meta_expansion_table()
 
     def derive_relations(self, context: RelationContext) -> RelationBatch:
-        """Return no extra relations until the Java resolver is installed."""
-        return RelationBatch()
+        """Resolve Java-specific project relations after scanning."""
+        return derive_java_relations(context)
