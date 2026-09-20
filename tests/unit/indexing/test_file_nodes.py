@@ -5,7 +5,15 @@ from __future__ import annotations
 from pathlib import Path
 
 from codesense.indexing import build_index
-from codesense.lang import Declaration, ReferenceUse, ScanResult
+from codesense.lang import (
+    Declaration,
+    ReferenceUse,
+    RelationBatch,
+    RelationContext,
+    RelationDiagnostics,
+    RelationFact,
+    ScanResult,
+)
 from codesense.ql import Edge, Element, Frag
 from codesense.ql.context import EvalContext
 from codesense.ql.operators import project
@@ -40,6 +48,9 @@ class ToyLanguage:
     def expansions(self) -> dict:
         return {}
 
+    def derive_relations(self, context: RelationContext) -> RelationBatch:
+        return RelationBatch()
+
 
 class ReferenceLanguage(ToyLanguage):
     """A two-file adapter exposing both declaration and reference facts."""
@@ -73,6 +84,34 @@ class ReferenceLanguage(ToyLanguage):
                 ReferenceUse("PageRequest", line=3, column=8),
             ),
         )
+
+
+class RelationLanguage(ToyLanguage):
+    indexed_kinds = frozenset({"interface", "class"})
+
+    def scan(self, source: str) -> ScanResult:
+        kind, name = source.split()
+        return ScanResult((Declaration(name, kind, line=1, end_line=2),))
+
+    def derive_relations(self, context: RelationContext) -> RelationBatch:
+        ids = {item.declaration.name: item.symbol_id for item in context.declarations}
+        return RelationBatch(
+            (
+                RelationFact(
+                    ids["Worker"],
+                    ids["Port"],
+                    "implements",
+                    confidence=0.7,
+                    provenance="toy_relation",
+                ),
+            ),
+            RelationDiagnostics(unresolved=1, ambiguous=2, skipped=3),
+        )
+
+
+class FailingRelationLanguage(RelationLanguage):
+    def derive_relations(self, context: RelationContext) -> RelationBatch:
+        raise RuntimeError("relation failure")
 
 
 def context_from_payload(payload: dict) -> EvalContext:
@@ -199,3 +238,40 @@ def test_backward_project_reaches_pipeline_recorded_reference_owners(tmp_path: P
         rows["run"]["symbol_id"],
         rows["client.toy"]["symbol_id"],
     }
+
+
+def test_pipeline_persists_adapter_relations_and_aggregates_diagnostics(tmp_path: Path) -> None:
+    (tmp_path / "port.toy").write_text("interface Port", encoding="utf-8")
+    (tmp_path / "worker.toy").write_text("class Worker", encoding="utf-8")
+
+    result = build_index(tmp_path, languages=[RelationLanguage()])
+    rows = {row["name"]: row for row in result.payload["symbols"]}
+    relation = next(edge for edge in result.payload["edges"] if edge["kind"] == "implements")
+
+    assert relation == {
+        "source_id": rows["Worker"]["symbol_id"],
+        "target_id": rows["Port"]["symbol_id"],
+        "kind": "implements",
+        "site": None,
+        "confidence": 0.7,
+        "provenance": "toy_relation",
+    }
+    assert result.stats.relation_counts == {"implements": 1}
+    assert result.stats.relation_unresolved == 1
+    assert result.stats.relation_ambiguous == 2
+    assert result.stats.relation_skipped == 3
+
+    context = context_from_payload(result.payload)
+    port = Frag(nodes=context.symbols.get_many((rows["Port"]["symbol_id"],)))
+    implementations = project(port, context, edge="implements", direction="backward")
+    assert set(implementations.nodes) == {rows["Worker"]["symbol_id"]}
+
+
+def test_relation_failure_does_not_discard_symbols_or_existing_edges(tmp_path: Path) -> None:
+    (tmp_path / "worker.toy").write_text("class Worker", encoding="utf-8")
+
+    result = build_index(tmp_path, languages=[FailingRelationLanguage()])
+
+    assert {row["name"] for row in result.payload["symbols"]} == {"Worker", "worker.toy"}
+    assert any(edge["kind"] == "in_file" for edge in result.payload["edges"])
+    assert result.stats.relation_failures == 1

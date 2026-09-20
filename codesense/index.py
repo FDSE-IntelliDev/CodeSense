@@ -38,7 +38,7 @@ __all__ = ["Index", "IndexMeta"]
 
 #: Bumped when the on-disk shape changes incompatibly. Loading an index from a
 #: different version fails loudly rather than half-working.
-FORMAT_VERSION = 2
+FORMAT_VERSION = 3
 
 _INDEX_FILE = "index.json"
 _EXPANSION_FILE = "expansion.json"

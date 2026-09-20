@@ -27,7 +27,14 @@ from typing import Any
 
 from codesense.indexing.graph import GraphBuilder
 from codesense.indexing.postings import PostingTable, declaration_terms
-from codesense.lang.base import Declaration, Language, ReferenceUse
+from codesense.indexing.relations import build_relation_edges, deduplicate_edge_rows
+from codesense.lang.base import (
+    Declaration,
+    IndexedDeclaration,
+    Language,
+    ReferenceUse,
+    RelationContext,
+)
 from codesense.text.corpus import corpus_sentences, source_files
 from codesense.text.split import Splitter, split_identifier
 
@@ -66,6 +73,11 @@ class Stats:
     reference_unresolved: int = 0
     segmented: int = 0
     languages: tuple[str, ...] = ()
+    relation_counts: dict[str, int] = field(default_factory=dict)
+    relation_unresolved: int = 0
+    relation_ambiguous: int = 0
+    relation_skipped: int = 0
+    relation_failures: int = 0
 
 
 @dataclass
@@ -174,10 +186,12 @@ def build_index(
     if segment:
         stats.segmented = _segment_compounds(postings)
 
-    edges: list[dict[str, Any]] = []
+    graph_edges: list[dict[str, Any]] = []
+    relation_edges: list[dict[str, object]] = []
+    symbol_ids = {row["symbol_id"] for row in symbols}
     for language in languages:
         builder = graphs[language.name]
-        edges += builder.build()
+        graph_edges += builder.build()
         stats.contains += builder.stats.contains
         stats.calls += builder.stats.calls
         stats.typed += builder.stats.typed
@@ -187,7 +201,38 @@ def build_index(
         stats.imports += builder.stats.imports
         stats.reference_ambiguous += builder.stats.reference_ambiguous
         stats.reference_unresolved += builder.stats.reference_unresolved
-    edges += in_file_edges
+        context = RelationContext(
+            tuple(
+                IndexedDeclaration(symbol_id, record.path, declaration)
+                for record in indexed_files
+                if record.language == language.name
+                for declaration, symbol_id in record.declarations
+            )
+        )
+        try:
+            batch = language.derive_relations(context)
+            language_edges = build_relation_edges(batch.facts, symbol_ids=symbol_ids)
+        except Exception as exc:  # noqa: BLE001 -- one relation pass must not sink the index
+            stats.relation_failures += 1
+            _log.warning(
+                "%s relation derivation failed: %s: %s",
+                language.name,
+                type(exc).__name__,
+                exc,
+            )
+        else:
+            relation_edges.extend(language_edges)
+            stats.relation_unresolved += batch.diagnostics.unresolved
+            stats.relation_ambiguous += batch.diagnostics.ambiguous
+            stats.relation_skipped += batch.diagnostics.skipped
+
+    relation_keys = {(row["source_id"], row["target_id"], row["kind"]) for row in relation_edges}
+    edges = deduplicate_edge_rows((*graph_edges, *relation_edges, *in_file_edges))
+    for edge in edges:
+        key = (edge["source_id"], edge["target_id"], edge["kind"])
+        if key in relation_keys:
+            kind = str(edge["kind"])
+            stats.relation_counts[kind] = stats.relation_counts.get(kind, 0) + 1
     stats.edges = len(edges)
 
     flat = postings.flatten()

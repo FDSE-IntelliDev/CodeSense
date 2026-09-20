@@ -72,7 +72,15 @@ def payload() -> dict:
                 "site": [20, 8],
                 "confidence": 1.0,
                 "provenance": "derived_container",
-            }
+            },
+            {
+                "source_id": 2,
+                "target_id": 1,
+                "kind": "implements",
+                "site": [21, 3],
+                "confidence": 0.7,
+                "provenance": "java_supertypes_simple",
+            },
         ],
         "declaration_count": 2,
     }
@@ -109,10 +117,23 @@ class TestRoundTrip:
         make_index().save(tmp_path / "deep" / "nested")
         assert (tmp_path / "deep" / "nested" / "meta.json").is_file()
 
+    def test_adapter_relation_evidence_survives_save_load_and_context(self, tmp_path: Path) -> None:
+        make_index(edges=2).save(tmp_path)
+
+        edge = next(
+            edge
+            for edge in Index.load(tmp_path).to_context().edges.out_edges(2)
+            if edge.kind == "implements"
+        )
+
+        assert edge.site == (21, 3)
+        assert edge.confidence == 0.7
+        assert edge.provenance == "java_supertypes_simple"
+
 
 class TestLoadFailures:
-    def test_current_format_is_v2(self) -> None:
-        assert FORMAT_VERSION == 2
+    def test_current_format_is_v3(self) -> None:
+        assert FORMAT_VERSION == 3
 
     def test_a_directory_without_meta_is_not_an_index(self, tmp_path: Path) -> None:
         with pytest.raises(FileNotFoundError, match="not an index directory"):

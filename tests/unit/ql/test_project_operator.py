@@ -32,6 +32,8 @@ def ctx() -> EvalContext:
         make_element(10, "Controller.java", "file", "Controller.java"),
         make_element(11, "Other.java", "file", "Other.java"),
         make_element(20, "PageRequest", "class", "PageRequest.java"),
+        make_element(30, "Worker", "class", "Worker.java"),
+        make_element(31, "Port", "interface", "Port.java"),
     )
     edges = (
         Edge(1, 10, "in_file", site=(10, 11), provenance="parser", confidence=1.0),
@@ -39,6 +41,7 @@ def ctx() -> EvalContext:
         Edge(3, 11, "in_file", site=(30, 31), provenance="parser", confidence=0.4),
         Edge(1, 20, "references", provenance="resolver", confidence=0.8),
         Edge(2, 20, "calls", provenance="resolver", confidence=0.8),
+        Edge(30, 31, "implements", provenance="adapter", confidence=0.7),
     )
     return EvalContext(
         symbols=InMemorySymbolStore(elements),
@@ -99,6 +102,14 @@ def test_projection_accepts_several_edge_kinds(ctx: EvalContext) -> None:
     result = project(page_request, ctx, edge=["references", "calls"], direction="backward")
 
     assert set(result.nodes) == {1, 2}
+
+
+def test_projects_adapter_relation_in_both_directions(ctx: EvalContext) -> None:
+    worker = Frag(nodes=ctx.symbols.get_many((30,)))
+    port = Frag(nodes=ctx.symbols.get_many((31,)))
+
+    assert set(project(worker, ctx, edge="implements", direction="forward").nodes) == {31}
+    assert set(project(port, ctx, edge="implements", direction="backward").nodes) == {30}
 
 
 def test_include_self_is_opt_in_and_respects_kind(ctx: EvalContext) -> None:
