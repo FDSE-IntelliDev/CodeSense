@@ -84,6 +84,14 @@ def test_prompt_describes_semantic_sources_result_roles_and_json_output() -> Non
     assert "json" in prompt
 
 
+def test_prompt_documents_hierarchy_relations_and_direction() -> None:
+    prompt = " ".join(PROMPT.lower().split())
+
+    assert all(edge in prompt for edge in ("extends", "implements", "overrides"))
+    assert "concrete" in prompt
+    assert "abstract" in prompt
+
+
 def test_understanding_posts_schema_and_returns_a_typed_model() -> None:
     session = FakeSession({"content": json.dumps(valid_payload())})
 

@@ -53,6 +53,9 @@ class RelationKind(str, Enum):
     REFERENCES = "references"
     IMPORTS = "imports"
     IN_FILE = "in_file"
+    EXTENDS = "extends"
+    IMPLEMENTS = "implements"
+    OVERRIDES = "overrides"
 
 
 class EndpointKind(str, Enum):

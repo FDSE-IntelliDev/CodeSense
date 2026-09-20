@@ -21,6 +21,15 @@ def test_codegen_prompt_documents_project_and_reference_edges() -> None:
     assert "PageRequest" in OPERATOR_SPEC
 
 
+def test_codegen_prompt_documents_hierarchy_relations_and_direction() -> None:
+    spec = OPERATOR_SPEC.lower()
+
+    assert all(edge in spec for edge in ("extends", "implements", "overrides"))
+    assert "concrete" in spec
+    assert "abstract" in spec
+    assert "confidence" in spec
+
+
 def test_project_is_available_to_safe_generated_scripts() -> None:
     ctx = EvalContext(
         symbols=InMemorySymbolStore(()),

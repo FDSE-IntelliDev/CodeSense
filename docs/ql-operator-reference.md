@@ -198,6 +198,9 @@ Path(nodes: tuple[int, ...], edges: tuple[Edge, ...])
 | `references` | 最小引用宿主声明或文件 → 被引用声明 | 广义引用；调用和 import 也会同时形成该边 |
 | `imports` | 文件 → 被 import 的声明 | import 的精确关系 |
 | `in_file` | 声明 → 所属文件 | 源路径事实，置信度 1.0 |
+| `extends` | 子类型 → 父类型 | Java `supertypes` 的低成本近似关系 |
+| `implements` | 实现类型/方法 → 接口/接口方法 | 类型和方法共享 edge kind，由端点 kind 区分 |
+| `overrides` | 覆盖方法 → 被覆盖方法 | Java 签名启发式关系 |
 
 图是项目内、轻量、无需完整构建的近似图，不应当成完整 CodeQL/LSP 语义图。
 
@@ -653,6 +656,22 @@ referencers = project(
 )
 files = project(referencers, ctx, edge="in_file", kind="file")
 ```
+
+从接口反向查找实现类或实现方法：
+
+```python
+implementations = project(
+    interface,
+    ctx,
+    edge="implements",
+    direction="backward",
+    min_confidence=0.8,
+)
+```
+
+继承关系边统一从具体声明指向抽象声明；从抽象端查找实现或覆盖时使用
+`direction="backward"`。Java 关系来自轻量 AST 启发式，`min_confidence` 可排除
+较弱的名称/参数数量匹配。
 
 `include_self=True` 用于输入可能已经包含目标类型的场景，例如统一执行文件 target 时保留已有文件节点。
 

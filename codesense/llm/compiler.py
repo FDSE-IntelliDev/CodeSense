@@ -62,7 +62,9 @@ Requirements:
   interchangeable. Give every term a relevance weight and concise reason.
 - Avoid generic terms such as get, set, and value.
 - Use relations only when the query explicitly means calls, contains,
-  references, imports, or in_file. Both endpoints normally name units. When
+  references, imports, in_file, extends, implements, or overrides. Hierarchy
+  edges point from the concrete declaration to its abstract declaration. Both
+  endpoints normally name units. When
   the requested answer is the unknown side of a relation, use exactly one
   result endpoint to state whether the returned objects are the source or the
   target of that relation.

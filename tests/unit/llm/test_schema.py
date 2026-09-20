@@ -53,6 +53,16 @@ def test_valid_payload_parses_to_typed_model() -> None:
     assert understood.relations[0].source.kind is EndpointKind.RESULT
 
 
+@pytest.mark.parametrize("edge", ("extends", "implements", "overrides"))
+def test_type_and_method_relations_are_supported(edge: str) -> None:
+    raw = payload()
+    raw["relations"][0]["edges"] = [edge]  # type: ignore[index]
+
+    understood = QueryUnderstandingResult.model_validate(raw)
+
+    assert understood.relations[0].edges[0].value == edge
+
+
 def test_response_format_is_strict_json_schema() -> None:
     response_format = query_understanding_response_format()
 

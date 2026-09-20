@@ -129,6 +129,14 @@ answer = project(referencers, ctx, edge="in_file", kind="file", include_self=Tru
 ```
 """
 
+OPERATOR_SPEC += """\
+
+Type and method hierarchy edges point from concrete to abstract: extends,
+implements, and overrides. Use backward projection from an abstract type or
+method to find implementations or overrides. These lightweight Java relations
+may have confidence below 1.0.
+"""
+
 PROMPT = """\
 You are generating a query script for a code retrieval system.
 
