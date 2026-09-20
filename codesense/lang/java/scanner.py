@@ -401,7 +401,7 @@ def _parameter_types(node: object, data: bytes) -> tuple[str, ...]:
                 (
                     child
                     for child in parameter.named_children
-                    if child.type != "variable_declarator"
+                    if child.type not in {"modifiers", "variable_declarator"}
                 ),
                 None,
             )

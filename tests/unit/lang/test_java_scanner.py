@@ -273,6 +273,19 @@ record Row(int id) implements One {}
 
         assert method.parameter_types == ("java.util.List", "String[]", "int[]")
 
+    def test_varargs_parameter_annotations_do_not_replace_the_type(
+        self, scanner: JavaDeclarationScanner
+    ) -> None:
+        result = scanner.scan(
+            """class Worker {
+    void save(@Nonnull String... names) {}
+}
+"""
+        )
+        method = next(item for item in result.declarations if item.name == "save")
+
+        assert method.parameter_types == ("String[]",)
+
     def test_scan_parses_the_source_once(self) -> None:
         tree_sitter_languages = pytest.importorskip("tree_sitter_languages")
 
