@@ -19,6 +19,10 @@ CodeSearch 的实现关系抽取提供了两个可复用原则：先由语言工
 CodeQL/LSP 路径把类型继承统一为 `implements_type`，方法覆盖统一为 `implements_method`。CodeSense
 需要保留 `extends`、`implements`、`overrides` 的区别，同时不能把 Java 规则写进通用图构建器。
 
+第一版优先复用现有 `Declaration.supertypes`，由 Java adapter 在项目级关系阶段根据关系两端的
+类型种类近似推断 `extends` 或 `implements`。这会牺牲一部分精度，但能避免同时引入一套新的 AST
+关系线索模型；低置信度和 provenance 用于明确标记这种折中。
+
 ## 2. 目标与非目标
 
 ### 2.1 目标
@@ -31,6 +35,7 @@ CodeQL/LSP 路径把类型继承统一为 `implements_type`，方法覆盖统一
 6. 关系类型保持开放字符串，使后续语言可以增加自身关系而不修改 EdgeStore 和图算子。
 7. 每条启发式关系保存 confidence 和 provenance，便于后续替换为更精确的 LSP、编译器或 CodeQL
    实现。
+8. 第一版复用 `Declaration.supertypes`，不新增精确区分父类型关键字的 `RelationHint`。
 
 ### 2.2 非目标
 
@@ -50,7 +55,7 @@ source file
     |
     v
 Language.scan()
-    |  Declaration + RelationHint + ReferenceUse
+    |  Declaration(supertypes) + ReferenceUse
     v
 通用 pipeline 分配稳定 symbol_id
     |
@@ -66,8 +71,8 @@ EdgeStore -> project / reach / hop
 
 职责必须严格分开：
 
-- language adapter 理解语言。它解析 package/import、父类型、接口、方法签名、修饰符和 override
-  规则，并决定两个符号之间是否存在关系以及关系名称。
+- language adapter 理解语言。它解析父类型、接口、方法签名、修饰符和 override 规则，并决定两个
+  符号之间是否存在关系以及关系名称。
 - pipeline 提供稳定 ID 和只读项目符号视图，按语言调用关系解析入口。
 - RelationBuilder 不理解 Java、Python 或 C++。它只接受已经确定两端 ID 的 `RelationFact`，执行
   通用数据完整性操作。
@@ -78,36 +83,29 @@ EdgeStore -> project / reach / hop
 
 ## 4. 语言无关的数据契约
 
-### 4.1 RelationHint：扫描阶段的语法线索
+### 4.1 复用 supertypes，补充参数类型
 
-新增语言无关的未解析关系对象：
+第一版继续使用现有字段：
 
 ```python
-@dataclass(frozen=True, slots=True)
-class RelationHint:
-    kind: str
-    target_name: str
-    target_kind: str = ""
-    target_qualified_name: str = ""
-    line: int = 0
-    column: int = 0
-    confidence: float = 1.0
-    provenance: str = ""
+supertypes: tuple[str, ...] = ()
 ```
 
-`Declaration` 增加：
+它表达“该类型声明列出的直接父类型名称”，但不承诺保存原始关键字是 `extends` 还是
+`implements`。Java adapter 在项目级阶段解析名称并根据两端 declaration kind 近似分类关系。
+
+`Declaration` 只新增方法启发式需要的语言无关字段：
 
 ```python
 parameter_types: tuple[str, ...] = ()
-relation_hints: tuple[RelationHint, ...] = ()
 ```
 
-`RelationHint` 的 source 隐式为持有它的 declaration，避免在 scanner 尚未分配 ID 时建立脆弱的
-行号反查。`kind` 是开放字符串；`target_kind` 和 qualified name 是 adapter 已经从语法环境中得到
-的约束，不是通用层的推断。
+没有静态参数类型的语言可以留空；Java adapter 使用它做方法关系启发式匹配。现有 `signature`
+继续服务检索和展示，不要求通用层重新解析字符串。
 
-`parameter_types` 是 callable 的语言无关签名事实。没有静态参数类型的语言可以留空；Java adapter
-使用它做方法关系启发式匹配。现有 `signature` 继续服务检索和展示，不要求通用层重新解析字符串。
+`supertypes` 和 `parameter_types` 都是构建期间的 adapter 输入，第一版不把它们加入 `Element` 或
+symbol row。搜索阶段不会把 edge 请求临时改写成 `supertypes` 查询；adapter 必须在索引构建时将
+它们转换成真实 `RelationFact`，否则重新打开索引后已经不存在 `Declaration` 可供映射。
 
 ### 4.2 RelationContext：项目级只读符号视图
 
@@ -179,31 +177,50 @@ def derive_relations(
 
 ## 5. Java 类型关系解析
 
-Java scanner 在已有 tree-sitter 遍历中读取类型声明的直接父类型子树，不进行第二次 parse：
+### 5.1 scanner 的最小修正
 
-- `class Child extends Base` 产生 `extends -> Base`；
-- `class Child implements One, Two` 产生两条 `implements` hint；
-- `interface Child extends One, Two` 产生两条 `extends` hint；
-- `enum` 和 `record` 的接口列表产生 `implements` hint；
-- annotation type 第一版不合成其隐含的 `java.lang.annotation.Annotation` 关系。
+Java scanner 继续把直接父类型写入 `Declaration.supertypes`，不新增精确关系对象，也不进行第二次
+parse。现有 `_supertypes()` 只做两个必要修正：
 
-提取目标时只取父类型表达式的根类型，不把泛型参数当作父类型：
+1. 只提取父类型表达式的根类型，不能把泛型参数当作父类型；
+2. 补充 tree-sitter 的 `extends_interfaces`，使 interface extends 不再漏失；
+
+父类型继续规整为末尾 simple name，避免改变现有 `TypeTable.lookup()` 的 simple-name 方法查找契约。
+第一版不尝试保留 package 或外部类型路径。
+
+预期结果为：
 
 ```text
 Base<T>                 -> Base
-pkg.Base<T>             -> pkg.Base
-Outer.Inner             -> Outer.Inner
-One, pkg.Two            -> One + pkg.Two
+pkg.Base<T>             -> Base
+Outer.Inner             -> Inner
+One, pkg.Two            -> One + Two
 ```
 
-scanner 根据 compilation unit 的 package 和显式 import 尽量填写 `target_qualified_name`。Java
-relation resolver 的解析顺序为：
+annotation type 第一版不合成其隐含的 `java.lang.annotation.Annotation` 关系。
 
-1. 项目内唯一全限定名；
-2. 显式 import 指向的唯一声明；
-3. 同 package 中的唯一声明；
-4. 唯一 simple name，作为 wildcard import 和不完整语法信息的低置信度兜底；
-5. 多个 simple-name 候选或外部类型不建边，计入 ambiguity/unresolved 诊断。
+### 5.2 名称解析与近似分类
+
+Java relation resolver 对每个 `supertypes` 条目按以下顺序寻找项目内类型：
+
+1. simple name 优先匹配 source declaration 所在 package 的唯一类型；
+2. 否则使用项目内唯一 simple-name 类型作为低置信度兜底；
+3. 多个 simple-name 候选或外部类型不建边，计入 ambiguity/unresolved 诊断。
+
+由于 `supertypes` 已经丢失 `extends` / `implements` 关键字，关系名称根据两端声明类型近似判断：
+
+| source declaration | target declaration | relation |
+|---|---|---|
+| class | class | `extends` |
+| class | interface | `implements` |
+| interface | interface | `extends` |
+| enum / record | interface | `implements` |
+| 其他组合 | 任意 | 跳过并记录 skipped |
+
+这套分类对能够通过 Java 编译的常规源码成立；对于语法损坏、目标类型误解析或不完整项目可能产生
+漏判。第一版接受这个精度边界，并用低 confidence 与 `java_supertypes_*` provenance 明示来源。
+由于 `supertypes` 不保存关系 token 的位置，类型边的 `site` 使用 source type declaration 的起始
+位置，表示近似证据位置而不是精确的 `extends` / `implements` token。
 
 直接类型关系的方向统一为：
 
@@ -233,7 +250,8 @@ Java 允许协变返回类型。
 
 ### 6.2 候选查找
 
-Java relation resolver 先解析类型关系，再按 owner type 建立方法索引。每个非 constructor 方法：
+Java relation resolver 先从 `supertypes` 推导类型关系，再按 owner type 建立方法索引。每个非
+constructor 方法：
 
 1. 沿已经解析的 `extends` / `implements` 类型图向上遍历；
 2. 在祖先类型中查找相同 name 和 arity 的方法；
@@ -277,8 +295,8 @@ method --overrides---> method
 
 | 条件 | confidence | provenance |
 |---|---:|---|
-| 类型全限定名唯一匹配 | 1.00 | `java_ast_qualified_type` |
-| 类型唯一 simple-name 兜底 | 0.80 | `java_ast_simple_type` |
+| supertypes 同 package 唯一匹配 | 0.80 | `java_supertypes_same_package` |
+| supertypes 唯一 simple-name 兜底 | 0.70 | `java_supertypes_simple` |
 | 方法参数类型一致且有 `@Override` | 0.95 | `java_override_exact` |
 | 方法参数类型一致 | 0.90 | `java_signature_match` |
 | name + arity 且有 `@Override` | 0.80 | `java_override_arity` |
@@ -316,8 +334,8 @@ extends, implements, overrides
 
 ## 8. 失败处理与可观测性
 
-单个 hint 无法解析时不终止构建。Java adapter 继续处理其他关系，并在 `RelationBatch` 的
-diagnostics 中记录：
+单个 supertype 或方法候选无法解析时不终止构建。Java adapter 继续处理其他关系，并在
+`RelationBatch` 的 diagnostics 中记录：
 
 - unresolved type targets；
 - ambiguous type targets；
@@ -343,7 +361,7 @@ relation_failures: int
 
 ## 9. 性能约束
 
-每个 adapter 应先建立索引再解析关系，禁止为每个 relation hint 线性扫描全部声明。Java resolver
+每个 adapter 应先建立索引再解析关系，禁止为每个 supertype 条目线性扫描全部声明。Java resolver
 至少建立：
 
 ```text
@@ -356,7 +374,7 @@ type symbol -> direct parent type symbols
 在候选数上限和最大祖先深度固定时，预期复杂度接近：
 
 ```text
-O(declarations + relation hints + methods * bounded ancestors)
+O(declarations + supertypes + methods * bounded ancestors)
 ```
 
 只物化直接类型关系和经过筛选的方法关系，不计算全项目继承闭包。relation dedup 使用 hash map，
@@ -407,13 +425,15 @@ concrete -> abstract。planned 的结构化 relation enum 若仍为封闭集合�
 - class implements 多个接口；
 - interface extends 多个接口；
 - enum/record implements；
-- qualified、显式 import、同 package 和 wildcard import 场景；
+- qualified/scoped type 被规整为末尾 simple name；
 - method 参数类型、泛型擦除、数组和 varargs；
 - `@Override`、static/private/final 修饰符。
 
 ### 11.2 Java relation resolver
 
 - 类型关系 kind、方向、site、confidence 和 provenance；
+- source/target kind 的 extends/implements 分类表；
+- 同 package、唯一 simple-name 和歧义跳过；
 - class method override；
 - class method interface implementation；
 - interface method override；
@@ -445,8 +465,8 @@ concrete -> abstract。planned 的结构化 relation enum 若仍为封闭集合�
 
 主要改动限定在：
 
-- `codesense/lang/base.py`：通用 relation dataclass、Declaration 字段和 Language 协议；
-- `codesense/lang/java/scanner.py`：AST 关系线索和参数类型提取；
+- `codesense/lang/base.py`：通用 relation dataclass、`parameter_types` 和 Language 协议；
+- `codesense/lang/java/scanner.py`：修正 `supertypes` 提取并增加参数类型；
 - `codesense/lang/java/relations.py`：Java 项目级关系解析；
 - `codesense/lang/java/__init__.py`：实现 `derive_relations()`；
 - `codesense/indexing/pipeline.py`：构造 context、调用 adapter、聚合边；
@@ -462,6 +482,8 @@ extends/implements/overrides 的识别，也不应导入 `codesense.lang.java`�
 
 第一版明确记录但不解决：
 
+- `supertypes` 丢失原始 extends/implements 关键字，关系由两端 kind 近似分类；
+- qualified type、显式 import 与 wildcard import 的完整解析，同名类型歧义时宁缺毋滥；
 - 泛型类型变量替换和 bounds；
 - package-private 的完整跨包可见性；
 - covariant return 的精确验证；
@@ -474,4 +496,6 @@ extends/implements/overrides 的识别，也不应导入 `codesense.lang.java`�
 
 后续升级到 JDTLS、javac symbol API 或 CodeQL 时，精确实现仍放在 Java adapter 的
 `derive_relations()` 内，并继续输出相同 `RelationFact`。通用 pipeline、磁盘 edge 结构和 QL 查询
-不需要随之重写；旧的低置信度 `java_name_arity` 结果可以按 provenance 定位、替换和重新评估。
+不需要随之重写。若先升级 tree-sitter 路径，也可以在 Java adapter 内增加精确 `RelationHint`，
+替换 `supertypes` 近似分类，而不改变通用协议。旧的低置信度 `java_supertypes_*` 和
+`java_name_arity` 结果可以按 provenance 定位、替换和重新评估。
