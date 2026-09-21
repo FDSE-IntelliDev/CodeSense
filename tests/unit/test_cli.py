@@ -171,6 +171,21 @@ class TestLlmConfiguration:
         monkeypatch.chdir(repo)
         assert main(["query", "alloc", "--route", "lexical"]) == 0
 
+    def test_lexical_judging_builds_a_config_for_the_semantic_fallback(self, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+        import argparse
+
+        from codesense.cli import _llm
+
+        monkeypatch.setenv("CODESENSE_API_KEY", "sk-test")
+        args = argparse.Namespace(
+            route="lexical",
+            judge=True,
+            base_url="https://example.invalid/v1",
+            model="judge-model",
+        )
+
+        assert _llm(args).model == "judge-model"
+
     def test_a_missing_key_degrades_rather_than_failing(
         self, repo: Path, tmp_path: Path, monkeypatch, capsys
     ) -> None:  # type: ignore[no-untyped-def]
@@ -195,6 +210,16 @@ class TestLlmConfiguration:
         config = _llm(args)
         assert config.base_url == "https://example.invalid/v1"
         assert config.model == "some-model"
+
+    def test_uses_the_library_default_model(self, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+        import argparse
+
+        from codesense.cli import _llm
+
+        monkeypatch.setenv("CODESENSE_API_KEY", "sk-test")
+        monkeypatch.delenv("CODESENSE_MODEL", raising=False)
+        args = argparse.Namespace(route="codegen", base_url=None, model=None)
+        assert _llm(args).model == "qwen3.7-plus"
 
     def test_a_flag_beats_the_environment(self, monkeypatch) -> None:  # type: ignore[no-untyped-def]
         import argparse

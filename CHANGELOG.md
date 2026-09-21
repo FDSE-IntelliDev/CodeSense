@@ -1,5 +1,10 @@
 # CodeSense Changelog
 
+## 2026-09-21 — 完整代码元素名检索
+
+- 索引在保留现有标识符拆词的同时，额外保存元素完整名称的 `casefold` 形式；查询词优先按
+  相同规则归一化，并兼容旧有大小写敏感的注解 surface。已有索引需要重新构建。
+
 ## 2026-09-20 — Java 类型与方法关系
 
 - Java adapter 复用修正后的 `Declaration.supertypes`，构建低置信度、可解释的
@@ -10,6 +15,20 @@
 - planned、codegen 与 QL 文档开放新 edge vocabulary；边方向统一为 concrete -> abstract，
   可从抽象类型或方法反向投影实现。
 - 索引格式提升到 v3，旧索引需要重新构建。
+
+## 2026-09-20 — 条件化语义判断兜底
+
+- codegen 脚本在启用 `judge` 时执行真实 `intent` 算子；生成 prompt 会显式获知本次搜索
+  是否允许语义判断，不再携带项目词表，并按“召回、便宜过滤/关系投影、最后可选判断”
+  描述搜索策略。
+- 公共检索流程只在候选超过 20 且 Top-N 末 5 项相对最高分均低于 0.25 时启动
+  `intent`；单次最多送审 60 项，预算外候选保持不变。
+- 同一次搜索按 criterion 与候选上下文缓存判断结果，避免脚本与公共兜底重复调用；
+  Judge 同时接收文件路径和有界检索证据，使 file 结果不再只凭文件名判断。
+- `lexical --judge` 现在也会构造 LLM Judge；未启用 `judge` 或无可用 Judge 时仍保持
+  原有无模型、无额外费用的搜索行为。
+- evaluation 的每条 route 结果新增 `script` 字段，codegen 会保存 LLM 生成并实际执行的
+  查询脚本；该字段同时进入最终 JSON 报告和实时 viewer 的事件数据。
 
 ## 2026-09-14 — Open-SWE-Traces 语义检索 Benchmark
 

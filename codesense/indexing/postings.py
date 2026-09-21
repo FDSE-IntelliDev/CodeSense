@@ -37,7 +37,11 @@ def declaration_terms(
     rather than `split_identifier` is what adds compound segmentation.
     """
     terms: list[tuple[str, str]] = []
-    terms += [(t, "name") for t in split(declaration.name)]
+    # Keep an exact, case-insensitive surface alongside the existing pieces.
+    # The ordered mapping avoids doubling the term frequency for simple names
+    # whose split form is already identical to their complete name.
+    name_terms = dict.fromkeys((declaration.name.casefold(), *split(declaration.name)))
+    terms += [(term, "name") for term in name_terms if term]
     terms += [(t, "container") for t in split(declaration.container)]
     terms += [(t, "signature") for t in split(declaration.signature)]
     terms += [(w, "doc") for w in words_of(declaration.doc, limit=DOC_TERM_LIMIT)]

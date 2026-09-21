@@ -30,7 +30,9 @@
 **Interfaces:**
 - `TraceEvent(index: int, role: str, text: str, tool_name: str | None, tool_input: str | None, tool_output: str | None)`
 - `TraceCase(repo: str, language: str, instance_id: str, trajectory_id: str, issue_statement: str, base_commit: str | None, events: tuple[TraceEvent, ...], raw: Mapping[str, object])`
-- `PreparedQuery(query_id: str, repo: str, instance_id: str, trajectory_id: str, episode_index: int, query: str, strategy: str, anchor_event: int, raw_action: str, source_events: tuple[TraceEvent, ...], provenance: Mapping[str, object])`
+- `CodeLocation(file: str, functions: tuple[str, ...])`
+- `SearchQuery(event_indices: tuple[int, ...], query: str, answers: tuple[CodeLocation, ...])`
+- `PreparedQuery(query_id: str, repo: str, instance_id: str, trajectory_id: str, searches: tuple[SearchQuery, ...], final_answer: tuple[CodeLocation, ...], strategy: str, source_events: tuple[TraceEvent, ...], provenance: Mapping[str, object])`
 - Each model provides `to_dict()` with only JSON-compatible values.
 
 - [ ] **Step 1: Write failing serialization tests**
@@ -63,6 +65,8 @@
 **Interfaces:**
 - `normalize_record(record: Mapping[str, object]) -> TraceCase`
 - `iter_jsonl(path: Path) -> Iterator[TraceCase]`
+- Only records with the strict integer value `resolved == 1` are eligible; batch iteration
+  silently skips all other resolution states.
 
 - [ ] **Step 1: Write failing adapter tests**
 
@@ -88,7 +92,7 @@
 
   Expected: PASS.
 
-### Task 3: Identify episodes and build prefix-only prompts
+### Task 3: Identify search events and build local-window prompts
 
 **Files:**
 - Create: `evaluation/query_mining.py`
@@ -97,17 +101,17 @@
 **Interfaces:**
 - `is_search_event(event: TraceEvent) -> bool`
 - `find_episodes(case: TraceCase) -> tuple[tuple[TraceEvent, ...], ...]`
-- `build_prompt(case: TraceCase, episode: Sequence[TraceEvent], *, prompt_version: str) -> str`
+- `build_prompt(case: TraceCase, *, prompt_version: str) -> str`
 - `mine_queries(case: TraceCase, generator: QueryGenerator, *, prompt_version: str = "trace-query-v1") -> tuple[PreparedQuery, ...]`
 - `QueryGenerator` is a protocol with `generate(prompt: str) -> str | None`.
 
-- [ ] **Step 1: Write failing episode tests**
+- [ ] **Step 1: Write failing search-event tests**
 
-  Assert that repeated `rg`/`grep` actions with overlapping intent form one episode, a changed search target forms a second episode, tool outputs are not included in the episode input, and a trace with no search action yields an empty tuple.
+  Assert that repeated `rg`/`grep` actions are detected, each search event contributes its adjacent tool/assistant events, system/user events are excluded, and a trace with no search action yields an empty tuple.
 
-- [ ] **Step 2: Write the prompt-leakage test**
+- [ ] **Step 2: Write the trace-wide prompt test**
 
-  Build a prompt from an episode whose current action has a tool output and whose later event contains a gold-like path. Assert that neither the tool output nor the later event appears in the prompt, while the issue statement, preceding events, and current raw action do appear.
+  Build one prompt from a trace with multiple search actions. Assert that only the immediately adjacent assistant/tool events and the search actions themselves appear, while distant events, system/user events, and the issue statement do not.
 
 - [ ] **Step 3: Run tests and confirm failure**
 
@@ -115,9 +119,9 @@
 
   Expected: FAIL because `evaluation.query_mining` does not exist.
 
-- [ ] **Step 4: Implement deterministic episode detection**
+- [ ] **Step 4: Implement deterministic search detection and one-call extraction**
 
-  Recognize `grep`, `rg`, `ripgrep`, `find`, `search`, `search_code`, `code_search`, and symbol/file navigation actions. Group nearby actions only when normalized search tokens overlap; split when the target changes. Strip path-only and shell-only tokens when calculating overlap, but retain the original action for provenance.
+  Recognize `grep`, `rg`, `ripgrep`, `find`, `search`, `search_code`, `code_search`, and symbol/file navigation actions. Pass one local context window per detected search to one LLM call, parse multiple searches with structured code-location answers, and emit one instance-level record containing all searches plus a structured turn-level final answer.
 
 - [ ] **Step 5: Implement the prefix-only prompt**
 
@@ -145,7 +149,8 @@
 **Interfaces:**
 - `OpenAIQueryGenerator(config: LlmConfig, session: object | None = None)`
 - `OpenAIQueryGenerator.generate(prompt: str) -> str | None`
-- CLI: `python scripts/mine_trace_queries.py --input traces.jsonl --output queries.jsonl --limit 3 [--base-url URL --model MODEL --timeout SECONDS]`
+- CLI: configure `INPUT`, `OUTPUT`, `LIMIT`, `DRY_RUN`, and model settings at the top of
+  `scripts/mine_trace_queries.py`, then run `python scripts/mine_trace_queries.py`.
 
 - [ ] **Step 1: Write failing HTTP adapter tests**
 
@@ -163,7 +168,11 @@
 
 - [ ] **Step 4: Implement the CLI**
 
-  Read one JSON object per non-empty input line, normalize Java records, mine queries, and write one JSON object per query. Use `LlmConfig.load(base_url=..., model=..., timeout=...)`; never accept an API key CLI flag. Add `--dry-run` to emit `{"type":"prompt", "trace":..., "episode_index":..., "prompt":...}` records without making LLM calls, and `--limit` to stop after N records.
+  Read one JSON object per non-empty input line, normalize Java records, make at most one LLM
+  call per trace, and write one JSON object per extracted search query. Use
+  `LlmConfig.load(base_url=..., model=..., timeout=...)`; never accept an API key CLI flag.
+  Dry-run emits one `{"type":"prompt", "trace":..., "search_event_indices":..., "prompt":...}`
+  record per trace without making LLM calls.
 
 - [ ] **Step 5: Run focused tests and a local dry run**
 

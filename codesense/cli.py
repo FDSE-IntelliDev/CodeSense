@@ -45,7 +45,6 @@ ENV_BASE_URL = "CODESENSE_BASE_URL"
 ENV_MODEL = "CODESENSE_MODEL"
 
 DEFAULT_BASE_URL = "https://api.openai.com/v1"
-DEFAULT_MODEL = "gpt-4o-mini"
 
 
 def find_index(start: Path | None = None) -> Path | None:
@@ -193,9 +192,9 @@ def _llm(args: argparse.Namespace):  # type: ignore[no-untyped-def]
     A missing key is not an error: `search` degrades to the lexical route,
     which is the whole reason that route exists.
     """
-    if args.route == "lexical":
+    if args.route == "lexical" and not getattr(args, "judge", False):
         return None
-    from codesense.llm import LlmConfig
+    from codesense.llm import DEFAULT_MODEL, LlmConfig
 
     base_url = args.base_url or os.environ.get(ENV_BASE_URL) or DEFAULT_BASE_URL
     model = args.model or os.environ.get(ENV_MODEL) or DEFAULT_MODEL

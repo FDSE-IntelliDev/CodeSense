@@ -23,18 +23,23 @@ class TermResolver:
         self._symbol_ids: dict[str, frozenset[int]] = {}
 
     def surfaces(self, term: str) -> tuple[Expansion, ...]:
+        # Index terms use case-folded exact surfaces, so every query entry
+        # point tries that normalization first. The original spelling remains
+        # a fallback for legacy case-preserving surfaces such as annotations.
         cached = self._surfaces.get(term)
         if cached is not None:
             return cached
 
         found: dict[str, Expansion] = {}
-        if self._ctx.postings.term_info(term) is not None:
-            found[term] = Expansion(term, 1.0, "exact")
-        for expansion in self._ctx.expansion.expand(term):
-            if expansion.target in found:
-                continue
-            if self._ctx.postings.term_info(expansion.target) is not None:
-                found[expansion.target] = expansion
+        lookup_keys = dict.fromkeys((term.casefold(), term))
+        for key in lookup_keys:
+            if self._ctx.postings.term_info(key) is not None:
+                found.setdefault(key, Expansion(key, 1.0, "exact"))
+            for expansion in self._ctx.expansion.expand(key):
+                if expansion.target in found:
+                    continue
+                if self._ctx.postings.term_info(expansion.target) is not None:
+                    found[expansion.target] = expansion
 
         resolved = tuple(found.values())
         self._surfaces[term] = resolved

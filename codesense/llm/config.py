@@ -24,7 +24,7 @@ __all__ = ["DEFAULT_BASE_URL", "DEFAULT_MODEL", "LlmConfig"]
 #: dashscope's OpenAI-compatible endpoint. Change here or override in config
 #: to switch provider.
 DEFAULT_BASE_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1"
-DEFAULT_MODEL = "qwen-plus"
+DEFAULT_MODEL = "qwen3.7-plus"
 
 #: The environment wins over the config file -- in CI and containers the
 #: environment is usually all there is.

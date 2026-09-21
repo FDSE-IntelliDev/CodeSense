@@ -104,6 +104,24 @@ class TestJudge:
         body = session.calls[0]["json"]
         assert "decide whether it issues a token" in body["messages"][0]["content"]  # type: ignore[index]
 
+    def test_file_path_and_retrieval_evidence_reach_the_prompt(self) -> None:
+        session = FakeSession("[]")
+        candidate = JudgeItem(
+            symbol_id=1,
+            name="PageRecord.java",
+            kind="file",
+            file="src/PageRecord.java",
+            evidence=("PageRequest", "backward references"),
+        )
+
+        OpenAICompatibleJudge(config(), session).judge("files referencing PageRequest", [candidate])
+
+        body = session.calls[0]["json"]
+        prompt = body["messages"][0]["content"]  # type: ignore[index]
+        assert "src/PageRecord.java" in prompt
+        assert "PageRequest" in prompt
+        assert "backward references" in prompt
+
     def test_temperature_0_so_results_reproduce(self) -> None:
         session = FakeSession("[]")
         OpenAICompatibleJudge(config(), session).judge("c", items())
@@ -116,6 +134,9 @@ class TestJudge:
 
 
 class TestConfig:
+    def test_default_model_is_qwen_3_7_plus(self) -> None:
+        assert LlmConfig(api_key="k").model == "qwen3.7-plus"
+
     def test_repr_does_not_leak_the_key(self) -> None:
         """It shows up in logs, tracebacks and pytest -v."""
         assert "sk-test" not in repr(config())

@@ -113,8 +113,14 @@ class QueryUnderstanding:
             return None
         try:
             return QueryUnderstandingResult.model_validate_json(content)
-        except ValidationError:
-            _log.warning("query understanding schema validation failed")
+        except ValidationError as exc:
+            # Keep the provider payload private while exposing the exact
+            # contract locations needed to diagnose schema drift.
+            details = "; ".join(
+                f"{'.'.join(map(str, error['loc'])) or '<root>'}: {error['msg']}"
+                for error in exc.errors(include_url=False, include_input=False)
+            )
+            _log.warning("query understanding schema validation failed: %s", details)
             return None
 
     def _ask(self, prompt: str) -> dict[str, object] | None:

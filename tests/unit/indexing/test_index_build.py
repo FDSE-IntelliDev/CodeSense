@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-from codesense.indexing.postings import PostingTable
-from codesense.text.split import Splitter
+from codesense.indexing.postings import PostingTable, declaration_terms
+from codesense.lang.base import Declaration
+from codesense.text.split import Splitter, split_identifier
 
 
 def table() -> PostingTable:
@@ -12,6 +13,26 @@ def table() -> PostingTable:
     postings.add("io", 2, "name")
     postings.add("stat", 3, "name")
     return postings
+
+
+class TestDeclarationTerms:
+    def test_keeps_casefolded_complete_name_and_split_pieces(self) -> None:
+        terms = declaration_terms(
+            Declaration(name="YamlLines", kind="interface"),
+            split_identifier,
+        )
+
+        assert ("yamllines", "name") in terms
+        assert ("yaml", "name") in terms
+        assert ("lines", "name") in terms
+
+    def test_complete_name_does_not_duplicate_an_identical_split_term(self) -> None:
+        terms = declaration_terms(
+            Declaration(name="Buffer", kind="class"),
+            split_identifier,
+        )
+
+        assert terms.count(("buffer", "name")) == 1
 
 
 class TestPostingTable:

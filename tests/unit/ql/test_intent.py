@@ -29,9 +29,11 @@ class ScriptedJudge(Judge):
     def __init__(self, verdicts: dict[int, Verdict]) -> None:
         self.verdicts = verdicts
         self.calls: list[tuple[str, tuple[int, ...]]] = []
+        self.items: list[JudgeItem] = []
 
     def judge(self, concept: str, items: Sequence[JudgeItem]) -> dict[int, Verdict]:
         self.calls.append((concept, tuple(i.symbol_id for i in items)))
+        self.items.extend(items)
         return {
             i.symbol_id: self.verdicts[i.symbol_id] for i in items if i.symbol_id in self.verdicts
         }
@@ -103,6 +105,26 @@ class TestFiltering:
 
 
 class TestEvidence:
+    def test_file_candidates_carry_path_and_search_evidence_to_the_judge(self) -> None:
+        element = Element(1, "PageRecord.java", "file", "src/PageRecord.java", (1, 80))
+        frag = Frag(
+            nodes={1: element},
+            evidence={
+                1: Evidence(
+                    unit_hits=(
+                        UnitHit("page request", "lexical", "PageRequest", score=1.0),
+                        UnitHit("projection", "graph", "backward references", score=0.0),
+                    )
+                )
+            },
+        )
+        judge = ScriptedJudge({1: yes()})
+
+        intent(frag, "files referencing PageRequest", make_context(judge))
+
+        assert judge.items[0].file == "src/PageRecord.java"
+        assert judge.items[0].evidence == ("PageRequest", "backward references")
+
     def test_the_verdict_goes_into_the_evidence(self) -> None:
         """Otherwise a user has no way to judge whether to trust it."""
         ctx = make_context(ScriptedJudge({1: yes()}))

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import importlib
 from collections.abc import Sequence
+from dataclasses import replace
 
 import pytest
 
@@ -17,7 +18,7 @@ from codesense.index import Index
 from codesense.llm import QueryUnderstandingResult
 from codesense.ql.frag import Evidence, Frag, UnitHit, Verdict
 from codesense.ql.judge import JudgeItem
-from codesense.ql.operators import score_of
+from codesense.ql.operators import intent, score_of
 from codesense.search import (
     ROUTES,
     Hit,
@@ -86,10 +87,26 @@ class CountingJudge:
 
     def __init__(self) -> None:
         self.items: list[JudgeItem] = []
+        self.concepts: list[str] = []
 
     def judge(self, concept: str, items: Sequence[JudgeItem]) -> dict[int, Verdict]:
+        self.concepts.append(concept)
         self.items.extend(items)
         return {item.symbol_id: Verdict("test", "yes", f"matches {concept}", 1.0) for item in items}
+
+
+def scored_frag(ctx, scores: Sequence[float]) -> Frag:  # type: ignore[no-untyped-def]
+    """Build a candidate fragment whose aggregate scores are controlled by the test."""
+    symbol_ids = tuple(range(1, len(scores) + 1))
+    return Frag(
+        nodes=ctx.symbols.get_many(symbol_ids),
+        evidence={
+            symbol_id: Evidence(
+                unit_hits=(UnitHit("query", Evidence.COMBINED, "controlled", score=score),)
+            )
+            for symbol_id, score in zip(symbol_ids, scores, strict=True)
+        },
+    )
 
 
 def make_searchable_index() -> Index:
@@ -303,6 +320,122 @@ class TestRouting:
         assert "[codesense.search] operator.start name='eval_unit'" in output
         assert "[codesense.search] operator.done name='top'" in output
         assert "[codesense.search] codegen.execute.done" in output
+
+    def test_codegen_script_runs_real_intent_when_judging_is_enabled(
+        self, ctx, monkeypatch: pytest.MonkeyPatch
+    ) -> None:  # type: ignore[no-untyped-def]
+        judge = CountingJudge()
+        ctx = replace(ctx, judge=judge)
+        source = (
+            'unit = QueryUnit("q", satisfiers='
+            '(LexicalSatisfier(terms=(Term("alloc"),)),))\n'
+            'answer = intent(eval_unit(unit, ctx), "script criterion", ctx, max_items=60)\n'
+        )
+        monkeypatch.setattr(
+            "codesense.llm.ScriptGenerator.generate",
+            lambda *args, **kwargs: source,
+        )
+
+        result = search("alloc", ctx, route="codegen", llm=object(), judge=True)
+
+        assert result.hits
+        assert judge.concepts == ["script criterion"]
+
+
+class TestIntentFallback:
+    @staticmethod
+    def _search(
+        monkeypatch: pytest.MonkeyPatch,
+        scores: Sequence[float],
+        judge: CountingJudge,
+        *,
+        limit: int,
+    ) -> SearchResult:
+        ctx = replace(make_file_target_context(()), judge=judge)
+        frag = scored_frag(ctx, scores)
+        search_module = importlib.import_module("codesense.search")
+        monkeypatch.setattr(
+            search_module,
+            "_codegen",
+            lambda *args: (frag, "", [], ()),
+        )
+        return search(
+            "find allocation implementations",
+            ctx,
+            route="codegen",
+            llm=object(),
+            judge=True,
+            limit=limit,
+        )
+
+    def test_skips_fallback_when_candidate_count_is_not_over_threshold(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        judge = CountingJudge()
+
+        result = self._search(monkeypatch, [0.0] * 20, judge, limit=20)
+
+        assert len(result.hits) == 20
+        assert judge.items == []
+
+    def test_skips_fallback_when_tail_scores_are_still_strong(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        judge = CountingJudge()
+
+        result = self._search(monkeypatch, [1.0] * 21, judge, limit=21)
+
+        assert len(result.hits) == 21
+        assert judge.items == []
+
+    def test_runs_fallback_when_return_window_has_a_low_score_tail(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        judge = CountingJudge()
+        scores = [1.0, *([0.5] * 15), *([0.1] * 5)]
+
+        result = self._search(monkeypatch, scores, judge, limit=21)
+
+        assert len(result.hits) == 21
+        assert len(judge.items) == 21
+        assert any("low-score tail" in note for note in result.notes)
+
+    def test_fallback_preserves_candidates_outside_the_judging_budget(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        judge = CountingJudge()
+        scores = [1.0, *([0.5] * 64), *([0.1] * 5)]
+
+        result = self._search(monkeypatch, scores, judge, limit=70)
+
+        assert len(result.hits) == 70
+        assert len(judge.items) == 60
+
+    def test_reuses_identical_script_judgements_in_the_public_fallback(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        judge = CountingJudge()
+        ctx = replace(make_file_target_context(()), judge=judge)
+        scores = [1.0, *([0.5] * 15), *([0.1] * 5)]
+        frag = scored_frag(ctx, scores)
+        search_module = importlib.import_module("codesense.search")
+
+        def route(query, route_ctx, *args):  # type: ignore[no-untyped-def]
+            return intent(frag, query, route_ctx, max_items=60), "", [], ()
+
+        monkeypatch.setattr(search_module, "_codegen", route)
+
+        result = search(
+            "find allocation implementations",
+            ctx,
+            route="codegen",
+            llm=object(),
+            judge=True,
+            limit=21,
+        )
+
+        assert len(result.hits) == 21
+        assert len(judge.items) == 21
 
     def test_rejects_an_unknown_route(self, ctx) -> None:  # type: ignore[no-untyped-def]
         with pytest.raises(ValueError, match="route must be one of"):

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 
 import pytest
 
@@ -125,6 +126,29 @@ def test_unusable_provider_messages_return_none(message: dict[str, object]) -> N
     session = FakeSession(message)
 
     assert QueryUnderstanding(config(), session=session).understand("query", "demo", ()) is None
+
+
+def test_schema_validation_warning_identifies_invalid_field_paths(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    session = FakeSession(
+        {
+            "content": json.dumps(
+                {
+                    "semantic_units": [],
+                    "criterion": "Return matching files",
+                }
+            )
+        }
+    )
+
+    with caplog.at_level(logging.WARNING, logger="codesense.llm.compiler"):
+        understood = QueryUnderstanding(config(), session=session).understand("query", "demo", ())
+
+    assert understood is None
+    warning = caplog.records[-1].getMessage()
+    assert "units: Field required" in warning
+    assert "semantic_units: Extra inputs are not permitted" in warning
 
 
 def test_http_failure_returns_none() -> None:

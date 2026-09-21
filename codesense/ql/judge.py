@@ -15,7 +15,7 @@ from abc import ABC, abstractmethod
 from collections.abc import Sequence
 from dataclasses import dataclass
 
-from codesense.ql.frag import Element, Verdict
+from codesense.ql.frag import Element, Evidence, Verdict
 
 __all__ = ["Judge", "JudgeItem", "NullJudge", "UNSURE", "item_of"]
 
@@ -41,9 +41,22 @@ class JudgeItem:
     signature: str = ""
     doc: str = ""
     container: str = ""
+    file: str = ""
+    evidence: tuple[str, ...] = ()
 
 
-def item_of(element: Element) -> JudgeItem:
+def item_of(element: Element, evidence: Evidence | None = None) -> JudgeItem:
+    """Build bounded model context from the element and its retrieval trail."""
+    details = tuple(
+        dict.fromkeys(
+            hit.detail[:160]
+            for hit in sorted(
+                (evidence or Evidence()).unit_hits,
+                key=lambda hit: -hit.score,
+            )
+            if hit.detail
+        )
+    )[:4]
     return JudgeItem(
         symbol_id=element.symbol_id,
         name=element.name,
@@ -51,6 +64,8 @@ def item_of(element: Element) -> JudgeItem:
         signature=element.signature,
         doc=element.doc,
         container=element.container,
+        file=element.file,
+        evidence=details,
     )
 
 

@@ -19,7 +19,8 @@ from codesense.llm import LlmConfig
 # Edit these values before running the evaluation. Parameters intentionally do
 # not come from a CLI, matching the other manual debugging scripts.
 BENCHMARK = (
-    "/Users/huangzhuochen/PycharmProjects/CodeSense/outputs/open_swe_traces/test_one_record.jsonl"
+    "/Users/huangzhuochen/PycharmProjects/CodeSense/outputs/open_swe_traces/"
+    "codesense-semantic-query.jsonl"
 )
 PROJECTS_DIR = "/Users/huangzhuochen/PycharmProjects/CodeSense/evaluation/projects"
 INDEXES_DIR = f"{PROJECTS_DIR}/.indexes"
@@ -32,8 +33,9 @@ OUTPUT = (
 # elsewhere on the machine; missing entries are cloned automatically.
 PROJECT_PATHS: dict[str, str] = {}
 
-# ROUTES = ("lexical", "planned", "codegen")
-ROUTES = ("lexical", "planned")
+ROUTES = ("lexical", "planned", "codegen")
+# ROUTES = ("lexical", "planned")
+# ROUTES = ["codegen"]
 SEARCH_LIMIT = 20
 QUERY_LIMIT = 0
 INCLUDE_TEST_FILES = False
@@ -295,6 +297,7 @@ def _evaluate_query(
                 "actual_route": result.route,
                 "elapsed": result.elapsed,
                 "notes": list(result.notes),
+                "script": str(getattr(result, "script", "") or ""),
                 "hits": [_hit_dict(hit) for hit in result.hits],
             }
             if result.route == route:

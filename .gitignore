@@ -45,3 +45,5 @@ models/
 .history
 .DS_Store
 config.yml
+
+.qoder

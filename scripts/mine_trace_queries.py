@@ -75,6 +75,8 @@ def main() -> int:
                 output.write(json.dumps(row, ensure_ascii=False) + "\n")
                 written += 1
             processed += 1
+            if processed % 10 == 0:
+                break
     print(
         json.dumps(
             {"processed": processed, "written": written, "skipped": skip_reasons},

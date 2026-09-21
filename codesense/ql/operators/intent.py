@@ -115,7 +115,9 @@ def _passes(verdict: Verdict, threshold: float) -> bool:
 def _collect(frag: Frag, concept: str, ctx: EvalContext, batch_size: int) -> dict[int, Verdict]:
     if batch_size < 1:
         raise ValueError(f"batch_size must be positive, got {batch_size}")
-    items = [item_of(element) for element in frag.nodes.values()]
+    items = [
+        item_of(element, frag.evidence_for(symbol_id)) for symbol_id, element in frag.nodes.items()
+    ]
     found: dict[int, Verdict] = {}
     known = set(frag.nodes)
     for batch in _batches(items, batch_size):

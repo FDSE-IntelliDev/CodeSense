@@ -1,16 +1,14 @@
 """Generating a query script directly.
 
-There is exactly one difference from the `codesense.ql.compile` route, and it
-is fundamental: **the statistics go to the model too**, so it orders the steps
-itself instead of being distilled into a structured intermediate form that a
-planner then orders.
+Unlike the `codesense.ql.compile` route, the model writes the executable query
+script directly instead of first producing a structured intermediate form.
+The prompt deliberately stays project-vocabulary-free: codegen gets the query,
+operator contract and corpus size, while the planned route remains responsible
+for vocabulary-grounded statistical planning.
 
-That route rests on the premise that the model does not know `buffer` matches
-2365 symbols in netty. But that is a prompting problem, not an architectural
-necessity -- hand it the vocabulary with `df` attached and it has exactly what
-the planner had. And a script expresses things the intermediate form cannot:
-temporaries, conditionals, arbitrary composition -- which is why chapter 06
-chose scripts over JSON plans in the first place.
+A script expresses things the intermediate form cannot: temporaries,
+conditionals and arbitrary composition -- which is why chapter 06 chose
+scripts over JSON plans in the first place.
 
 Output must pass `codesense.ql.script`'s whitelist check before it runs.
 """
@@ -26,107 +24,34 @@ from codesense.llm.config import LlmConfig
 __all__ = ["OPERATOR_SPEC", "PROMPT", "ScriptGenerator"]
 
 OPERATOR_SPEC = """\
-Available operators (all return a Frag -- a code subgraph carrying evidence):
+Available operators. Every operator returns a Frag, a code subgraph with evidence.
 
-  eval_unit(unit, ctx) -> Frag
-      Evaluate a query unit. A unit is a set of satisfiers; the more that
-      match, the higher the score.
+- eval_unit(unit, ctx): lexical/annotation/modifier retrieval with scores.
+- only(frag, *, kind=None, file=None, language=None, where=None): attribute filter.
+- top(frag, n, *, by=None): highest-scoring n; score_of(frag, id, by=None) reads a score.
+- project(frag, ctx, *, edge, direction="forward", kind=None, include_self=False):
+  evidence-preserving projection across exactly one edge. Important edges are
+  references, imports, contains, calls, and in_file.
+- reach(frag, ctx, *, edge, direction, hops): cheap reachable nodes, without paths.
+- hop(src, dst, ctx, *, edge, direction, hops, avoid=None, min_confidence=0.0,
+  max_paths=10000): matching paths; use only when the path itself is required.
+- degree(frag, ctx, *, min_in=None, max_in=None, min_out=None, max_out=None,
+  edge="calls"): graph-degree filter.
+- intent(frag, criterion, ctx, *, threshold=0.5, max_items=60): expensive LLM
+  judgement. It is real only when semantic judging is enabled for this search.
 
-  reach(frag, ctx, *, edge=["calls"], direction="forward"|"backward"|"any",
-        hops=(lo, hi)) -> Frag
-      Symbols reachable from frag. Nodes only, no paths. Cheap.
+Frag supports |, &, -, len(), .nodes and .induced(ids). Build retrieval units with:
+QueryUnit(name, concept=..., satisfiers=(...)); LexicalSatisfier(terms=(Term(...),));
+AnnotationSatisfier(...); ModifierSatisfier(...).
 
-  project(frag, ctx, *, edge="in_file", direction="forward",
-          kind=None, include_self=False, min_confidence=0.0) -> Frag
-      Project evidence-preserving one-hop results across an exact edge kind.
-      Edge kinds include references, imports, and in_file. Use
-      direction="backward" for referencers, then edge="in_file" to return
-      their owning files.
-
-  hop(src, dst, ctx, *, edge, direction, hops, avoid=None,
-      min_confidence=0.0, max_paths=10000) -> Frag
-      The **paths** between src and dst satisfying a graph constraint. Much
-      more expensive than reach; use it only when you need the paths.
-
-  only(frag, *, kind=None, file=None, where=None) -> Frag   filter by attribute
-  top(frag, n, *, by=None) -> Frag                          take the top n
-  score_of(frag, symbol_id, by=None) -> float               read a score
-  degree(frag, ctx, *, min_in=None, max_in=None, edge=...) -> Frag
-
-  intent(frag, "<criterion>", ctx, *, threshold=0.5, max_items=60) -> Frag
-      The LLM judges candidates one by one. **Roughly 5000x the cost of one
-      index lookup** -- it must come last, with its input capped below 60.
-
-Frag supports `|` (union), `&` (intersection), `-` (difference), plus
-.nodes / .induced(ids) / .roots() / .leaves().
-
-**Where scores come from -- the easiest thing to get wrong:**
-Only Frags produced by `eval_unit` carry lexical scores. Frags from `reach`
-and `hop` **have no scores** -- calling `top` on one is the same as taking an
-arbitrary slice. So graph information is for **weighting**, not replacement:
-keep the `eval_unit` result and use the graph only to adjust its ranking.
-
-Building units:
-
-  QueryUnit("name", concept="description for intent", satisfiers=(...))
-  LexicalSatisfier(terms=(Term("word", weight=0.8), ...), weight=0.5)
-  AnnotationSatisfier(units=(Term("cache"),), names=("@Cacheable",), weight=0.9)
-  ModifierSatisfier(modifiers=("static", "native"), weight=0.6)
-
-The standard shape (adapt it; do not invent your own):
-
-```python
-# One unit, terms weighted by relevance; prefer more terms -- ICF down-weights
-# the useless ones automatically
-q = QueryUnit("q", satisfiers=(
-    LexicalSatisfier(terms=(
-        Term("pool", weight=0.9), Term("arena", weight=0.9), Term("chunk", weight=0.8),
-        Term("recycler", weight=0.8), Term("alloc", weight=0.6), ...   # 15-30 of them
-    ), weight=0.5),
-))
-frag = eval_unit(q, ctx)
-
-# Graph proximity: strongest hits as seeds, candidates in the neighbourhood get
-# **weighted** -- note that frag itself is not replaced
-near = reach(top(frag, 20), ctx, edge=["calls", "contains"], direction="any", hops=(1, 2))
-boosted = set(near.nodes) & set(frag.nodes)
-frag = frag.induced(sorted(
-    frag.nodes,
-    key=lambda s: (-score_of(frag, s) * (1 + 0.6 * (s in boosted)), s),
-)[:60])
-
-answer = intent(frag, "<one sentence stating what makes an element an answer>", ctx, max_items=60)
-```
-
-**The script is ordinary Python; use control flow freely.** That is the whole
-point of a script over a fixed pipeline -- temporaries, branches and loops are
-all allowed, so operators can be composed into a computation graph rather than
-a straight line. For instance, a narrow-then-widen adaptive shape:
-
-```python
-# Try narrow first; widen only if too few candidates -- no need to guess right
-# on the first attempt
-core = QueryUnit("core", satisfiers=(LexicalSatisfier(terms=NARROW, weight=0.5),))
-wide = QueryUnit("wide", satisfiers=(LexicalSatisfier(terms=BROAD, weight=0.4),))
-
-frag = eval_unit(core, ctx)
-if len(frag) < 30:                    # too narrow, fold the peripheral terms in
-    frag = frag | eval_unit(wide, ctx)
-```
-
-Or probe different edge kinds separately and combine:
-
-```python
-by_call = reach(seeds, ctx, edge=["calls"], direction="any", hops=(1, 2))
-by_type = reach(seeds, ctx, edge=["contains"], direction="any", hops=(1, 1))
-strong = set(by_call.nodes) & set(by_type.nodes)   # connected both ways: stronger
-
-# For "files containing references to PageRequest", retain lexical evidence
-# while moving from the referenced type to its referencers and then to files.
-page_request = eval_unit(page_request_unit, ctx)
-referencers = project(page_request, ctx, edge="references", direction="backward")
-answer = project(referencers, ctx, edge="in_file", kind="file", include_self=True)
-```
+Key semantics:
+- eval_unit creates scored evidence. reach creates structural nodes, so never replace
+  the scored candidate set with a reach result. project carries source evidence.
+- Different concepts usually match different elements: retrieve them separately and
+  connect them through graph edges instead of intersecting unrelated lexical hits.
+- `direction="backward"` finds sources pointing at a matched target. For example,
+  files referencing PageRequest are found by matching PageRequest, projecting
+  backward over references/imports, then forward over in_file with kind="file".
 """
 
 OPERATOR_SPEC += """\
@@ -140,35 +65,23 @@ may have confidence below 1.0.
 PROMPT = """\
 You are generating a query script for a code retrieval system.
 
-The operator reference includes the evidence-preserving `project` operator
-and the `references`, `imports`, and `in_file` edge vocabulary.
-
 Codebase: {project} ({symbols} symbols, {edges} edges)
 Query: {query}
+Semantic judging: {judging}
 
 {spec}
 
-The vocabulary of this codebase, as `word:how many symbols it matches`
-(**terms may only be drawn from this list**):
-{vocab}
+Search strategy and constraints:
 
-Points to keep in mind:
-
-- **Look at df before deciding the ordering.** A word matching tens of
-  thousands of symbols and one matching a few dozen are entirely different
-  things inside the same OR.
-- **Union units, do not intersect them.** Elements containing both keyword A
-  and keyword B barely exist; two concepts usually land on **different
-  elements** and have to be connected through the graph.
-- **Supply enough terms: 15-30.** Three or five will hurt recall badly. When
-  unsure whether a term belongs, include it -- ICF will down-weight it.
-- **Graph proximity always helps**, but it **weights** rather than replaces:
-  do not use a `reach` result directly as the candidate set, or every lexical
-  score is lost.
-- **Do not truncate early.** Use `top` once, at the end, before `intent`.
-- **`intent` goes last**, with its input capped below 60. Write its criterion
-  out in full -- one concrete sentence about *this* query. Never pass a
-  placeholder; `"<criterion>"` above is a slot to fill, not text to copy.
+1. Split the query into concepts. Use exact identifiers and concise query-derived
+   synonyms, weighting the most discriminative terms more strongly.
+2. Retrieve concepts broadly with eval_unit, then apply cheap kind/language filters.
+3. Express stated relations with exact graph edges. Use project for one-hop result
+   transformation, reach for neighbourhood signals, and hop only for required paths.
+4. Preserve scored evidence and delay top() until cheap filtering/projection is done.
+5. When judging is enabled and structural evidence still cannot decide correctness,
+   call intent last with the full query-specific criterion and at most 60 candidates.
+   When judging is disabled, do not call intent; return the best cheap result.
 
 Output the script only, with no explanation. The script must:
 - assign its result to a variable named `answer`
@@ -196,20 +109,24 @@ class ScriptGenerator:
         self,
         query: str,
         project: str,
-        vocabulary: Sequence[tuple[str, int]],
+        vocabulary: Sequence[tuple[str, int]] = (),
         *,
         symbols: int,
         edges: int,
+        judge_enabled: bool = False,
     ) -> str | None:
-        """``vocabulary`` is (term, df) pairs -- **df is the crucial part**;
-        without it the model has no basis for ordering."""
+        """Generate a script without embedding the project vocabulary.
+
+        ``vocabulary`` remains accepted for source compatibility with callers
+        from before codegen stopped sending it to the model.
+        """
         prompt = PROMPT.format(
             project=project,
             query=query,
             spec=OPERATOR_SPEC,
             symbols=f"{symbols:,}",
             edges=f"{edges:,}",
-            vocab=" ".join(f"{term}:{df}" for term, df in vocabulary),
+            judging="enabled" if judge_enabled else "disabled",
         )
         content = self._ask(prompt)
         if content is None:

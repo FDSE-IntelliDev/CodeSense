@@ -38,8 +38,8 @@ Judge each candidate. Output a JSON array and nothing else:
 
 Requirements:
 - give "unsure" when you cannot tell; **do not** guess just to have an answer
-- reason must cite specific evidence (name, signature, enclosing class), not
-  restate the intent
+- reason must cite specific evidence (name, path, signature, retrieval trail),
+  not restate the intent
 - exactly one row per candidate, using the ids given above
 """
 
@@ -97,12 +97,16 @@ def _render(items: Sequence[JudgeItem]) -> str:
     lines = []
     for item in items:
         parts = [f"id={item.symbol_id}", f"{item.kind} {item.name}"]
+        if item.file:
+            parts.append(f"path {item.file}")
         if item.container:
             parts.append(f"in {item.container}")
         if item.signature:
             parts.append(f"signature {item.signature}")
         if item.doc:
             parts.append(f"doc {item.doc[:200]}")
+        if item.evidence:
+            parts.append("retrieval evidence " + " | ".join(item.evidence))
         lines.append("- " + "; ".join(parts))
     return "\n".join(lines)
 

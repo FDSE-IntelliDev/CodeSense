@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
-from codesense.llm.codegen import OPERATOR_SPEC, PROMPT
+import pytest
+
+from codesense.llm.codegen import OPERATOR_SPEC, PROMPT, ScriptGenerator
+from codesense.llm.config import LlmConfig
 from codesense.ql import run_script
 from codesense.ql.context import EvalContext
 from codesense.ql.store import (
@@ -17,8 +20,54 @@ from codesense.search import _namespace
 def test_codegen_prompt_documents_project_and_reference_edges() -> None:
     for term in ("project", "references", "imports", "in_file"):
         assert term in OPERATOR_SPEC
-        assert term in PROMPT or term == "project"
     assert "PageRequest" in OPERATOR_SPEC
+    assert "The operator reference includes" not in PROMPT
+
+
+def test_codegen_prompt_receives_the_runtime_judging_capability(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    prompts: list[str] = []
+    monkeypatch.setattr(
+        ScriptGenerator,
+        "_ask",
+        lambda self, prompt: prompts.append(prompt) or "answer = top(frag, 20)",
+    )
+    generator = ScriptGenerator(LlmConfig(api_key="test"))
+
+    generator.generate(
+        "find allocators",
+        "demo",
+        (("alloc", 2),),
+        symbols=10,
+        edges=20,
+        judge_enabled=True,
+    )
+
+    assert "Semantic judging: enabled" in prompts[0]
+    assert "When judging is enabled" in prompts[0]
+
+
+def test_codegen_prompt_does_not_receive_the_project_vocabulary(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    prompts: list[str] = []
+    monkeypatch.setattr(
+        ScriptGenerator,
+        "_ask",
+        lambda self, prompt: prompts.append(prompt) or "answer = top(frag, 20)",
+    )
+
+    ScriptGenerator(LlmConfig(api_key="test")).generate(
+        "find allocators",
+        "demo",
+        (("never_send_project_vocab", 999),),
+        symbols=10,
+        edges=20,
+    )
+
+    assert "never_send_project_vocab" not in prompts[0]
+    assert "vocabulary of this codebase" not in prompts[0]
 
 
 def test_codegen_prompt_documents_hierarchy_relations_and_direction() -> None:

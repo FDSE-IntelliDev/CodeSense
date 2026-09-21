@@ -102,6 +102,7 @@ def test_evaluate_query_runs_every_route_and_keeps_ranked_hits() -> None:
             calls.append((query, route, limit))
             return SimpleNamespace(
                 route=route,
+                script=f"# generated for {route}\nanswer = frag",
                 elapsed=0.25,
                 notes=[f"used {route}"],
                 hits=[
@@ -148,6 +149,7 @@ def test_evaluate_query_runs_every_route_and_keeps_ranked_hits() -> None:
             "why": "send@name",
         }
     ]
+    assert result["routes"]["codegen"]["script"] == ("# generated for codegen\nanswer = frag")
     assert result["routes"]["codegen"]["metrics"]["file_recall"] == 1.0
 
 

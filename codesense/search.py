@@ -2,10 +2,9 @@
 
 Three routes, and the choice between them is a real trade-off:
 
-    codegen   the model writes a query script, given the operator spec and the
-              project vocabulary **with df**. Best measured recall (R@100 58%
-              over three samples) and the only route that can express control
-              flow. Costs one LLM call.
+    codegen   the model writes a query script from the query and operator spec.
+              Best measured recall (R@100 58% over three samples) and the only
+              route that can express control flow. Costs one LLM call.
     planned   the model does NLP only -- pick terms, group them, state
               relations -- and statistics decides structure and ordering
               (R@100 51%). More deterministic, and the plan is inspectable
@@ -26,20 +25,28 @@ import logging
 import re
 import time
 from collections.abc import Callable, Iterable, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from functools import wraps
 from typing import Any
 
 from codesense.ql.compile.spec import normalise_target
 from codesense.ql.context import EvalContext
-from codesense.ql.frag import Evidence, Frag, UnitHit
+from codesense.ql.frag import Evidence, Frag, UnitHit, Verdict
+from codesense.ql.judge import Judge, JudgeItem, NullJudge
 from codesense.ql.operators import degree, eval_unit, hop, intent, reach, score_of, top
 from codesense.ql.operators import project as project_frag
 from codesense.ql.operators.select import only
 from codesense.ql.satisfiers import AnnotationSatisfier, LexicalSatisfier, ModifierSatisfier
 from codesense.ql.unit import QueryUnit, Term
 
-__all__ = ["Hit", "ROUTES", "SearchResult", "representative_vocabulary", "search"]
+__all__ = [
+    "Hit",
+    "IntentFallbackPolicy",
+    "ROUTES",
+    "SearchResult",
+    "representative_vocabulary",
+    "search",
+]
 
 _log = logging.getLogger(__name__)
 
@@ -75,6 +82,65 @@ def representative_vocabulary(
 #: Candidates handed to `intent`. It costs roughly 5000 lookups per call, so
 #: everything cheap runs first and this is what survives.
 INTENT_CAP = 60
+
+
+@dataclass(frozen=True, slots=True)
+class IntentFallbackPolicy:
+    """When the shared search pipeline should spend money on semantic judging."""
+
+    min_candidates: int = 20
+    tail_size: int = 5
+    max_tail_ratio: float = 0.25
+    max_items: int = INTENT_CAP
+
+    def __post_init__(self) -> None:
+        if self.min_candidates < 0:
+            raise ValueError("min_candidates must be non-negative")
+        if self.tail_size < 1:
+            raise ValueError("tail_size must be positive")
+        if not 0.0 <= self.max_tail_ratio <= 1.0:
+            raise ValueError("max_tail_ratio must be between 0 and 1")
+        if self.max_items < 1:
+            raise ValueError("max_items must be positive")
+
+
+DEFAULT_INTENT_FALLBACK = IntentFallbackPolicy()
+
+
+class _CachingJudge:
+    """Reuse identical decisions within one search, including undecided ones."""
+
+    def __init__(self, delegate: Judge) -> None:
+        self._delegate = delegate
+        self._cache: dict[tuple[str, JudgeItem], Verdict | None] = {}
+        self.cache_hits = 0
+        self.submitted = 0
+
+    def judge(self, concept: str, items: Sequence[JudgeItem]) -> dict[int, Verdict]:
+        missing: list[JudgeItem] = []
+        for item in items:
+            if (concept, item) in self._cache:
+                self.cache_hits += 1
+            else:
+                missing.append(item)
+        if missing:
+            self.submitted += len(missing)
+            try:
+                answered = self._delegate.judge(concept, missing)
+            except Exception:
+                # A failed batch is still an attempted decision. Cache it as
+                # undecided so the public fallback does not repeat the charge.
+                for item in missing:
+                    self._cache[(concept, item)] = None
+                raise
+            for item in missing:
+                self._cache[(concept, item)] = answered.get(item.symbol_id)
+        return {
+            item.symbol_id: verdict
+            for item in items
+            if (verdict := self._cache[(concept, item)]) is not None
+        }
+
 
 _WORD = re.compile(r"[A-Za-z][A-Za-z0-9]*")
 
@@ -164,13 +230,10 @@ _STOPWORDS = frozenset(
 class _PlannedFailure(RuntimeError):
     """Carry a structured target through planned-route degradation."""
 
-    def __init__(
-        self, target: tuple[str, ...] | None, cause: Exception, judge_ran: bool = False
-    ) -> None:
+    def __init__(self, target: tuple[str, ...] | None, cause: Exception) -> None:
         super().__init__(str(cause))
         self.target = target
         self.cause = cause
-        self.judge_ran = judge_ran
 
 
 @dataclass(frozen=True, slots=True)
@@ -233,6 +296,7 @@ def search(
     route: str = "codegen",
     limit: int = 30,
     judge: bool = False,
+    intent_fallback: IntentFallbackPolicy = DEFAULT_INTENT_FALLBACK,
     target: str | Sequence[str] | None = None,
     trace: bool = True,
 ) -> SearchResult:
@@ -242,9 +306,10 @@ def search(
     `lexical` rather than failing -- a search that works without a key is worth
     more than one that refuses.
 
-    ``judge`` turns on the `intent` operator. Off by default because it is the
-    one operator that costs money per result, and because under a recall metric
-    it can only remove candidates.
+    ``judge`` lets generated/planned scripts execute the real `intent`
+    operator and enables the shared low-confidence fallback. Off by default
+    because it is the one operator that costs money per result, and because
+    under a recall metric it can only remove candidates.
 
     ``trace`` prints compact progress events for route stages and operators.
     It is on by default so long-running searches remain observable; callers
@@ -262,11 +327,14 @@ def search(
         limit=limit,
         query=_short_query(query),
     )
-    route_judge_ran = False
     target_was_explicit = target is not None
     # ``None`` means no route has decided yet; ``()`` is a deliberate empty
     # target and must not be replaced by lexical inference later.
     requested_target = normalise_target(target) if target_was_explicit else None
+    judge_cache: _CachingJudge | None = None
+    if judge and not isinstance(ctx.judge, NullJudge):
+        judge_cache = _CachingJudge(ctx.judge)
+        ctx = replace(ctx, judge=judge_cache)
     if llm is None and route != "lexical":
         _log.info("no LLM configured; falling back to the lexical route")
         _notify(progress, "route.fallback", route=route, fallback="lexical", reason="no LLM")
@@ -296,7 +364,6 @@ def search(
             fallback="lexical",
             reason=f"{type(exc.cause).__name__}: {exc.cause}",
         )
-        route_judge_ran = exc.judge_ran
         fallback_target = requested_target if target_was_explicit else exc.target
         frag, script, notes, route_target = _lexical(
             query,
@@ -349,19 +416,6 @@ def search(
         else _query_target(query)
     )
     _notify(progress, "target.resolved", target=effective_target or "default")
-    if judge and not route_judge_ran and route != "planned" and len(frag) and ctx.judge is not None:
-        before_judge = len(frag)
-        _notify(progress, "operator.start", name="intent", candidates=before_judge)
-        judged_started = time.perf_counter()
-        frag, notes = _judge(frag, query, ctx, notes)
-        _notify(
-            progress,
-            "operator.done",
-            name="intent",
-            candidates=before_judge,
-            actual=len(frag),
-            elapsed=time.perf_counter() - judged_started,
-        )
     before_target = len(frag)
     _notify(
         progress,
@@ -377,6 +431,49 @@ def search(
         candidates=before_target,
         actual=len(frag),
     )
+    if judge:
+        if isinstance(ctx.judge, NullJudge):
+            _notify(progress, "intent.fallback.skip", reason="no semantic judge configured")
+        else:
+            decision = _intent_fallback_decision(frag, limit, intent_fallback)
+            if decision.trigger:
+                before_judge = len(frag)
+                cache_hits_before = judge_cache.cache_hits if judge_cache is not None else 0
+                submitted_before = judge_cache.submitted if judge_cache is not None else 0
+                _notify(
+                    progress,
+                    "intent.fallback.trigger",
+                    reason=decision.reason,
+                    candidates=before_judge,
+                )
+                _notify(progress, "operator.start", name="intent", candidates=before_judge)
+                judged_started = time.perf_counter()
+                frag, notes = _judge(
+                    frag,
+                    query,
+                    ctx,
+                    notes,
+                    reason=decision.reason,
+                    max_items=intent_fallback.max_items,
+                )
+                _notify(
+                    progress,
+                    "operator.done",
+                    name="intent",
+                    candidates=before_judge,
+                    actual=len(frag),
+                    cache_hits=(
+                        judge_cache.cache_hits - cache_hits_before if judge_cache is not None else 0
+                    ),
+                    submitted=(
+                        judge_cache.submitted - submitted_before
+                        if judge_cache is not None
+                        else len(top(frag, intent_fallback.max_items))
+                    ),
+                    elapsed=time.perf_counter() - judged_started,
+                )
+            else:
+                _notify(progress, "intent.fallback.skip", reason=decision.reason)
     if route == "lexical" and effective_target:
         notes = [
             *notes,
@@ -501,10 +598,67 @@ def _why(frag: Frag, symbol_id: int) -> str:
     return ", ".join(parts)
 
 
-def _judge(frag: Frag, query: str, ctx: EvalContext, notes: list[str]) -> tuple[Frag, list[str]]:
-    narrowed = top(frag, INTENT_CAP)
-    judged = intent(narrowed, query, ctx, max_items=INTENT_CAP)
-    return judged, [*notes, f"intent judged {len(narrowed)} candidates, kept {len(judged)}"]
+@dataclass(frozen=True, slots=True)
+class _IntentFallbackDecision:
+    trigger: bool
+    reason: str
+
+
+def _intent_fallback_decision(
+    frag: Frag,
+    limit: int,
+    policy: IntentFallbackPolicy,
+) -> _IntentFallbackDecision:
+    """Use relative tail scores because aggregate QL scores are not probabilities."""
+    if len(frag) <= policy.min_candidates:
+        return _IntentFallbackDecision(
+            False,
+            f"candidate count {len(frag)} <= {policy.min_candidates}",
+        )
+    window_size = min(max(limit, 0), len(frag))
+    if window_size < policy.tail_size:
+        return _IntentFallbackDecision(
+            False,
+            f"return window {window_size} < tail size {policy.tail_size}",
+        )
+
+    window = top(frag, window_size)
+    ordered = sorted(window.nodes, key=lambda sid: (-score_of(window, sid), sid))
+    highest = score_of(window, ordered[0])
+    tail_scores = [score_of(window, symbol_id) for symbol_id in ordered[-policy.tail_size :]]
+    ratios = [score / highest if highest > 0.0 else 0.0 for score in tail_scores]
+    rendered = ",".join(f"{ratio:.3f}" for ratio in ratios)
+    if all(ratio < policy.max_tail_ratio for ratio in ratios):
+        return _IntentFallbackDecision(
+            True,
+            f"low-score tail ratios [{rendered}] < {policy.max_tail_ratio:.3f}",
+        )
+    return _IntentFallbackDecision(
+        False,
+        f"tail ratios [{rendered}] are not all below {policy.max_tail_ratio:.3f}",
+    )
+
+
+def _judge(
+    frag: Frag,
+    query: str,
+    ctx: EvalContext,
+    notes: list[str],
+    *,
+    reason: str,
+    max_items: int,
+) -> tuple[Frag, list[str]]:
+    """Judge a bounded head while retaining candidates outside the spend budget."""
+    narrowed = top(frag, max_items)
+    judged = intent(narrowed, query, ctx, max_items=max_items)
+    untouched = frag.induced(
+        symbol_id for symbol_id in frag.nodes if symbol_id not in narrowed.nodes
+    )
+    combined = judged | untouched
+    return combined, [
+        *notes,
+        f"intent fallback ({reason}) judged {len(narrowed)} candidates, kept {len(combined)}",
+    ]
 
 
 def _namespace(
@@ -576,11 +730,11 @@ def _codegen(
     query: str,
     ctx: EvalContext,
     project: str,
-    vocabulary: Sequence[tuple[str, int]],
+    _vocabulary: Sequence[tuple[str, int]],
     llm: Any,
     target: tuple[str, ...] | None,
     _target_was_explicit: bool,
-    _judge: bool,
+    judge: bool,
     _limit: int,
     progress: Progress | None,
 ) -> tuple[Frag, str, list[str], tuple[str, ...] | None]:
@@ -588,15 +742,14 @@ def _codegen(
     from codesense.llm import ScriptGenerator
     from codesense.ql import ScriptError, run_script
 
-    vocab = list(vocabulary)[:VOCAB_FOR_PROMPT]
-    _notify(progress, "codegen.generate.start", vocabulary=len(vocab), symbols=ctx.symbols.count())
+    _notify(progress, "codegen.generate.start", symbols=ctx.symbols.count())
     generated_started = time.perf_counter()
     source = ScriptGenerator(llm).generate(
         query,
         project or "the project",
-        vocab,
         symbols=ctx.symbols.count(),
         edges=_edge_estimate(ctx),
+        judge_enabled=judge,
     )
     if not source:
         raise RuntimeError("the model returned no script")
@@ -609,7 +762,7 @@ def _codegen(
     _notify(progress, "codegen.execute.start")
     executed_started = time.perf_counter()
     try:
-        answer = run_script(source, _namespace(ctx, progress=progress))
+        answer = run_script(source, _namespace(ctx, judge=judge, progress=progress))
     except ScriptError as exc:
         raise RuntimeError(f"generated script rejected: {exc}") from exc
     if not isinstance(answer, Frag):
@@ -642,7 +795,7 @@ def _planned(
 ) -> tuple[Frag, str, list[str], tuple[str, ...] | None]:
     """Model proposes, statistics validate, the planner orders."""
     from codesense.llm import EndpointKind, QueryUnderstanding
-    from codesense.ql.compile import Intent, ResultRelation, build_spec, plan, to_script
+    from codesense.ql.compile import ResultRelation, build_spec, plan, to_script
     from codesense.ql.term_resolution import TermResolver
 
     vocab = list(vocabulary)[:VOCAB_FOR_PROMPT]
@@ -661,13 +814,6 @@ def _planned(
     # Structured output always makes this decision explicitly. An empty list
     # suppresses the weaker query-text heuristic unless the caller overrides it.
     route_target = target if target_was_explicit else normalise_target(understood.targets)
-    judge_ran = False
-
-    def record_step(step: object) -> None:
-        nonlocal judge_ran
-        if isinstance(step, Intent):
-            judge_ran = True
-
     try:
         terms = tuple(
             Term(
@@ -696,8 +842,9 @@ def _planned(
                 assert relation.source.unit is not None and relation.target.unit is not None
                 relations.append((relation.source.unit, relation.target.unit, edges))
 
-        # Planned intent is the sole judging layer for this route. Disabling
-        # it here keeps judge=False from silently invoking the model.
+        # This is the route-local judgement. The shared pipeline may later
+        # apply its conditional fallback to a low-confidence final target.
+        # Disabling it here keeps judge=False from invoking the model.
         concept = understood.criterion if judge else ""
         _notify(progress, "planned.spec.start", target=route_target or "default")
         planned_started = time.perf_counter()
@@ -724,7 +871,7 @@ def _planned(
         )
         _notify(progress, "planned.execute.start", steps=len(execution.steps))
         executed_started = time.perf_counter()
-        state = execution.run(ctx, after_step=record_step, progress=progress)
+        state = execution.run(ctx, progress=progress)
         _notify(
             progress,
             "planned.execute.done",
@@ -738,7 +885,7 @@ def _planned(
             route_target,
         )
     except Exception as exc:
-        raise _PlannedFailure(route_target, exc, judge_ran) from exc
+        raise _PlannedFailure(route_target, exc) from exc
 
 
 def _lexical(

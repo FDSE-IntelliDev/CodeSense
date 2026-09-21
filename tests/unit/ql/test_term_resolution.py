@@ -42,6 +42,16 @@ def test_out_of_vocabulary_term_resolves_to_a_project_surface() -> None:
     assert resolved_symbol_ids("buffer", ctx) == frozenset({1})
 
 
+def test_query_term_is_casefolded_before_exact_lookup() -> None:
+    ctx = context(
+        {"yamllines": [Posting(1, IndexField.NAME)]},
+        {},
+    )
+
+    assert [surface.target for surface in resolved_surfaces("YamlLines", ctx)] == ["yamllines"]
+    assert resolved_symbol_ids("YAMLLINES", ctx) == frozenset({1})
+
+
 def test_exact_surface_is_first_and_wins_duplicate_targets() -> None:
     ctx = context(
         {

@@ -247,10 +247,10 @@ def _parse_result(raw: str | None) -> tuple[_GeneratedQuery | None, str | None]:
         return None, "non_semantic_query"
     query = payload.get("query")
     reason = payload.get("reason")
-    if status != "valid" or not isinstance(query, str) or not isinstance(reason, str):
+    if status != "valid" or not isinstance(query, str):
         return None, "invalid_model_json"
     query = query.strip()
-    reason = reason.strip()
+    reason = reason.strip() if reason else "No reson outputs"
     if not query or not reason:
         return None, "invalid_model_json"
     return _GeneratedQuery(query, reason), None
