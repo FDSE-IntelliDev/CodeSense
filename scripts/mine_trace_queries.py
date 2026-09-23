@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import sys
 from collections import Counter
+from collections.abc import Iterable
 from contextlib import suppress
 from pathlib import Path
 
@@ -21,7 +22,7 @@ DRY_RUN = False
 BASE_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1"
 MODEL = "qwen3.7-plus"
 TIMEOUT = 300.0
-PROMPT_VERSION = "semantic-query-v1"
+PROMPT_VERSION = "trace-search-v2"
 # Keep the repository-local evaluation package importable when this file is
 # launched as ``python scripts/mine_trace_queries.py``. The scripts directory
 # contains evaluation.py, so the repository root must precede it even when an
@@ -30,6 +31,14 @@ _ROOT = Path(__file__).resolve().parents[1]
 with suppress(ValueError):
     sys.path.remove(str(_ROOT))
 sys.path.insert(0, str(_ROOT))
+
+from evaluation.models import TraceCase  # noqa: E402
+from evaluation.query_mining import (  # noqa: E402
+    QueryGenerator,
+    build_prompt,
+    mine_queries,
+)
+from evaluation.trace_search import supervise_search_episodes  # noqa: E402
 
 
 def main() -> int:
@@ -41,7 +50,7 @@ def main() -> int:
     input_path = Path(INPUT).expanduser()
     output_path = Path(OUTPUT).expanduser()
     from codesense.llm import LlmConfig
-    from evaluation.query_mining import OpenAIQueryGenerator, mine_query
+    from evaluation.query_mining import OpenAIQueryGenerator
     from evaluation.trace_adapters.open_swe_traces import iter_jsonl
 
     generator = None
@@ -55,56 +64,81 @@ def main() -> int:
         )
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    processed = 0
-    written = 0
-    skip_reasons: Counter[str] = Counter()
-    with output_path.open("w", encoding="utf-8") as output:
-        for case in iter_jsonl(input_path):
-            if LIMIT and processed >= LIMIT:
-                break
-            if DRY_RUN:
-                rows = _prompt_rows(case, PROMPT_VERSION)
-                if not rows:
-                    skip_reasons[case.gold_error or "no_search_events"] += 1
-            else:
-                outcome = mine_query(case, generator, prompt_version=PROMPT_VERSION)
-                rows = [outcome.query.to_dict()] if outcome.query is not None else []
-                if outcome.skip_reason:
-                    skip_reasons[outcome.skip_reason] += 1
-            for row in rows:
-                output.write(json.dumps(row, ensure_ascii=False) + "\n")
-                written += 1
-            processed += 1
-            if processed % 10 == 0:
-                break
-    print(
-        json.dumps(
-            {"processed": processed, "written": written, "skipped": skip_reasons},
-            ensure_ascii=False,
-        )
+    summary = _run_cases(
+        iter_jsonl(input_path),
+        generator,
+        output_path,
+        limit=LIMIT,
+        prompt_version=PROMPT_VERSION,
+        dry_run=DRY_RUN,
     )
+    print(json.dumps(summary, ensure_ascii=False))
     return 0
 
 
-def _prompt_rows(case, prompt_version: str) -> list[dict[str, object]]:
-    from evaluation.query_mining import build_prompt, is_search_event, search_context
-
-    context = search_context(case.events)
-    if case.gold_error or not case.answer or not context:
-        return []
-    return [
+def _prompt_rows(
+    case: TraceCase, prompt_version: str
+) -> tuple[list[dict[str, object]], int, int, tuple[str, ...]]:
+    supervision = supervise_search_episodes(case)
+    rows = [
         {
             "type": "prompt",
             "repo": case.repo,
-            "instance_id": case.instance_id,
             "trajectory_id": case.trajectory_id,
-            "search_event_indices": [
-                event.index for event in case.events if is_search_event(event)
-            ],
-            "source_event_indices": [event.index for event in context],
-            "prompt": build_prompt(case, prompt_version=prompt_version),
+            "anchor_event": item.episode.anchor_event,
+            "source_event_indices": [event.index for event in item.episode.context_events],
+            "result_event_indices": [event.index for event in item.episode.result_events],
+            "prompt": build_prompt(case, item, prompt_version=prompt_version),
         }
+        for item in supervision.episodes
     ]
+    return (
+        rows,
+        supervision.search_episode_count,
+        len(supervision.episodes),
+        supervision.skip_reasons,
+    )
+
+
+def _run_cases(
+    cases: Iterable[TraceCase],
+    generator: QueryGenerator | None,
+    output_path: Path,
+    *,
+    limit: int,
+    prompt_version: str,
+    dry_run: bool,
+) -> dict[str, object]:
+    processed = written = search_episodes = eligible_episodes = 0
+    skip_reasons: Counter[str] = Counter()
+    with output_path.open("w", encoding="utf-8") as output:
+        for case in cases:
+            if limit and processed >= limit:
+                break
+            if dry_run:
+                rows, search_count, eligible_count, reasons = _prompt_rows(case, prompt_version)
+            else:
+                if generator is None:
+                    raise ValueError("generator is required unless DRY_RUN is true")
+                batch = mine_queries(case, generator, prompt_version=prompt_version)
+                rows = [query.to_dict() for query in batch.queries]
+                search_count = batch.search_episode_count
+                eligible_count = batch.eligible_episode_count
+                reasons = batch.skip_reasons
+            for row in rows:
+                output.write(json.dumps(row, ensure_ascii=False) + "\n")
+            skip_reasons.update(reasons)
+            processed += 1
+            written += len(rows)
+            search_episodes += search_count
+            eligible_episodes += eligible_count
+    return {
+        "processed_traces": processed,
+        "search_episodes": search_episodes,
+        "eligible_episodes": eligible_episodes,
+        "written_queries": written,
+        "skipped": dict(skip_reasons),
+    }
 
 
 if __name__ == "__main__":

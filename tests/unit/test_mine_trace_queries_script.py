@@ -20,7 +20,7 @@ def _load_script() -> ModuleType:
     return module
 
 
-def test_prompt_rows_imports_package_when_scripts_directory_precedes_root(
+def test_script_imports_package_when_scripts_directory_precedes_root(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     root = SCRIPT.parents[1]
@@ -32,25 +32,102 @@ def test_prompt_rows_imports_package_when_scripts_directory_precedes_root(
             monkeypatch.delitem(sys.modules, name)
 
     module = _load_script()
-    event = SimpleNamespace(
-        index=1,
-        role="assistant",
-        text="",
-        tool_name="rg",
-        tool_input="rg cursor src/main/java",
-        tool_output=None,
+
+    assert module.mine_queries.__module__ == "evaluation.query_mining"
+
+
+def test_run_cases_writes_every_query_returned_for_one_trace(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    module = _load_script()
+    output_path = tmp_path / "queries.jsonl"
+    rows = ({"query_id": "trace-1:2"}, {"query_id": "trace-1:8"})
+    batch = SimpleNamespace(
+        queries=tuple(SimpleNamespace(to_dict=lambda row=row: row) for row in rows),
+        skip_reasons=(),
+        search_episode_count=2,
+        eligible_episode_count=2,
     )
-    case = SimpleNamespace(
-        repo="owner/repo",
-        instance_id="issue-1",
-        trajectory_id="trace-1",
-        issue_statement="Navigation state can remain stale.",
-        events=(event,),
-        answer=(object(),),
-        gold_error=None,
+    monkeypatch.setattr(module, "mine_queries", lambda *args, **kwargs: batch)
+
+    summary = module._run_cases(
+        (object(),),
+        object(),
+        output_path,
+        limit=0,
+        prompt_version="trace-search-v2",
+        dry_run=False,
     )
 
-    rows = module._prompt_rows(case, "semantic-query-v1")
+    assert len(output_path.read_text().splitlines()) == 2
+    assert summary["written_queries"] == 2
+    assert summary["search_episodes"] == 2
+    assert summary["eligible_episodes"] == 2
 
-    assert len(rows) == 1
-    assert rows[0]["source_event_indices"] == [1]
+
+def test_run_cases_does_not_stop_after_ten_processed_traces(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    module = _load_script()
+    output_path = tmp_path / "queries.jsonl"
+    empty_batch = SimpleNamespace(
+        queries=(),
+        skip_reasons=("no_usage_evidence",),
+        search_episode_count=1,
+        eligible_episode_count=0,
+    )
+    monkeypatch.setattr(module, "mine_queries", lambda *args, **kwargs: empty_batch)
+
+    summary = module._run_cases(
+        tuple(object() for _index in range(11)),
+        object(),
+        output_path,
+        limit=0,
+        prompt_version="trace-search-v2",
+        dry_run=False,
+    )
+
+    assert summary["processed_traces"] == 11
+    assert summary["skipped"] == {"no_usage_evidence": 11}
+
+
+def test_prompt_rows_returns_one_row_per_eligible_episode(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = _load_script()
+    context = (SimpleNamespace(index=1), SimpleNamespace(index=2))
+    results = (SimpleNamespace(index=3),)
+    item = SimpleNamespace(
+        episode=SimpleNamespace(
+            anchor_event=2,
+            context_events=context,
+            result_events=results,
+        )
+    )
+    supervision = SimpleNamespace(
+        episodes=(item,),
+        search_episode_count=2,
+        skip_reasons=("no_usage_evidence",),
+    )
+    case = SimpleNamespace(repo="owner/repo", trajectory_id="trace-1")
+    monkeypatch.setattr(module, "supervise_search_episodes", lambda case: supervision)
+    monkeypatch.setattr(module, "build_prompt", lambda *args, **kwargs: "PROMPT")
+
+    rows, search_count, eligible_count, reasons = module._prompt_rows(case, "trace-search-v2")
+
+    assert rows == [
+        {
+            "type": "prompt",
+            "repo": "owner/repo",
+            "trajectory_id": "trace-1",
+            "anchor_event": 2,
+            "source_event_indices": [1, 2],
+            "result_event_indices": [3],
+            "prompt": "PROMPT",
+        }
+    ]
+    assert (search_count, eligible_count, reasons) == (
+        2,
+        1,
+        ("no_usage_evidence",),
+    )
