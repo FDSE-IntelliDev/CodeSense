@@ -36,6 +36,7 @@ _SEARCH_TOOLS = {
     "symbol_search",
 }
 _COMMAND_KEYS = ("command", "cmd", "shell")
+_EDIT_BODY_KEYS = ("new_str", "patch", "content", "file_text")
 _JAVA_LOCATION = re.compile(
     r"(?P<path>(?:[A-Za-z]:)?(?:/|\.?\.?/)?[^\s:,\"']+\.java)"
     r"(?::(?P<line>\d+))?(?::\s?(?P<text>.*))?"
@@ -55,6 +56,13 @@ _EDIT_ACTIONS = {
     "write",
     "write_file",
 }
+_FINAL_POSITIVE = re.compile(
+    r"\b(?:add(?:ed)?|chang(?:e|ed)|creat(?:e|ed)|implement(?:ed)?)\b", re.I
+)
+_FINAL_NEGATIVE = re.compile(
+    r"\b(?:already exists?|existing|not changed|remain(?:s|ed)? unchanged|unchanged)\b",
+    re.I,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -213,6 +221,8 @@ def supervise_search_episodes(case: TraceCase) -> SupervisionBatch:
             if item not in evidence[position]:
                 evidence[position].append(item)
 
+    _add_final_answer_function_evidence(case.events, episodes, evidence)
+
     skipped = list(discovery.skip_reasons)
     supervised: list[SupervisedEpisode] = []
     for episode, items in zip(episodes, evidence, strict=True):
@@ -227,10 +237,11 @@ def supervise_search_episodes(case: TraceCase) -> SupervisionBatch:
             CodeLocation(
                 candidate.file,
                 tuple(
-                    function
-                    for function in candidate.functions
-                    if any(
-                        item.file == candidate.file and function in item.functions for item in items
+                    dict.fromkeys(
+                        function
+                        for item in items
+                        if item.file == candidate.file
+                        for function in item.functions
                     )
                 ),
             )
@@ -252,6 +263,96 @@ def supervise_search_episodes(case: TraceCase) -> SupervisionBatch:
         deduplicated[signature] = episode
     kept = tuple(sorted(deduplicated.values(), key=lambda item: item.episode.anchor_event))
     return SupervisionBatch(kept, tuple(skipped), len(discovery.episodes))
+
+
+def _add_final_answer_function_evidence(
+    events: Sequence[TraceEvent],
+    episodes: Sequence[SearchEpisode],
+    evidence: list[list[UsageEvidence]],
+) -> None:
+    """Use a final summary only to fill functions for an already-used result file."""
+    final = _final_answer(events)
+    if final is None or not _FINAL_POSITIVE.search(final[1]):
+        return
+    final_event, text = final
+    for position, episode in enumerate(episodes):
+        for candidate in episode.candidates:
+            # A final summary cannot promote an otherwise unused search result.
+            file_evidence = [item for item in evidence[position] if item.file == candidate.file]
+            if not file_evidence or any(item.functions for item in file_evidence):
+                continue
+            if not _mentions_exact_file(text, candidate.file):
+                continue
+            edited = _edited_functions(
+                events, candidate.file, episode.anchor_event, final_event.index
+            )
+            functions = tuple(
+                function for function in edited if _is_positive_function_mention(text, function)
+            )
+            if functions:
+                evidence[position].append(
+                    UsageEvidence(candidate.file, functions, final_event.index, "final_answer")
+                )
+
+
+def _final_answer(events: Sequence[TraceEvent]) -> tuple[TraceEvent, str] | None:
+    """Return the last explicit finish message."""
+    for event in reversed(events):
+        if event.role.lower() != "assistant":
+            continue
+        for call in reversed(_event_calls(event)):
+            if call.name.strip().lower() != "finish":
+                continue
+            data = _action_mapping(call.arguments or "")
+            message = data.get("message") if data else None
+            if isinstance(message, str) and message.strip():
+                return event, message.strip()
+    return None
+
+
+def _edited_functions(
+    events: Sequence[TraceEvent], file: str, after: int, before: int
+) -> tuple[str, ...]:
+    """Extract Java declarations from edits to one exact candidate path."""
+    found: list[str] = []
+    for event in events:
+        if not after < event.index < before or _usage_kind(event) != "edited":
+            continue
+        if not _mentions_exact_file(_event_action(event), file):
+            continue
+        for text in _edit_bodies(event):
+            for line in text.splitlines():
+                function = _declared_function(line)
+                if function and function not in found:
+                    found.append(function)
+    return tuple(found)
+
+
+def _edit_bodies(event: TraceEvent) -> tuple[str, ...]:
+    """Decode the source-bearing fields of an edit action."""
+    found: list[str] = []
+    for raw in [*(call.arguments or "" for call in _event_calls(event)), event.tool_input or ""]:
+        data = _action_mapping(raw)
+        if data:
+            found.extend(data[key] for key in _EDIT_BODY_KEYS if isinstance(data.get(key), str))
+    return tuple(dict.fromkeys(found))
+
+
+def _mentions_exact_file(text: str, file: str) -> bool:
+    """Match a complete normalized Java path, never a basename alone."""
+    return any(
+        _normalize_java_path(match.group("path")) == file
+        for match in _JAVA_LOCATION.finditer(text.replace("\\", "/"))
+    )
+
+
+def _is_positive_function_mention(text: str, function: str) -> bool:
+    """Reject final-summary mentions immediately described as existing or unchanged."""
+    matches = list(re.finditer(rf"(?<![\w$]){re.escape(function)}(?![\w$])", text))
+    return any(
+        not _FINAL_NEGATIVE.search(text[max(0, match.start() - 24) : match.end() + 64])
+        for match in matches
+    )
 
 
 def _usage_kind(event: TraceEvent) -> str | None:
@@ -517,7 +618,7 @@ def _declared_function(line: str) -> str | None:
     if "." in before or "=" in before or "->" in text:
         return None
     words = _IDENTIFIER.findall(before)
-    if not words or words[-1] in _CONTROL_WORDS:
+    if not words or "new" in words or words[-1] in _CONTROL_WORDS:
         return None
     if len(words) == 1 and "{" not in after:
         return None

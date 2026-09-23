@@ -336,6 +336,95 @@ def test_gold_files_are_removed_from_candidate_answers() -> None:
     assert episode.candidate_answers == (CodeLocation("src/main/java/PoolConfig.java", ()),)
 
 
+def test_final_answer_enriches_empty_gold_with_functions_seen_in_edits() -> None:
+    events = (
+        TraceEvent(0, "assistant", "", "rg", "rg PageRequest src/main/java", None),
+        TraceEvent(
+            1,
+            "tool",
+            "",
+            "rg",
+            None,
+            "src/main/java/PageRequest.java:1: public void existingMethod() {",
+        ),
+        TraceEvent(
+            2,
+            "assistant",
+            "",
+            "view",
+            '{"path":"src/main/java/PageRequest.java"}',
+            None,
+        ),
+        TraceEvent(
+            3,
+            "assistant",
+            "",
+            "str_replace_editor",
+            '{"command":"str_replace","path":"src/main/java/PageRequest.java",'
+            '"new_str":"public static PageRequest ofPage(long page) {\\n'
+            "return new Pagination(page);\\n}"
+            '\\npublic static Cursor forKey(Object... values) {\\n}"}',
+            None,
+        ),
+        TraceEvent(
+            4,
+            "assistant",
+            "",
+            tool_calls=(
+                ToolCall(
+                    "finish-1",
+                    "finish",
+                    '{"message":"Added PageRequest.ofPage(...) to '
+                    "/workspace/acme__project__1.0/src/main/java/PageRequest.java. "
+                    "It delegates to the Pagination record, whose constructor performs "
+                    "all input validation for page size and cursor state. "
+                    'Cursor.forKey(...) already exists."}',
+                ),
+            ),
+        ),
+    )
+
+    episode = supervise_search_episodes(_trace_case(events)).episodes[0]
+
+    assert episode.answer == (CodeLocation("src/main/java/PageRequest.java", ("ofPage",)),)
+    assert episode.usage_evidence[-1].kind == "final_answer"
+    assert episode.usage_evidence[-1].functions == ("ofPage",)
+
+
+def test_final_answer_does_not_promote_candidate_without_edit_evidence() -> None:
+    events = (
+        TraceEvent(0, "assistant", "", "rg", "rg pool src/main/java", None),
+        TraceEvent(
+            1,
+            "tool",
+            "",
+            "rg",
+            None,
+            "src/main/java/Pool.java\nsrc/main/java/PoolConfig.java",
+        ),
+        TraceEvent(2, "assistant", "", "view", '{"path":"src/main/java/Pool.java"}', None),
+        TraceEvent(
+            3,
+            "assistant",
+            "",
+            tool_calls=(
+                ToolCall(
+                    "finish-1",
+                    "finish",
+                    '{"message":"Changed PoolConfig.configure() in '
+                    '/workspace/acme__project__1.0/src/main/java/PoolConfig.java."}',
+                ),
+            ),
+        ),
+    )
+
+    episode = supervise_search_episodes(_trace_case(events)).episodes[0]
+
+    assert episode.answer == (CodeLocation("src/main/java/Pool.java", ()),)
+    assert episode.candidate_answers == (CodeLocation("src/main/java/PoolConfig.java", ()),)
+    assert all(item.kind != "final_answer" for item in episode.usage_evidence)
+
+
 def test_exact_duplicate_episodes_keep_the_later_search() -> None:
     events = (
         TraceEvent(0, "assistant", "", "rg", "rg pool src/main/java", None),
