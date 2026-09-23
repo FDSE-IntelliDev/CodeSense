@@ -87,3 +87,70 @@ diff --git a/src/main/java/Navigation.java b/src/main/java/Navigation.java
     assert "src/main/java/Navigation.java" not in generator.prompts[0]
     assert "withoutPage" not in generator.prompts[0]
     assert "diff --git" not in generator.prompts[0]
+
+
+def test_resolved_trace_becomes_episode_query_with_observed_gold() -> None:
+    record = {
+        "repo": "owner/repo",
+        "language": "java",
+        "instance_id": "issue-1",
+        "trajectory_id": "trace-1",
+        "resolved": 1,
+        "trajectory": [
+            {"role": "user", "content": "Pool reuse order can change request behavior."},
+            {"role": "assistant", "content": "I will inspect the pool ordering policy."},
+            {
+                "role": "assistant",
+                "content": "",
+                "tool_calls": [
+                    {
+                        "id": "search-1",
+                        "function": {
+                            "name": "execute_bash",
+                            "arguments": json.dumps({"command": "rg isPoolLifo src/main/java"}),
+                        },
+                    }
+                ],
+            },
+            {
+                "role": "tool",
+                "tool_call_id": "search-1",
+                "content": "src/main/java/Pool.java\nsrc/main/java/PoolConfig.java",
+            },
+            {
+                "role": "assistant",
+                "content": "I will read the selection implementation.",
+                "tool_calls": [
+                    {
+                        "id": "read-1",
+                        "function": {
+                            "name": "str_replace_editor",
+                            "arguments": json.dumps(
+                                {
+                                    "command": "view",
+                                    "path": "src/main/java/Pool.java",
+                                }
+                            ),
+                        },
+                    }
+                ],
+            },
+            {
+                "role": "tool",
+                "tool_call_id": "read-1",
+                "content": "class Pool { void select() {} }",
+            },
+        ],
+    }
+
+    case = normalize_record(record)
+    batch = mine_queries(case, _Generator())
+    payload = batch.queries[0].to_dict()
+
+    assert payload["answer"] == [{"file": "src/main/java/Pool.java", "functions": []}]
+    assert payload["candidate_answers"] == [
+        {"file": "src/main/java/PoolConfig.java", "functions": []}
+    ]
+    assert payload["query_id"] == "trace-1:2"
+    assert "src/main/java/Pool.java" not in batch.queries[0].provenance["prompt"]
+    assert "reference_patch" not in batch.queries[0].provenance["prompt"]

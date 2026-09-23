@@ -111,13 +111,14 @@ def find_search_episodes(events: Sequence[TraceEvent]) -> EpisodeDiscovery:
     for position, event in enumerate(events):
         if event.role.lower() in {"system", "user", "tool"}:
             continue
-        calls = tuple(call for call in _event_calls(event) if _is_search_call(call))
+        all_calls = _event_calls(event)
+        calls = tuple(call for call in all_calls if _is_search_call(call))
         if not calls:
             continue
         results = _following_tool_results(events, position)
         identified = bool(calls) and all(call.id for call in calls)
         result_ids = bool(results) and all(result.tool_call_id for result in results)
-        if len(calls) > 1 and not (identified and result_ids):
+        if len(all_calls) > 1 and not (identified and result_ids):
             skipped.append("ambiguous_tool_result")
             continue
         for call in calls:

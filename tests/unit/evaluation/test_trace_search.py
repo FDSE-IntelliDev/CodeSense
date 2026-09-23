@@ -66,6 +66,27 @@ def test_find_search_episodes_rejects_ambiguous_unidentified_multiple_calls() ->
     assert found.skip_reasons == ("ambiguous_tool_result",)
 
 
+def test_find_search_episodes_rejects_unidentified_search_mixed_with_other_call() -> None:
+    events = (
+        TraceEvent(
+            index=0,
+            role="assistant",
+            text="",
+            tool_calls=(
+                ToolCall(None, "rg", "rg fifo src"),
+                ToolCall(None, "view", '{"path":"src/Pool.java"}'),
+            ),
+        ),
+        TraceEvent(index=1, role="tool", text="", tool_output="src/Pool.java"),
+        TraceEvent(index=2, role="tool", text="", tool_output="class Pool {}"),
+    )
+
+    found = find_search_episodes(events)
+
+    assert found.episodes == ()
+    assert found.skip_reasons == ("ambiguous_tool_result",)
+
+
 def test_find_search_episodes_falls_back_to_contiguous_tool_result() -> None:
     events = (
         TraceEvent(index=0, role="assistant", text="I will inspect pool order."),

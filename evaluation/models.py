@@ -131,9 +131,7 @@ class PreparedQuery:
             "issue_statement": self.issue_statement,
             "query": self.query,
             "answer": [location.to_dict() for location in self.answer],
-            "candidate_answers": [
-                location.to_dict() for location in self.candidate_answers
-            ],
+            "candidate_answers": [location.to_dict() for location in self.candidate_answers],
             "usage_evidence": [item.to_dict() for item in self.usage_evidence],
             "anchor_terms": list(self.anchor_terms),
             "semantic_constraints": list(self.semantic_constraints),
