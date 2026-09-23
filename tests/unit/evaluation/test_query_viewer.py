@@ -26,7 +26,17 @@ def _record(query_id: str) -> dict[str, object]:
                 "functions": ["afterCursor"],
             }
         ],
-        "source_event_indices": [1, 2, 3],
+        "candidate_answers": [{"file": "src/main/java/example/PageState.java", "functions": []}],
+        "usage_evidence": [
+            {
+                "file": "src/main/java/example/Navigation.java",
+                "functions": ["afterCursor"],
+                "event_index": 4,
+                "kind": "opened",
+            }
+        ],
+        "source_event_indices": [1, 2],
+        "result_event_indices": [3],
         "provenance": {"query_reason": "It describes a state transition failure."},
         "source_events": [
             {"index": 1, "role": "assistant", "text": "I will inspect navigation state."},
@@ -82,8 +92,12 @@ def test_query_viewer_page_polls_json_api_and_uses_safe_dom_rendering() -> None:
         for field in (
             "issue_statement",
             "source_event_indices",
+            "result_event_indices",
             "query_reason",
             "source_events",
+            "Gold answers",
+            "Candidate answers",
+            "Usage evidence",
         )
     )
     assert ".textContent" in page

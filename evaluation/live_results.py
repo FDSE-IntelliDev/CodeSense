@@ -108,7 +108,8 @@ def viewer_page() -> str:
   <style>
     :root { color-scheme:light; --ink:#182230; --muted:#667085; --line:#dbe2ea;
       --paper:#fff; --wash:#f5f7fa; --blue:#175cd3; --green:#067647; --green-bg:#ecfdf3;
-      --red:#b42318; --red-bg:#fef3f2; --gray:#475467; --gray-bg:#f2f4f7; }
+      --red:#b42318; --red-bg:#fef3f2; --gray:#475467; --gray-bg:#f2f4f7;
+      --amber:#b54708; --amber-bg:#fffaeb; }
     * { box-sizing:border-box; }
     body { margin:0; color:var(--ink); background:var(--wash);
       font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; }
@@ -138,6 +139,7 @@ def viewer_page() -> str:
     .row { margin:5px 0; padding:7px 9px; border-radius:7px; overflow-wrap:anywhere; }
     .matched { color:var(--green); background:var(--green-bg); }
     .missed { color:var(--red); background:var(--red-bg); }
+    .candidate { color:var(--amber); background:var(--amber-bg); }
     .extra { color:var(--gray); background:var(--gray-bg); }
     .neutral { color:var(--gray); background:#f8fafc; }
     .error { color:var(--red); white-space:pre-wrap; }
@@ -181,15 +183,17 @@ def viewer_page() -> str:
       rows.forEach(row => parent.append(row));
     }
 
-    function rawAnswers(evaluation) {
+    function answerRows(values) {
       const rows = [];
-      sequence(evaluation.answer).forEach(answer => {
+      sequence(values).forEach(answer => {
         const file = String(answer.file || 'unknown file');
         rows.push(element('div', 'row neutral', file));
         sequence(answer.functions).forEach(name => rows.push(element('div', 'row neutral', file + ' :: ' + name)));
       });
       return rows;
     }
+
+    function rawAnswers(evaluation) { return answerRows(evaluation.answer); }
 
     function goldDiff(metrics) {
       const rows = [];
@@ -206,18 +210,16 @@ def viewer_page() -> str:
       return rows;
     }
 
-    function hitRows(routeResult, metrics) {
-      const matchedFiles = new Set(sequence(metrics.matched_files).map(String));
-      const matchedFunctions = new Set(sequence(metrics.matched_functions).map(goldPairKey));
-      const hasFunctionGold = sequence(metrics.gold_functions).length > 0;
+    function hitRows(routeResult) {
       return sequence(routeResult.hits).map(hit => {
         const location = String(hit.file || '') + ':' + String(hit.line || 0);
+        const hitStatus = String(hit.label || 'unlabeled_hit');
         const label = '#' + String(hit.rank || 0) + ' ' + String(hit.kind || '') + ' ' +
-          String(hit.name || '') + ' — ' + location + ' · ' + metric(hit.score);
-        const matched = hasFunctionGold ? matchedFunctions.has(hitPairKey(hit)) :
-          matchedFiles.has(String(hit.file || ''));
-        const status = matched ? 'matched' : 'extra';
-        const row = element('div', 'row ' + status, label);
+          String(hit.name || '') + ' — ' + location + ' · ' + metric(hit.score) +
+          ' · ' + hitStatus;
+        const className = hitStatus === 'gold_hit' ? 'matched' :
+          hitStatus === 'candidate_hit' ? 'candidate' : 'extra';
+        const row = element('div', 'row ' + className, label);
         if (hit.why) row.append(element('div', 'route-meta', hit.why));
         return row;
       });
@@ -225,7 +227,8 @@ def viewer_page() -> str:
 
     function renderMetrics(parent, metrics) {
       const grid = element('div', 'metrics');
-      [['File precision','file_precision'],['File recall','file_recall'],
+      [['Observed file precision','observed_file_precision'],['File recall','file_recall'],
+       ['MRR','mrr'],['First gold rank','first_gold_rank'],
        ['Function precision','function_precision'],['Function recall','function_recall']]
         .forEach(([label, key]) => {
           const item = element('div', 'metric', label);
@@ -247,7 +250,7 @@ def viewer_page() -> str:
       section.append(element('div', 'block-title', 'Answer diff'));
       appendRows(section, Object.keys(metrics).length ? goldDiff(metrics) : rawAnswers(evaluation), '没有标准答案');
       section.append(element('div', 'block-title', 'Search hits'));
-      appendRows(section, hitRows(routeResult, metrics), '没有搜索结果');
+      appendRows(section, hitRows(routeResult), '没有搜索结果');
       return section;
     }
 
@@ -264,6 +267,8 @@ def viewer_page() -> str:
       const answers = element('section', 'answers');
       answers.append(element('h3', '', 'Gold answers'));
       appendRows(answers, rawAnswers(evaluation), '没有标准答案');
+      answers.append(element('h3', '', 'Candidate answers'));
+      appendRows(answers, answerRows(evaluation.candidate_answers), '没有候选答案');
       card.append(answers);
       const routes = element('div', 'routes');
       const values = mapping(evaluation.routes);
@@ -281,8 +286,9 @@ def viewer_page() -> str:
       Object.entries(mapping(summary)).forEach(([route, values]) => {
         const data = mapping(values);
         section.append(element('div', '', route + ': ' + String(data.completed || 0) + '/' +
-          String(data.queries || 0) + ' completed · file P/R ' + metric(data.file_precision) +
-          '/' + metric(data.file_recall)));
+          String(data.queries || 0) + ' completed · observed file P/R ' +
+          metric(data.observed_file_precision) + '/' + metric(data.file_recall) +
+          ' · MRR ' + metric(data.mrr)));
       });
     }
 

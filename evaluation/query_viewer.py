@@ -54,7 +54,7 @@ def query_viewer_page(*, refresh_seconds: float = REFRESH_SECONDS) -> str:
   <style>
     :root {{ color-scheme:light; --ink:#172033; --muted:#667085; --line:#dce3ed;
       --paper:#fff; --wash:#f5f7fb; --blue:#1d4ed8; --amber:#b45309; --amber-bg:#fff7df;
-      --red:#b42318; --red-bg:#fef3f2; }}
+      --red:#b42318; --red-bg:#fef3f2; --purple:#6941c6; --purple-bg:#f4f3ff; }}
     * {{ box-sizing:border-box; }} html {{ scroll-behavior:smooth; }}
     body {{ margin:0; color:var(--ink); background:var(--wash);
       font:14px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; }}
@@ -91,7 +91,8 @@ def query_viewer_page(*, refresh_seconds: float = REFRESH_SECONDS) -> str:
     code {{ padding:2px 5px; border-radius:4px; background:#eef1f5;
       font:12px ui-monospace,SFMono-Regular,Menlo,monospace; }}
     .trace {{ display:grid; gap:8px; }} .event {{ border:1px solid var(--line); border-radius:9px; }}
-    .event.selected {{ border-color:#e5a832; background:var(--amber-bg); }}
+    .event.prompt {{ border-color:#e5a832; background:var(--amber-bg); }}
+    .event.result {{ border-color:#bdb4fe; background:var(--purple-bg); }}
     .event summary {{ cursor:pointer; padding:10px 12px; font-weight:650; }}
     .event-body {{ padding:0 12px 12px; }} .field {{ margin-top:9px; }}
     .label {{ display:block; margin-bottom:3px; color:var(--muted); font-size:11px;
@@ -135,13 +136,29 @@ def query_viewer_page(*, refresh_seconds: float = REFRESH_SECONDS) -> str:
       }});
       return list;
     }}
-    function eventCard(rawEvent, selected) {{
+    function evidence(values) {{
+      const list = element('ul', 'locations');
+      const items = sequence(values);
+      if (!items.length) return element('div', 'empty', '没有使用证据');
+      items.forEach(value => {{
+        const item = mapping(value);
+        const functions = sequence(item.functions).length
+          ? ' :: ' + sequence(item.functions).map(String).join(', ') : '';
+        list.append(element('li', '', String(item.kind || 'used') + ' at event ' +
+          String(item.event_index ?? '?') + ' · ' + String(item.file || 'unknown file') + functions));
+      }});
+      return list;
+    }}
+    function eventCard(rawEvent, promptEvents, resultEvents) {{
       const event = mapping(rawEvent);
       const index = Number(event.index);
-      const details = element('details', 'event' + (selected.has(index) ? ' selected' : ''));
-      if (selected.has(index)) details.open = true;
+      const isPrompt = promptEvents.has(index);
+      const isResult = resultEvents.has(index);
+      const state = isPrompt ? ' prompt' : isResult ? ' result' : '';
+      const details = element('details', 'event' + state);
+      if (isPrompt || isResult) details.open = true;
       const tool = event.tool_name ? ' · ' + String(event.tool_name) : '';
-      const marker = selected.has(index) ? ' · 用于 query 构造' : '';
+      const marker = isPrompt ? ' · prompt 可见' : isResult ? ' · 搜索结果（prompt 不可见）' : '';
       details.append(element('summary', '', 'Event ' + index + ' · ' + String(event.role || 'unknown') + tool + marker));
       const body = element('div', 'event-body');
       [['Text','text'],['Tool input','tool_input'],['Tool output','tool_output']].forEach(pair => {{
@@ -172,14 +189,24 @@ def query_viewer_page(*, refresh_seconds: float = REFRESH_SECONDS) -> str:
       card.append(section('Semantic query', record.query, 'query'));
       card.append(section('Why semantic', mapping(record.provenance).query_reason, 'reason'));
       const answer = element('section', 'section');
-      answer.append(element('h3', '', 'Patch ground truth'));
+      answer.append(element('h3', '', 'Gold answers'));
       answer.append(locations(record.answer));
       card.append(answer);
+      const candidates = element('section', 'section');
+      candidates.append(element('h3', '', 'Candidate answers'));
+      candidates.append(locations(record.candidate_answers));
+      card.append(candidates);
+      const usage = element('section', 'section');
+      usage.append(element('h3', '', 'Usage evidence'));
+      usage.append(evidence(record.usage_evidence));
+      card.append(usage);
       const trace = element('section', 'section');
       trace.append(element('h3', '', 'Original trace'));
       const events = element('div', 'trace');
-      const selected = new Set(sequence(record.source_event_indices).map(Number));
-      sequence(record.source_events).forEach(event => events.append(eventCard(event, selected)));
+      const promptEvents = new Set(sequence(record.source_event_indices).map(Number));
+      const resultEvents = new Set(sequence(record.result_event_indices).map(Number));
+      sequence(record.source_events).forEach(event =>
+        events.append(eventCard(event, promptEvents, resultEvents)));
       if (!events.childNodes.length) events.append(element('div', 'empty', '没有 trace 事件'));
       trace.append(events);
       card.append(trace);

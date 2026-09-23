@@ -67,12 +67,32 @@ def test_viewer_page_defines_live_diff_and_safe_dom_contract() -> None:
 
     assert "CodeSense Live Evaluation" in page
     assert "new EventSource('/events')" in page
-    assert all(status in page for status in ("matched", "missed", "extra"))
-    assert all(metric in page for metric in ("file_precision", "file_recall", "function_recall"))
+    assert all(
+        status in page
+        for status in (
+            "matched",
+            "missed",
+            "candidate",
+            "extra",
+            "gold_hit",
+            "candidate_hit",
+            "unlabeled_hit",
+        )
+    )
+    assert all(
+        metric in page
+        for metric in (
+            "observed_file_precision",
+            "file_recall",
+            "first_gold_rank",
+            "mrr",
+            "function_recall",
+        )
+    )
     assert "matched_files" in page and "matched_functions" in page
-    assert "matchedFunctions.has(hitPairKey(hit))" in page
     assert "record.evaluation" in page
     assert "evaluation.answer" in page
+    assert "evaluation.candidate_answers" in page
     assert "record.search" not in page
     assert "search.answers" not in page
     assert ".textContent" in page
