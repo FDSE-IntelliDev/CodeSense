@@ -1,8 +1,9 @@
 import json
+from dataclasses import replace
 
 import pytest
 
-from evaluation.models import TraceCase, TraceEvent
+from evaluation.models import CodeLocation, ToolCall, TraceCase, TraceEvent
 from evaluation.query_mining import (
     MiningBatch,
     build_prompt,
@@ -140,6 +141,35 @@ def test_mine_queries_returns_one_row_per_supervised_episode() -> None:
     assert batch.search_episode_count == 2
     assert batch.eligible_episode_count == 2
     assert len(generator.prompts) == 2
+
+
+def test_mine_queries_share_one_trace_answer() -> None:
+    response = _valid_response("Find code whose policy changes runtime behavior.")
+    original = _case(two_searches=True)
+    case = replace(
+        original,
+        answer=(CodeLocation("src/main/java/Pool.java", ("select",)),),
+        events=(
+            *original.events,
+            TraceEvent(
+                10,
+                "assistant",
+                "",
+                tool_calls=(
+                    ToolCall(
+                        "finish-1",
+                        "finish",
+                        '{"message":"Updated Pool.select() in src/main/java/Pool.java."}',
+                    ),
+                ),
+            ),
+        ),
+    )
+
+    batch = mine_queries(case, _Generator(response, response))
+
+    expected = (CodeLocation("src/main/java/Pool.java", ("select",)),)
+    assert [query.trace_answer for query in batch.queries] == [expected, expected]
 
 
 def test_mined_query_contains_episode_supervision_and_provenance() -> None:

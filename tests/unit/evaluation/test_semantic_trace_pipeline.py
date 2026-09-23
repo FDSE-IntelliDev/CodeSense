@@ -154,3 +154,101 @@ def test_resolved_trace_becomes_episode_query_with_observed_gold() -> None:
     assert payload["query_id"] == "trace-1:2"
     assert "src/main/java/Pool.java" not in batch.queries[0].provenance["prompt"]
     assert "reference_patch" not in batch.queries[0].provenance["prompt"]
+
+
+def test_trace_answer_excludes_patch_added_files() -> None:
+    record = {
+        "repo": "owner/repo",
+        "language": "java",
+        "instance_id": "issue-2",
+        "trajectory_id": "trace-2",
+        "resolved": 1,
+        "trajectory": [
+            {"role": "user", "content": "Update the existing navigation behavior."},
+            {"role": "assistant", "content": "I will inspect the update path."},
+            {
+                "role": "assistant",
+                "content": "",
+                "tool_calls": [
+                    {
+                        "id": "search-1",
+                        "function": {
+                            "name": "execute_bash",
+                            "arguments": json.dumps({"command": "rg update src/main/java"}),
+                        },
+                    }
+                ],
+            },
+            {
+                "role": "tool",
+                "tool_call_id": "search-1",
+                "content": "src/main/java/Existing.java",
+            },
+            {
+                "role": "assistant",
+                "content": "",
+                "tool_calls": [
+                    {
+                        "id": "read-1",
+                        "function": {
+                            "name": "str_replace_editor",
+                            "arguments": json.dumps(
+                                {
+                                    "command": "view",
+                                    "path": "src/main/java/Existing.java",
+                                }
+                            ),
+                        },
+                    }
+                ],
+            },
+            {
+                "role": "assistant",
+                "content": "",
+                "tool_calls": [
+                    {
+                        "id": "finish-1",
+                        "function": {
+                            "name": "finish",
+                            "arguments": json.dumps(
+                                {
+                                    "message": (
+                                        "Updated Existing.update() in "
+                                        "src/main/java/Existing.java and added "
+                                        "Added.create() in src/main/java/Added.java."
+                                    )
+                                }
+                            ),
+                        },
+                    }
+                ],
+            },
+        ],
+        "metadata": {
+            "reference_patch": {
+                "patch": """\
+diff --git a/src/main/java/Existing.java b/src/main/java/Existing.java
+--- a/src/main/java/Existing.java
++++ b/src/main/java/Existing.java
+@@ -1 +1 @@ public void update() {
+-return oldValue;
++return newValue;
+diff --git a/src/main/java/Added.java b/src/main/java/Added.java
+new file mode 100644
+--- /dev/null
++++ b/src/main/java/Added.java
+@@ -0,0 +1 @@ public void create() {
++return;
+"""
+            }
+        },
+    }
+
+    batch = mine_queries(normalize_record(record), _Generator())
+    payload = batch.queries[0].to_dict()
+
+    assert payload["trace_answer"] == [
+        {"file": "src/main/java/Existing.java", "functions": ["update"]}
+    ]
+    assert all(item["file"] != "src/main/java/Added.java" for item in payload["trace_answer"])
+    assert "Added.java" not in batch.queries[0].provenance["prompt"]

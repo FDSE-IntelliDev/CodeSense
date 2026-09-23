@@ -11,6 +11,7 @@ from typing import Any, Protocol
 from evaluation.models import PreparedQuery, TraceCase, TraceEvent
 from evaluation.trace_search import (
     SupervisedEpisode,
+    extract_trace_answer,
     is_search_event,
     supervise_search_episodes,
 )
@@ -140,6 +141,7 @@ def mine_queries(
 ) -> MiningBatch:
     """Generate one query per supervised episode and isolate episode failures."""
     supervision = supervise_search_episodes(case)
+    trace_answer = extract_trace_answer(case)
     queries: list[PreparedQuery] = []
     skipped = list(supervision.skip_reasons)
     for supervised in supervision.episodes:
@@ -170,6 +172,7 @@ def mine_queries(
                 issue_statement=case.issue_statement,
                 query=generated.query,
                 answer=supervised.answer,
+                trace_answer=trace_answer,
                 candidate_answers=supervised.candidate_answers,
                 usage_evidence=supervised.usage_evidence,
                 anchor_terms=generated.anchor_terms,
