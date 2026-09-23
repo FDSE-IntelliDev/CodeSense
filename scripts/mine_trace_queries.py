@@ -22,7 +22,7 @@ DRY_RUN = False
 BASE_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1"
 MODEL = "qwen3.7-plus"
 TIMEOUT = 300.0
-PROMPT_VERSION = "trace-search-v2"
+PROMPT_VERSION = "trace-search-v3"
 # Keep the repository-local evaluation package importable when this file is
 # launched as ``python scripts/mine_trace_queries.py``. The scripts directory
 # contains evaluation.py, so the repository root must precede it even when an

@@ -108,15 +108,19 @@ A good query describes behavior, responsibility, state transitions, side effects
 performance impact, or a failure mechanism. Exact technical, class, or method anchors
 from the action are allowed, but the query must also say what behavior or effect matters.
 
-Good: Find where isPoolLifo changes reusable connection selection.
-Good: Find the logic that can leave navigation state inconsistent when switching between
-cursor-based and page-based access.
-Good: Find functions whose behavior can affect disk performance.
+The following examples are fictional. Learn the distinction, but do not reuse their names
+or wording in the generated query.
 
-Bad: Find Java files that reference PageRequest.
-Bad: Find implementations of LoadBalance.
-Bad: Locate calls to isPoolLifo.
-Bad: Search for RetryUtils.java.
+Good: Find where ZephyrQueue delays producers to keep buffered tasks within its memory budget.
+Good: Find the logic that can leave lunar-map tiles stale after an ObservatorySession changes
+regions.
+Good: Find code that batches telemetry envelopes to reduce radio wake-ups without delaying
+urgent signals.
+
+Bad: Find Java files that reference ZephyrQueue.
+Bad: Find implementations of LunarTileStore.
+Bad: Locate calls to flushTelemetry.
+Bad: Search for ObservatorySession.java.
 
 Return one JSON object only:
 {{"status":"valid","query":"...","reason":"...","anchor_terms":["..."],
@@ -132,7 +136,7 @@ def mine_queries(
     case: TraceCase,
     generator: QueryGenerator,
     *,
-    prompt_version: str = "trace-search-v2",
+    prompt_version: str = "trace-search-v3",
 ) -> MiningBatch:
     """Generate one query per supervised episode and isolate episode failures."""
     supervision = supervise_search_episodes(case)
@@ -189,7 +193,7 @@ def mine_query(
     case: TraceCase,
     generator: QueryGenerator,
     *,
-    prompt_version: str = "trace-search-v2",
+    prompt_version: str = "trace-search-v3",
 ) -> MiningOutcome:
     """Return the first batch result for transitional single-row callers."""
     batch = mine_queries(case, generator, prompt_version=prompt_version)

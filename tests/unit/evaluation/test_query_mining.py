@@ -124,6 +124,10 @@ def test_prompt_contains_issue_reasoning_action_but_hides_result_and_future() ->
     assert "src/main/java/Pool.java" not in prompt
     assert "I will read Pool.java now." not in prompt
     assert "SECRET_PATCH" not in prompt
+    assert "ZephyrQueue" in prompt
+    assert "ObservatorySession" in prompt
+    assert "Find where isPoolLifo changes reusable connection selection." not in prompt
+    assert "Find Java files that reference PageRequest." not in prompt
 
 
 def test_mine_queries_returns_one_row_per_supervised_episode() -> None:
@@ -155,6 +159,7 @@ def test_mined_query_contains_episode_supervision_and_provenance() -> None:
     assert query.result_event_indices == (3,)
     assert query.strategy == "trace-search-generated"
     assert query.provenance["model"] == "test-model"
+    assert query.provenance["prompt_version"] == "trace-search-v3"
     assert query.provenance["candidate_count"] == 1
 
 
