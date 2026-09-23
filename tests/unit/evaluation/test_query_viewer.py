@@ -6,21 +6,37 @@ from urllib.request import urlopen
 
 import pytest
 
-from evaluation.query_viewer import QueryFileViewer, query_viewer_page, read_query_records
+from evaluation.query_viewer import (
+    QueryFileViewer,
+    group_query_records,
+    query_viewer_page,
+    read_query_records,
+)
 
 
-def _record(query_id: str) -> dict[str, object]:
+def _record(
+    query_id: str,
+    *,
+    instance_id: str | None = None,
+    trajectory_id: str | None = None,
+) -> dict[str, object]:
     return {
         "query_id": query_id,
         "repo": "example/repo",
-        "instance_id": f"issue-{query_id}",
-        "trajectory_id": f"trace-{query_id}",
+        "instance_id": instance_id or f"issue-{query_id}",
+        "trajectory_id": trajectory_id or f"trace-{query_id}",
         "issue_statement": "Navigation can retain stale state after changing access mode.",
         "query": (
             "Find the logic that can leave navigation state inconsistent when switching "
             "between cursor-based and page-based access."
         ),
         "answer": [
+            {
+                "file": "src/main/java/example/Navigation.java",
+                "functions": ["afterCursor"],
+            }
+        ],
+        "trace_answer": [
             {
                 "file": "src/main/java/example/Navigation.java",
                 "functions": ["afterCursor"],
@@ -81,6 +97,37 @@ def test_read_query_records_reports_the_invalid_line(tmp_path: Path) -> None:
         read_query_records(path)
 
 
+def test_group_query_records_nests_queries_by_trace_in_input_order() -> None:
+    records = [
+        _record("trace-a:2", instance_id="issue-a", trajectory_id="trace-a"),
+        _record("trace-b:3", instance_id="issue-b", trajectory_id="trace-b"),
+        _record("trace-a:7", instance_id="issue-a", trajectory_id="trace-a"),
+    ]
+
+    traces = group_query_records(records)
+
+    assert [trace["trajectory_id"] for trace in traces] == ["trace-a", "trace-b"]
+    assert [query["query_id"] for query in traces[0]["queries"]] == [
+        "trace-a:2",
+        "trace-a:7",
+    ]
+    assert traces[0]["trace_answer"] == records[0]["trace_answer"]
+
+
+def test_group_query_records_does_not_merge_rows_without_trace_identity() -> None:
+    first = _record("query-one")
+    second = _record("query-two")
+    first.pop("trajectory_id")
+    second.pop("trajectory_id")
+
+    traces = group_query_records([first, second])
+
+    assert [trace["queries"][0]["query_id"] for trace in traces] == [
+        "query-one",
+        "query-two",
+    ]
+
+
 def test_query_viewer_page_polls_json_api_and_uses_safe_dom_rendering() -> None:
     page = query_viewer_page(refresh_seconds=2.0)
 
@@ -98,6 +145,12 @@ def test_query_viewer_page_polls_json_api_and_uses_safe_dom_rendering() -> None:
             "Gold answers",
             "Candidate answers",
             "Usage evidence",
+            "Trace answer",
+            "Original trace",
+            "Query-related trace events",
+            "traceCard",
+            "queryCard",
+            "trace-nav",
         )
     )
     assert ".textContent" in page
@@ -106,17 +159,24 @@ def test_query_viewer_page_polls_json_api_and_uses_safe_dom_rendering() -> None:
 
 def test_query_file_viewer_rereads_the_file_for_each_api_request(tmp_path: Path) -> None:
     path = tmp_path / "queries.jsonl"
-    _write_jsonl(path, [_record("one")])
+    first_record = _record("trace-one:2", instance_id="issue-one", trajectory_id="trace-one")
+    second_record = _record("trace-one:7", instance_id="issue-one", trajectory_id="trace-one")
+    _write_jsonl(path, [first_record])
     viewer = QueryFileViewer.start(path, port=0, refresh_seconds=0.1)
     try:
         with urlopen(f"{viewer.url}/api/cases", timeout=2) as response:  # noqa: S310
             first = json.load(response)
-        _write_jsonl(path, [_record("one"), _record("two")])
+        _write_jsonl(path, [first_record, second_record])
         with urlopen(f"{viewer.url}/api/cases", timeout=2) as response:  # noqa: S310
             second = json.load(response)
 
-        assert first["count"] == 1
-        assert second["count"] == 2
-        assert [record["query_id"] for record in second["records"]] == ["one", "two"]
+        assert first["trace_count"] == 1
+        assert first["query_count"] == 1
+        assert second["trace_count"] == 1
+        assert second["query_count"] == 2
+        assert [query["query_id"] for query in second["traces"][0]["queries"]] == [
+            "trace-one:2",
+            "trace-one:7",
+        ]
     finally:
         viewer.close()

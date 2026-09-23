@@ -12,7 +12,12 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import ClassVar
 
-__all__ = ["QueryFileViewer", "query_viewer_page", "read_query_records"]
+__all__ = [
+    "QueryFileViewer",
+    "group_query_records",
+    "query_viewer_page",
+    "read_query_records",
+]
 
 # Edit this path when reviewing another generated query file.
 INPUT = (
@@ -42,6 +47,35 @@ def read_query_records(path: Path) -> list[dict[str, object]]:
     return records
 
 
+def group_query_records(records: list[dict[str, object]]) -> list[dict[str, object]]:
+    """Group flat query rows by trace while preserving trace and query order."""
+    groups: dict[tuple[str, str, str], dict[str, object]] = {}
+    for index, record in enumerate(records):
+        repo = str(record.get("repo") or "")
+        instance_id = str(record.get("instance_id") or "")
+        trajectory_id = str(record.get("trajectory_id") or "")
+        query_id = str(record.get("query_id") or "")
+        trace_identity = trajectory_id or f"query:{query_id or index}"
+        key = (repo, instance_id, trace_identity)
+        group = groups.get(key)
+        if group is None:
+            group = {
+                "repo": repo,
+                "instance_id": instance_id,
+                "trajectory_id": trajectory_id,
+                "issue_statement": record.get("issue_statement") or "",
+                "trace_answer": record.get("trace_answer") or [],
+                "queries": [],
+            }
+            groups[key] = group
+        elif not group["trace_answer"] and record.get("trace_answer"):
+            group["trace_answer"] = record["trace_answer"]
+        queries = group["queries"]
+        if isinstance(queries, list):
+            queries.append(record)
+    return list(groups.values())
+
+
 def query_viewer_page(*, refresh_seconds: float = REFRESH_SECONDS) -> str:
     """Return the data-independent page that polls the current query JSONL."""
     refresh_ms = max(250, int(refresh_seconds * 1000))
@@ -68,14 +102,21 @@ def query_viewer_page(*, refresh_seconds: float = REFRESH_SECONDS) -> str:
       overflow:auto; padding:14px; border:1px solid var(--line); border-radius:12px;
       background:var(--paper); }}
     aside h2 {{ margin:0 0 10px; color:var(--muted); font-size:12px; text-transform:uppercase; }}
-    aside a {{ display:block; padding:9px; color:var(--ink); text-decoration:none; border-radius:8px; }}
-    aside a:hover {{ background:#eef3ff; }} aside span {{ display:block; color:var(--muted);
+    aside a {{ display:block; padding:7px 9px 7px 22px; color:var(--ink); text-decoration:none;
+      border-radius:8px; }} aside a:hover {{ background:#eef3ff; }} aside span {{ display:block; color:var(--muted);
       font-size:12px; overflow-wrap:anywhere; }}
+    .trace-nav {{ margin-bottom:8px; }} .trace-nav summary {{ cursor:pointer; padding:9px;
+      border-radius:8px; font-weight:700; }} .trace-nav summary:hover {{ background:#eef3ff; }}
     main {{ min-width:0; }}
     .error {{ margin-bottom:18px; padding:13px 16px; color:var(--red); background:var(--red-bg);
       border:1px solid #fecdca; border-radius:9px; white-space:pre-wrap; }}
-    .case {{ margin-bottom:24px; padding:24px; background:var(--paper); border:1px solid var(--line);
+    .trace-group {{ margin-bottom:28px; padding:24px; background:var(--paper); border:1px solid var(--line);
       border-radius:14px; box-shadow:0 8px 26px #1720330d; scroll-margin-top:96px; }}
+    .trace-head {{ display:flex; justify-content:space-between; gap:16px; padding-bottom:17px;
+      border-bottom:1px solid var(--line); }} .trace-head h2 {{ margin:5px 0 3px; font-size:21px; }}
+    .query-list {{ display:grid; gap:18px; margin-top:22px; }}
+    .case {{ padding:20px; background:#fbfcfe; border:1px solid var(--line);
+      border-radius:12px; scroll-margin-top:96px; }}
     .case-head {{ display:flex; justify-content:space-between; gap:16px; padding-bottom:17px;
       border-bottom:1px solid var(--line); }}
     .case h2 {{ margin:5px 0 3px; font-size:21px; }} h3 {{ margin:0 0 9px; font-size:15px; }}
@@ -107,7 +148,7 @@ def query_viewer_page(*, refresh_seconds: float = REFRESH_SECONDS) -> str:
 <body>
   <header><div><h1>CodeSense Query Viewer</h1><p id="source">等待读取 query 文件</p></div>
     <div id="status">连接中</div></header>
-  <div class="layout"><aside><h2>Cases</h2><nav id="navigation"></nav></aside>
+  <div class="layout"><aside><h2>Traces / Queries</h2><nav id="navigation"></nav></aside>
     <main><div id="error"></div><section id="cases"></section></main></div>
   <script>
     function element(tag, className, text) {{
@@ -172,20 +213,20 @@ def query_viewer_page(*, refresh_seconds: float = REFRESH_SECONDS) -> str:
       details.append(body);
       return details;
     }}
-    function caseCard(record, number) {{
-      const id = 'case-' + number;
+    function queryCard(record, traceNumber, queryNumber) {{
+      const id = 'trace-' + traceNumber + '-query-' + queryNumber;
       const card = element('article', 'case');
       card.id = id;
       const head = element('div', 'case-head');
       const identity = element('div');
-      identity.append(element('span', 'pill', 'Case ' + number));
-      identity.append(element('h2', '', record.repo || 'unknown repository'));
-      identity.append(element('div', 'meta', 'instance: ' + String(record.instance_id || '') +
-        ' · trajectory: ' + String(record.trajectory_id || '')));
+      identity.append(element('span', 'pill', 'Query ' + queryNumber));
+      identity.append(element('h2', '', record.query_id || 'unnamed query'));
+      identity.append(element('div', 'meta', 'source events: ' +
+        (sequence(record.source_event_indices).join(', ') || '(none)') +
+        ' · result events: ' + (sequence(record.result_event_indices).join(', ') || '(none)')));
       head.append(identity);
-      head.append(element('span', 'pill', sequence(record.source_events).length + ' events'));
+      head.append(element('span', 'pill', sequence(record.answer).length + ' gold'));
       card.append(head);
-      card.append(section('Issue statement', record.issue_statement, 'issue'));
       card.append(section('Semantic query', record.query, 'query'));
       card.append(section('Why semantic', mapping(record.provenance).query_reason, 'reason'));
       const answer = element('section', 'section');
@@ -201,16 +242,77 @@ def query_viewer_page(*, refresh_seconds: float = REFRESH_SECONDS) -> str:
       usage.append(evidence(record.usage_evidence));
       card.append(usage);
       const trace = element('section', 'section');
-      trace.append(element('h3', '', 'Original trace'));
+      trace.append(element('h3', '', 'Query-related trace events'));
       const events = element('div', 'trace');
       const promptEvents = new Set(sequence(record.source_event_indices).map(Number));
       const resultEvents = new Set(sequence(record.result_event_indices).map(Number));
-      sequence(record.source_events).forEach(event =>
-        events.append(eventCard(event, promptEvents, resultEvents)));
-      if (!events.childNodes.length) events.append(element('div', 'empty', '没有 trace 事件'));
+      const related = new Set([...promptEvents, ...resultEvents]);
+      sequence(record.source_events)
+        .filter(event => related.has(Number(mapping(event).index)))
+        .forEach(event => events.append(eventCard(event, promptEvents, resultEvents)));
+      if (!events.childNodes.length)
+        events.append(element('div', 'empty', '没有与该 query 关联的 trace 事件'));
       trace.append(events);
       card.append(trace);
       return [id, card];
+    }}
+    function traceCard(rawTrace, traceNumber) {{
+      const trace = mapping(rawTrace);
+      const queries = sequence(trace.queries);
+      const id = 'trace-' + traceNumber;
+      const card = element('article', 'trace-group');
+      card.id = id;
+      const head = element('div', 'trace-head');
+      const identity = element('div');
+      identity.append(element('span', 'pill', 'Trace ' + traceNumber));
+      identity.append(element('h2', '', trace.repo || 'unknown repository'));
+      identity.append(element('div', 'meta', 'instance: ' + String(trace.instance_id || '') +
+        ' · trajectory: ' + String(trace.trajectory_id || '')));
+      head.append(identity);
+      head.append(element('span', 'pill', queries.length + ' queries'));
+      card.append(head);
+      card.append(section('Issue statement', trace.issue_statement, 'issue'));
+      const traceAnswer = element('section', 'section');
+      traceAnswer.append(element('h3', '', 'Trace answer'));
+      traceAnswer.append(locations(trace.trace_answer));
+      card.append(traceAnswer);
+
+      const queryList = element('section', 'query-list');
+      const queryLinks = [];
+      queries.forEach((rawQuery, index) => {{
+        const query = mapping(rawQuery);
+        const pair = queryCard(query, traceNumber, index + 1);
+        queryList.append(pair[1]);
+        queryLinks.push({{id: pair[0], query: query, number: index + 1}});
+      }});
+      card.append(queryList);
+
+      const original = element('details', 'section event');
+      original.append(element('summary', '', 'Original trace · ' +
+        sequence(mapping(queries[0]).source_events).length + ' events'));
+      const originalEvents = element('div', 'event-body trace');
+      sequence(mapping(queries[0]).source_events).forEach(event =>
+        originalEvents.append(eventCard(event, new Set(), new Set())));
+      if (!originalEvents.childNodes.length)
+        originalEvents.append(element('div', 'empty', '没有 trace 事件'));
+      original.append(originalEvents);
+      card.append(original);
+      return {{id: id, card: card, queryLinks: queryLinks}};
+    }}
+    function traceNavigation(trace, traceNumber, queryLinks) {{
+      const details = element('details', 'trace-nav');
+      details.open = true;
+      const summary = element('summary', '', trace.repo || 'unknown repository');
+      summary.append(element('span', '', (trace.instance_id || trace.trajectory_id || '') +
+        ' · ' + queryLinks.length + ' queries'));
+      details.append(summary);
+      queryLinks.forEach(item => {{
+        const link = element('a', '', 'Query ' + item.number);
+        link.href = '#' + item.id;
+        link.append(element('span', '', item.query.query_id || ''));
+        details.append(link);
+      }});
+      return details;
     }}
     function render(snapshot) {{
       const navigation = document.getElementById('navigation');
@@ -219,17 +321,17 @@ def query_viewer_page(*, refresh_seconds: float = REFRESH_SECONDS) -> str:
       navigation.replaceChildren(); cases.replaceChildren(); error.replaceChildren();
       document.getElementById('source').textContent = String(snapshot.source || '');
       document.getElementById('status').textContent = snapshot.error
-        ? '读取失败' : String(snapshot.count || 0) + ' cases';
+        ? '读取失败' : String(snapshot.trace_count || 0) + ' traces · ' +
+          String(snapshot.query_count || 0) + ' queries';
       if (snapshot.error) error.append(element('div', 'error', snapshot.error));
-      sequence(snapshot.records).forEach((record, index) => {{
-        const pair = caseCard(mapping(record), index + 1);
-        const link = element('a', '', record.repo || 'unknown repository');
-        link.href = '#' + pair[0];
-        link.append(element('span', '', record.instance_id || record.query_id || ''));
-        navigation.append(link); cases.append(pair[1]);
+      sequence(snapshot.traces).forEach((rawTrace, index) => {{
+        const trace = mapping(rawTrace);
+        const rendered = traceCard(trace, index + 1);
+        navigation.append(traceNavigation(trace, index + 1, rendered.queryLinks));
+        cases.append(rendered.card);
       }});
-      if (!sequence(snapshot.records).length && !snapshot.error)
-        cases.append(element('div', 'empty', 'query 文件中还没有 case'));
+      if (!sequence(snapshot.traces).length && !snapshot.error)
+        cases.append(element('div', 'empty', 'query 文件中还没有 trace'));
     }}
     async function loadCases() {{
       try {{
@@ -288,8 +390,21 @@ def _query_snapshot(path: Path) -> dict[str, object]:
     try:
         records = read_query_records(path)
     except (OSError, ValueError) as exc:
-        return {"source": str(path), "count": 0, "records": [], "error": str(exc)}
-    return {"source": str(path), "count": len(records), "records": records, "error": None}
+        return {
+            "source": str(path),
+            "trace_count": 0,
+            "query_count": 0,
+            "traces": [],
+            "error": str(exc),
+        }
+    traces = group_query_records(records)
+    return {
+        "source": str(path),
+        "trace_count": len(traces),
+        "query_count": len(records),
+        "traces": traces,
+        "error": None,
+    }
 
 
 class QueryFileViewer:
