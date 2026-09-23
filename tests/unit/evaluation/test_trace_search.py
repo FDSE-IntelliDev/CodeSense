@@ -1,9 +1,10 @@
-from evaluation.models import ToolCall, TraceEvent
+from evaluation.models import CodeLocation, ToolCall, TraceCase, TraceEvent
 from evaluation.trace_search import (
     CandidateLocation,
     SearchEpisode,
     find_search_episodes,
     parse_episode_candidates,
+    supervise_search_episodes,
 )
 
 
@@ -122,3 +123,209 @@ def test_parse_candidates_excludes_tests_and_does_not_infer_call_names() -> None
             "src/main/java/dev/Client.java:80: provider.getDoubleValue(key);",
         ),
     )
+
+
+def _trace_case(events: tuple[TraceEvent, ...]) -> TraceCase:
+    return TraceCase(
+        repo="acme/project",
+        language="java",
+        instance_id="issue-1",
+        trajectory_id="trace-1",
+        issue_statement="Pool reuse order is inconsistent.",
+        base_commit=None,
+        events=events,
+        raw={},
+    )
+
+
+def test_open_edit_and_followup_search_create_usage_evidence() -> None:
+    events = (
+        TraceEvent(0, "assistant", "", "rg", "rg pool src/main/java", None),
+        TraceEvent(1, "tool", "", "rg", None, "src/main/java/Pool.java"),
+        TraceEvent(
+            2,
+            "assistant",
+            "",
+            "str_replace_editor",
+            '{"command":"view","path":"src/main/java/Pool.java"}',
+            None,
+        ),
+        TraceEvent(3, "tool", "", "str_replace_editor", None, "class Pool {}"),
+        TraceEvent(4, "assistant", "", "bash", '{"command":"rg Pool.java notes.txt"}', None),
+        TraceEvent(5, "tool", "", "bash", None, "no matches"),
+        TraceEvent(
+            6,
+            "assistant",
+            "",
+            "str_replace_editor",
+            '{"command":"str_replace","path":"src/main/java/Pool.java"}',
+            None,
+        ),
+    )
+
+    episode = supervise_search_episodes(_trace_case(events)).episodes[0]
+
+    assert [(item.file, item.kind) for item in episode.usage_evidence] == [
+        ("src/main/java/Pool.java", "opened"),
+        ("src/main/java/Pool.java", "searched"),
+        ("src/main/java/Pool.java", "edited"),
+    ]
+
+
+def test_tool_output_alone_is_not_usage_evidence() -> None:
+    events = (
+        TraceEvent(0, "assistant", "", "rg", "rg pool src/main/java", None),
+        TraceEvent(1, "tool", "", "rg", None, "src/main/java/Pool.java"),
+        TraceEvent(2, "assistant", "The search completed."),
+        TraceEvent(3, "tool", "", "unknown", None, "src/main/java/Pool.java"),
+    )
+
+    batch = supervise_search_episodes(_trace_case(events))
+
+    assert batch.episodes == ()
+    assert "no_usage_evidence" in batch.skip_reasons
+
+
+def test_unsupported_tool_action_is_not_assistant_reference_evidence() -> None:
+    events = (
+        TraceEvent(0, "assistant", "", "rg", "rg pool src/main/java", None),
+        TraceEvent(1, "tool", "", "rg", None, "src/main/java/Pool.java"),
+        TraceEvent(
+            2,
+            "assistant",
+            "",
+            "unknown_tool",
+            '{"path":"src/main/java/Pool.java"}',
+            None,
+        ),
+    )
+
+    batch = supervise_search_episodes(_trace_case(events))
+
+    assert batch.episodes == ()
+
+
+def test_basename_only_matches_when_unique() -> None:
+    events = (
+        TraceEvent(0, "assistant", "", "rg", "rg Client src/main/java", None),
+        TraceEvent(
+            1,
+            "tool",
+            "",
+            "rg",
+            None,
+            "src/main/java/a/Client.java\nsrc/main/java/b/Client.java",
+        ),
+        TraceEvent(2, "assistant", "", "view", '{"path":"Client.java"}', None),
+    )
+
+    batch = supervise_search_episodes(_trace_case(events))
+
+    assert batch.episodes == ()
+
+
+def test_usage_is_assigned_to_the_most_recent_producer() -> None:
+    events = (
+        TraceEvent(2, "assistant", "", "rg", "rg pool src/main/java", None),
+        TraceEvent(3, "tool", "", "rg", None, "src/main/java/Pool.java"),
+        TraceEvent(8, "assistant", "", "rg", "rg pool src/main/java", None),
+        TraceEvent(9, "tool", "", "rg", None, "src/main/java/Pool.java"),
+        TraceEvent(
+            10,
+            "assistant",
+            "",
+            "str_replace_editor",
+            '{"command":"view","path":"src/main/java/Pool.java"}',
+            None,
+        ),
+    )
+
+    batch = supervise_search_episodes(_trace_case(events))
+
+    assert [episode.episode.anchor_event for episode in batch.episodes] == [8]
+
+
+def test_complete_assistant_path_and_function_create_reference_evidence() -> None:
+    events = (
+        TraceEvent(0, "assistant", "", "rg", "rg select src/main/java", None),
+        TraceEvent(
+            1,
+            "tool",
+            "",
+            "rg",
+            None,
+            "src/main/java/Pool.java:42: public void select() {",
+        ),
+        TraceEvent(
+            2,
+            "assistant",
+            "src/main/java/Pool.java and select explain the ordering behavior.",
+        ),
+    )
+
+    episode = supervise_search_episodes(_trace_case(events)).episodes[0]
+
+    assert episode.answer == (CodeLocation("src/main/java/Pool.java", ("select",)),)
+    assert episode.usage_evidence[0].kind == "referenced"
+
+
+def test_read_range_promotes_only_the_declaration_inside_the_range() -> None:
+    events = (
+        TraceEvent(0, "assistant", "", "rg", "rg select src/main/java", None),
+        TraceEvent(
+            1,
+            "tool",
+            "",
+            "rg",
+            None,
+            "src/main/java/Pool.java:42: public void select() {",
+        ),
+        TraceEvent(
+            2,
+            "assistant",
+            "",
+            "str_replace_editor",
+            '{"command":"view","path":"src/main/java/Pool.java","view_range":[40,50]}',
+            None,
+        ),
+    )
+
+    episode = supervise_search_episodes(_trace_case(events)).episodes[0]
+
+    assert episode.answer == (CodeLocation("src/main/java/Pool.java", ("select",)),)
+
+
+def test_gold_files_are_removed_from_candidate_answers() -> None:
+    events = (
+        TraceEvent(0, "assistant", "", "rg", "rg pool src/main/java", None),
+        TraceEvent(
+            1,
+            "tool",
+            "",
+            "rg",
+            None,
+            "src/main/java/Pool.java\nsrc/main/java/PoolConfig.java",
+        ),
+        TraceEvent(2, "assistant", "", "view", '{"path":"src/main/java/Pool.java"}', None),
+    )
+
+    episode = supervise_search_episodes(_trace_case(events)).episodes[0]
+
+    assert episode.answer == (CodeLocation("src/main/java/Pool.java", ()),)
+    assert episode.candidate_answers == (CodeLocation("src/main/java/PoolConfig.java", ()),)
+
+
+def test_exact_duplicate_episodes_keep_the_later_search() -> None:
+    events = (
+        TraceEvent(0, "assistant", "", "rg", "rg pool src/main/java", None),
+        TraceEvent(1, "tool", "", "rg", None, "src/main/java/Pool.java"),
+        TraceEvent(2, "assistant", "", "view", '{"path":"src/main/java/Pool.java"}', None),
+        TraceEvent(4, "assistant", "", "rg", "rg pool src/main/java", None),
+        TraceEvent(5, "tool", "", "rg", None, "src/main/java/Pool.java"),
+        TraceEvent(6, "assistant", "", "view", '{"path":"src/main/java/Pool.java"}', None),
+    )
+
+    batch = supervise_search_episodes(_trace_case(events))
+
+    assert [episode.episode.anchor_event for episode in batch.episodes] == [4]
+    assert "duplicate_episode" in batch.skip_reasons

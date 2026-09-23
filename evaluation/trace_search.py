@@ -7,19 +7,22 @@ import json
 import re
 import shlex
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import PurePosixPath
 
-from evaluation.models import ToolCall, TraceEvent
+from evaluation.models import CodeLocation, ToolCall, TraceCase, TraceEvent, UsageEvidence
 
 __all__ = [
     "CandidateLocation",
     "EpisodeDiscovery",
     "SearchEpisode",
+    "SupervisedEpisode",
+    "SupervisionBatch",
     "find_search_episodes",
     "is_search_event",
     "normalize_action",
     "parse_episode_candidates",
+    "supervise_search_episodes",
 ]
 
 _SEARCH_TOOLS = {
@@ -40,6 +43,18 @@ _JAVA_LOCATION = re.compile(
 _IDENTIFIER = re.compile(r"[A-Za-z_$][\w$]*")
 _CONTROL_WORDS = {"catch", "do", "for", "if", "new", "return", "switch", "throw", "while"}
 _IGNORED_DIRS = {"build", "example", "examples", "generated", "target", "test", "tests"}
+_OPEN_ACTIONS = {"cat", "head", "less", "open", "read", "sed", "tail", "view"}
+_EDIT_ACTIONS = {
+    "apply_patch",
+    "create",
+    "create_file",
+    "delete",
+    "edit",
+    "patch",
+    "str_replace",
+    "write",
+    "write_file",
+}
 
 
 @dataclass(frozen=True, slots=True)
@@ -65,6 +80,21 @@ class SearchEpisode:
 class EpisodeDiscovery:
     episodes: tuple[SearchEpisode, ...]
     skip_reasons: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class SupervisedEpisode:
+    episode: SearchEpisode
+    answer: tuple[CodeLocation, ...]
+    candidate_answers: tuple[CodeLocation, ...]
+    usage_evidence: tuple[UsageEvidence, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class SupervisionBatch:
+    episodes: tuple[SupervisedEpisode, ...]
+    skip_reasons: tuple[str, ...]
+    search_episode_count: int
 
 
 def is_search_event(event: TraceEvent) -> bool:
@@ -139,6 +169,239 @@ def parse_episode_candidates(episode: SearchEpisode, repo: str) -> tuple[Candida
                 raw_result=previous.raw_result if previous else raw_line.strip(),
             )
     return tuple(by_file.values())
+
+
+def supervise_search_episodes(case: TraceCase) -> SupervisionBatch:
+    """Build gold and weak candidates from deterministic later-use evidence."""
+    discovery = find_search_episodes(case.events)
+    episodes = tuple(
+        replace(episode, candidates=parse_episode_candidates(episode, case.repo))
+        for episode in discovery.episodes
+    )
+    evidence: list[list[UsageEvidence]] = [[] for _ in episodes]
+
+    for event in case.events:
+        kind = _usage_kind(event)
+        if kind is None and (event.role.lower() != "assistant" or bool(_event_calls(event))):
+            continue
+        prior = [
+            (position, episode)
+            for position, episode in enumerate(episodes)
+            if episode.anchor_event < event.index and episode.candidates
+        ]
+        if not prior:
+            continue
+        # A later search result supersedes an older producer for the same file.
+        latest: dict[str, tuple[int, CandidateLocation]] = {}
+        for position, episode in prior:
+            for candidate in episode.candidates:
+                latest[candidate.file] = (position, candidate)
+        action = _event_action(event)
+        matched = _match_candidate(action, [item[1] for item in latest.values()])
+        if kind is None:
+            matched = tuple(
+                candidate for candidate in matched if _is_qualified_reference(action, candidate)
+            )
+            kind = "referenced"
+        for candidate in matched:
+            position, owned = latest[candidate.file]
+            functions = _evidenced_functions(event, owned, kind)
+            item = UsageEvidence(owned.file, functions, event.index, kind)
+            if item not in evidence[position]:
+                evidence[position].append(item)
+
+    skipped = list(discovery.skip_reasons)
+    supervised: list[SupervisedEpisode] = []
+    for episode, items in zip(episodes, evidence, strict=True):
+        if not episode.candidates:
+            skipped.append("no_candidates")
+            continue
+        if not items:
+            skipped.append("no_usage_evidence")
+            continue
+        gold_files = {item.file for item in items}
+        answer = tuple(
+            CodeLocation(
+                candidate.file,
+                tuple(
+                    function
+                    for function in candidate.functions
+                    if any(
+                        item.file == candidate.file and function in item.functions for item in items
+                    )
+                ),
+            )
+            for candidate in episode.candidates
+            if candidate.file in gold_files
+        )
+        candidates = tuple(
+            CodeLocation(candidate.file, candidate.functions)
+            for candidate in episode.candidates
+            if candidate.file not in gold_files
+        )
+        supervised.append(SupervisedEpisode(episode, answer, candidates, tuple(items)))
+
+    deduplicated: dict[tuple[object, ...], SupervisedEpisode] = {}
+    for episode in supervised:
+        signature = _episode_signature(episode)
+        if signature in deduplicated:
+            skipped.append("duplicate_episode")
+        deduplicated[signature] = episode
+    kept = tuple(sorted(deduplicated.values(), key=lambda item: item.episode.anchor_event))
+    return SupervisionBatch(kept, tuple(skipped), len(discovery.episodes))
+
+
+def _usage_kind(event: TraceEvent) -> str | None:
+    """Classify a later assistant action as opened, searched, or edited."""
+    if event.role.lower() != "assistant":
+        return None
+    operation = _action_operation(event)
+    if operation in _EDIT_ACTIONS:
+        return "edited"
+    if operation in _OPEN_ACTIONS:
+        return "opened"
+    calls = _event_calls(event)
+    if any(_is_search_call(call) for call in calls):
+        return "searched"
+    return None
+
+
+def _match_candidate(
+    action: str, candidates: Sequence[CandidateLocation]
+) -> tuple[CandidateLocation, ...]:
+    """Prefer complete paths, then unique suffixes, then unique basenames."""
+    if not action:
+        return ()
+    normalized = action.replace("\\", "/")
+    exact = [candidate for candidate in candidates if candidate.file in normalized]
+    if exact:
+        return tuple(dict.fromkeys(exact))
+
+    mentioned = [
+        _normalize_java_path(match.group("path")) for match in _JAVA_LOCATION.finditer(normalized)
+    ]
+    suffixes: list[CandidateLocation] = []
+    for path in mentioned:
+        if "/" not in path:
+            continue
+        matches = [
+            candidate
+            for candidate in candidates
+            if candidate.file == path or candidate.file.endswith(f"/{path}")
+        ]
+        if len(matches) == 1:
+            suffixes.extend(matches)
+    if suffixes:
+        return tuple(dict.fromkeys(suffixes))
+
+    found: list[CandidateLocation] = []
+    for basename in {PurePosixPath(path).name for path in mentioned}:
+        matches = [
+            candidate for candidate in candidates if PurePosixPath(candidate.file).name == basename
+        ]
+        if len(matches) == 1:
+            found.extend(matches)
+    return tuple(dict.fromkeys(found))
+
+
+def _event_action(event: TraceEvent) -> str:
+    parts = [call.arguments or "" for call in _event_calls(event)]
+    if event.tool_input:
+        parts.append(event.tool_input)
+    if event.text:
+        parts.append(event.text)
+    return "\n".join(dict.fromkeys(part for part in parts if part))
+
+
+def _action_operation(event: TraceEvent) -> str:
+    for raw in [call.arguments or "" for call in _event_calls(event)]:
+        data = _action_mapping(raw)
+        if data:
+            command = next(
+                (data[key] for key in _COMMAND_KEYS if isinstance(data.get(key), str)),
+                None,
+            )
+            if command:
+                try:
+                    return shlex.split(command)[0].lower()
+                except (ValueError, IndexError):
+                    return command.lower()
+    name = (event.tool_name or "").strip().lower()
+    return name
+
+
+def _action_mapping(value: str) -> Mapping[str, object] | None:
+    pending: object | None = value
+    for _ in range(3):
+        if isinstance(pending, Mapping):
+            return pending
+        if not isinstance(pending, str):
+            return None
+        if len(pending) >= 2 and pending[0] == pending[-1] == "'":
+            pending = pending[1:-1]
+            continue
+        parsed = _parse_action(pending)
+        if parsed == pending:
+            return None
+        pending = parsed
+    return pending if isinstance(pending, Mapping) else None
+
+
+def _is_qualified_reference(action: str, candidate: CandidateLocation) -> bool:
+    if candidate.file in action.replace("\\", "/"):
+        return True
+    basename = PurePosixPath(candidate.file).name
+    has_basename = re.search(rf"(?<![\w$]){re.escape(basename)}(?![\w$])", action)
+    return bool(has_basename and _mentioned_functions(action, candidate))
+
+
+def _evidenced_functions(
+    event: TraceEvent, candidate: CandidateLocation, kind: str
+) -> tuple[str, ...]:
+    action = _event_action(event)
+    found = list(_mentioned_functions(action, candidate))
+    read_range = _read_range(event) if kind == "opened" else None
+    if (
+        read_range
+        and candidate.line is not None
+        and read_range[0] <= candidate.line <= read_range[1]
+    ):
+        for function in candidate.functions:
+            if function not in found:
+                found.append(function)
+    return tuple(found)
+
+
+def _mentioned_functions(action: str, candidate: CandidateLocation) -> tuple[str, ...]:
+    return tuple(
+        function
+        for function in candidate.functions
+        if re.search(rf"(?<![\w$]){re.escape(function)}(?![\w$])", action)
+    )
+
+
+def _read_range(event: TraceEvent) -> tuple[int, int] | None:
+    for raw in [call.arguments or "" for call in _event_calls(event)]:
+        data = _action_mapping(raw)
+        if not data:
+            continue
+        value = data.get("view_range")
+        if (
+            isinstance(value, Sequence)
+            and not isinstance(value, str)
+            and len(value) == 2
+            and all(isinstance(item, int) for item in value)
+        ):
+            return int(value[0]), int(value[1])
+    return None
+
+
+def _episode_signature(value: SupervisedEpisode) -> tuple[object, ...]:
+    return (
+        normalize_action(value.episode.raw_action),
+        tuple(sorted(value.answer, key=lambda item: (item.file, item.functions))),
+        tuple(sorted(value.candidate_answers, key=lambda item: (item.file, item.functions))),
+    )
 
 
 def _event_calls(event: TraceEvent) -> tuple[ToolCall, ...]:
