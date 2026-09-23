@@ -47,3 +47,4 @@ models/
 config.yml
 
 .qoder
+.worktrees/
