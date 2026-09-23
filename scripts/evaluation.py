@@ -276,6 +276,7 @@ def _evaluate_query(
     """Run one benchmark query through each route and retain inspectable hits."""
     query = str(record.get("query") or "").strip()
     answers = list(_mappings(record.get("answer")))
+    candidates = list(_mappings(record.get("candidate_answers")))
     usable_answers = [
         answer
         for answer in answers
@@ -285,6 +286,7 @@ def _evaluate_query(
         "query": query,
         "source_event_indices": list(_integers(record.get("source_event_indices"))),
         "answer": answers,
+        "candidate_answers": candidates,
     }
     if not usable_answers:
         return {**base, "skipped": True, "skip_reason": "no production-code gold", "routes": {}}
@@ -293,17 +295,24 @@ def _evaluate_query(
     for route in routes:
         try:
             result = project.search(query, route=route, limit=limit)
+            metrics, labels = _score(
+                result.hits,
+                answers,
+                candidates,
+                include_test_files=include_test_files,
+            )
             route_result = {
                 "actual_route": result.route,
                 "elapsed": result.elapsed,
                 "notes": list(result.notes),
                 "script": str(getattr(result, "script", "") or ""),
-                "hits": [_hit_dict(hit) for hit in result.hits],
+                "hits": [
+                    {**_hit_dict(hit), "label": label}
+                    for hit, label in zip(result.hits, labels, strict=True)
+                ],
             }
             if result.route == route:
-                route_result["metrics"] = _score(
-                    result.hits, answers, include_test_files=include_test_files
-                )
+                route_result["metrics"] = metrics
             else:
                 route_result["error"] = f"requested {route} but search used {result.route}"
             route_results[route] = route_result
@@ -319,6 +328,7 @@ def _failed_query(
         "query": str(record.get("query") or "").strip(),
         "source_event_indices": list(_integers(record.get("source_event_indices"))),
         "answer": list(_mappings(record.get("answer"))),
+        "candidate_answers": list(_mappings(record.get("candidate_answers"))),
         "skipped": False,
         "routes": {route: {"error": error, "hits": []} for route in routes},
     }
@@ -327,9 +337,10 @@ def _failed_query(
 def _score(
     hits: Sequence[object],
     answers: Sequence[Mapping[str, object]],
+    candidate_answers: Sequence[Mapping[str, object]],
     *,
     include_test_files: bool,
-) -> dict[str, object]:
+) -> tuple[dict[str, object], list[str]]:
     """Compute file-level metrics and optional exact function-level metrics."""
     gold_locations = [
         answer
@@ -337,8 +348,35 @@ def _score(
         if include_test_files or not _is_test_file(str(answer.get("file") or ""))
     ]
     gold_files = _unique(_path(answer.get("file")) for answer in gold_locations)
-    hit_files = _unique(_path(getattr(hit, "file", "")) for hit in hits)
-    matched_files = [file for file in gold_files if file in set(hit_files)]
+    gold_file_set = set(gold_files)
+    candidate_files = (
+        set(
+            _unique(
+                _path(answer.get("file"))
+                for answer in candidate_answers
+                if include_test_files or not _is_test_file(str(answer.get("file") or ""))
+            )
+        )
+        - gold_file_set
+    )
+    hit_paths = [_path(getattr(hit, "file", "")) for hit in hits]
+    labels = [
+        (
+            "gold_hit"
+            if path in gold_file_set
+            else "candidate_hit"
+            if path in candidate_files
+            else "unlabeled_hit"
+        )
+        for path in hit_paths
+    ]
+    hit_files = _unique(hit_paths)
+    hit_file_set = set(hit_files)
+    matched_files = [file for file in gold_files if file in hit_file_set]
+    first_gold_rank = next(
+        (index for index, label in enumerate(labels, 1) if label == "gold_hit"),
+        None,
+    )
 
     gold_functions = _unique_pairs(
         (_path(answer.get("file")), _function_name(function))
@@ -348,15 +386,18 @@ def _score(
     hit_functions = _unique_pairs(
         (_path(getattr(hit, "file", "")), _function_name(getattr(hit, "name", ""))) for hit in hits
     )
-    matched_functions = [pair for pair in gold_functions if pair in set(hit_functions)]
+    hit_function_set = set(hit_functions)
+    matched_functions = [pair for pair in gold_functions if pair in hit_function_set]
 
-    return {
+    metrics = {
         "gold_files": gold_files,
         "gold_functions": [_pair_dict(pair) for pair in gold_functions],
         "matched_files": matched_files,
         "matched_functions": [_pair_dict(pair) for pair in matched_functions],
-        "file_precision": _ratio(len(matched_files), len(hit_files)),
+        "observed_file_precision": _ratio(len(matched_files), len(hit_files)),
         "file_recall": _ratio(len(matched_files), len(gold_files)),
+        "first_gold_rank": first_gold_rank,
+        "mrr": 1 / first_gold_rank if first_gold_rank is not None else 0.0,
         "function_precision": (
             _ratio(len(matched_functions), len(hit_functions)) if gold_functions else None
         ),
@@ -364,6 +405,7 @@ def _score(
             _ratio(len(matched_functions), len(gold_functions)) if gold_functions else None
         ),
     }
+    return metrics, labels
 
 
 def _hit_dict(hit: object) -> dict[str, object]:
@@ -394,8 +436,11 @@ def _summarize(cases: Sequence[Mapping[str, object]], routes: Sequence[str]) -> 
             "queries": len(results),
             "completed": len(valid),
             "errors": sum("error" in result for result in results),
-            "file_precision": _mean(metric.get("file_precision") for metric in metrics),
+            "observed_file_precision": _mean(
+                metric.get("observed_file_precision") for metric in metrics
+            ),
             "file_recall": _mean(metric.get("file_recall") for metric in metrics),
+            "mrr": _mean(metric.get("mrr") for metric in metrics),
             "function_precision": _mean(metric.get("function_precision") for metric in metrics),
             "function_recall": _mean(metric.get("function_recall") for metric in metrics),
         }

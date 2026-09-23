@@ -73,7 +73,7 @@ def test_score_reports_file_and_function_metrics_without_test_gold() -> None:
         SimpleNamespace(file="src/main/java/example/Client.java", name="close"),
     ]
 
-    score = module._score(hits, answers, include_test_files=False)
+    score, labels = module._score(hits, answers, candidate_answers=[], include_test_files=False)
 
     assert score == {
         "gold_files": [
@@ -86,11 +86,36 @@ def test_score_reports_file_and_function_metrics_without_test_gold() -> None:
             "src/main/java/example/Retry.java",
         ],
         "matched_functions": [{"file": "src/main/java/example/Client.java", "function": "send"}],
-        "file_precision": pytest.approx(2 / 3),
+        "observed_file_precision": pytest.approx(2 / 3),
         "file_recall": 1.0,
+        "first_gold_rank": 1,
+        "mrr": 1.0,
         "function_precision": 0.25,
         "function_recall": 1.0,
     }
+    assert labels == ["gold_hit", "gold_hit", "unlabeled_hit", "gold_hit"]
+
+
+def test_score_reports_observed_precision_rank_and_candidate_labels() -> None:
+    module = _load_script()
+    hits = [
+        SimpleNamespace(file="src/Candidate.java", name="Candidate"),
+        SimpleNamespace(file="src/Gold.java", name="Gold"),
+        SimpleNamespace(file="src/Other.java", name="Other"),
+    ]
+
+    metrics, labels = module._score(
+        hits,
+        answers=[{"file": "src/Gold.java", "functions": []}],
+        candidate_answers=[{"file": "src/Candidate.java", "functions": []}],
+        include_test_files=False,
+    )
+
+    assert metrics["observed_file_precision"] == pytest.approx(1 / 3)
+    assert metrics["file_recall"] == 1.0
+    assert metrics["first_gold_rank"] == 2
+    assert metrics["mrr"] == 0.5
+    assert labels == ["candidate_hit", "gold_hit", "unlabeled_hit"]
 
 
 def test_evaluate_query_runs_every_route_and_keeps_ranked_hits() -> None:
@@ -122,6 +147,7 @@ def test_evaluate_query_runs_every_route_and_keeps_ranked_hits() -> None:
         "query": "Find the client send method.",
         "source_event_indices": [4],
         "answer": [{"file": "src/main/java/example/Client.java", "functions": ["send"]}],
+        "candidate_answers": [{"file": "src/main/java/example/ClientConfig.java", "functions": []}],
     }
 
     result = module._evaluate_query(
@@ -147,10 +173,14 @@ def test_evaluate_query_runs_every_route_and_keeps_ranked_hits() -> None:
             "line": 12,
             "score": 0.9,
             "why": "send@name",
+            "label": "gold_hit",
         }
     ]
     assert result["routes"]["codegen"]["script"] == ("# generated for codegen\nanswer = frag")
     assert result["routes"]["codegen"]["metrics"]["file_recall"] == 1.0
+    assert result["candidate_answers"] == [
+        {"file": "src/main/java/example/ClientConfig.java", "functions": []}
+    ]
 
 
 def test_evaluate_query_does_not_score_a_fallback_as_the_requested_route() -> None:
