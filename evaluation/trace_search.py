@@ -355,6 +355,7 @@ def _mentioned_trace_locations(
     text: str, locations: Sequence[CodeLocation]
 ) -> tuple[CodeLocation, ...]:
     """Return final-answer files, allowing a basename only when it is unique."""
+    path_text = text.replace("`", "")
     basenames: dict[str, list[CodeLocation]] = defaultdict(list)
     for location in locations:
         basenames[PurePosixPath(location.file).name].append(location)
@@ -363,7 +364,7 @@ def _mentioned_trace_locations(
     for location in locations:
         basename = PurePosixPath(location.file).name
         basename_match = re.search(rf"(?<![\w$]){re.escape(basename)}(?![\w$])", text)
-        if _mentions_exact_file(text, location.file) or (
+        if _mentions_exact_file(path_text, location.file) or (
             len(basenames[basename]) == 1 and basename_match
         ):
             found.append(location)

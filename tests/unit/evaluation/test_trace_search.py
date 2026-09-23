@@ -492,6 +492,18 @@ def test_trace_answer_rejects_ambiguous_basename() -> None:
     assert extract_trace_answer(case) == ()
 
 
+def test_trace_answer_accepts_backticked_exact_path_with_ambiguous_basename() -> None:
+    case = _trace_case(
+        (_finish_event("Updated `module-a/src/Navigation.java`."),),
+        answer=(
+            CodeLocation("module-a/src/Navigation.java", ()),
+            CodeLocation("module-b/src/Navigation.java", ()),
+        ),
+    )
+
+    assert extract_trace_answer(case) == (CodeLocation("module-a/src/Navigation.java", ()),)
+
+
 def test_trace_answer_ignores_missing_or_malformed_finish_message() -> None:
     missing = _trace_case(())
     malformed = _trace_case(
