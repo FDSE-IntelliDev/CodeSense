@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import ast
 import json
 import re
 from collections.abc import Mapping, Sequence
@@ -11,6 +10,7 @@ from pathlib import PurePosixPath
 from typing import Any, Protocol
 
 from evaluation.models import CodeLocation, PreparedQuery, TraceCase, TraceEvent
+from evaluation.trace_search import is_search_event
 
 __all__ = [
     "MiningOutcome",
@@ -22,17 +22,6 @@ __all__ = [
     "search_context",
 ]
 
-_SEARCH_TOOLS = {
-    "code_search",
-    "find",
-    "grep",
-    "ripgrep",
-    "rg",
-    "search",
-    "search_code",
-    "symbol_search",
-}
-_COMMAND_KEYS = ("command", "cmd", "shell")
 _DIRECT_LOOKUP = re.compile(
     r"\b(?:files?\s+(?:that\s+)?(?:contain|reference)|implementations?\s+of|"
     r"calls?\s+to|(?:class|method)\s+named)\b",
@@ -55,18 +44,6 @@ class _GeneratedQuery:
 class MiningOutcome:
     query: PreparedQuery | None
     skip_reason: str | None = None
-
-
-def is_search_event(event: TraceEvent) -> bool:
-    """Return whether an assistant event invokes a code-search tool or command."""
-    if event.role.lower() in {"system", "user"}:
-        return False
-    if event.tool_output and not event.tool_input and not event.text:
-        return False
-    tool = (event.tool_name or "").strip().lower()
-    if tool in _SEARCH_TOOLS:
-        return True
-    return _contains_search_command(_action(event).lower())
 
 
 def search_context(events: Sequence[TraceEvent]) -> tuple[TraceEvent, ...]:
@@ -177,44 +154,6 @@ def mine_query(
             provenance=provenance,
         )
     )
-
-
-def _action(event: TraceEvent) -> str:
-    return (event.tool_input or event.text or "").strip()
-
-
-def _contains_search_command(action: str) -> bool:
-    """Recognize search commands in raw, quoted, JSON, or Python-literal tool input."""
-    pending = [action]
-    seen: set[str] = set()
-    while pending:
-        candidate = pending.pop().strip()
-        if not candidate or candidate in seen:
-            continue
-        seen.add(candidate)
-        if re.match(r"(?:rg|grep|find)\b", candidate):
-            return True
-        if len(candidate) >= 2 and candidate[0] == candidate[-1] == "'":
-            pending.append(candidate[1:-1])
-            continue
-        parsed = _parse_action(candidate)
-        if isinstance(parsed, str):
-            pending.append(parsed)
-        elif isinstance(parsed, Mapping):
-            for key in _COMMAND_KEYS:
-                value = parsed.get(key)
-                if isinstance(value, str):
-                    pending.append(value)
-    return False
-
-
-def _parse_action(value: str) -> object | None:
-    for parser in (json.loads, ast.literal_eval):
-        try:
-            return parser(value)
-        except (ValueError, SyntaxError, TypeError):
-            continue
-    return None
 
 
 def _render_context(event: TraceEvent) -> str:
