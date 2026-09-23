@@ -109,6 +109,8 @@ def find_search_episodes(events: Sequence[TraceEvent]) -> EpisodeDiscovery:
     episodes: list[SearchEpisode] = []
     skipped: list[str] = []
     for position, event in enumerate(events):
+        if event.role.lower() in {"system", "user", "tool"}:
+            continue
         calls = tuple(call for call in _event_calls(event) if _is_search_call(call))
         if not calls:
             continue

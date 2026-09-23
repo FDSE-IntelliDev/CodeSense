@@ -1,4 +1,4 @@
-"""Turn Java coding-agent traces into one semantic code-search query."""
+"""Generate semantic code-search queries from useful trace search episodes."""
 
 from __future__ import annotations
 
@@ -6,25 +6,35 @@ import json
 import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from pathlib import PurePosixPath
 from typing import Any, Protocol
 
-from evaluation.models import CodeLocation, PreparedQuery, TraceCase, TraceEvent
-from evaluation.trace_search import is_search_event
+from evaluation.models import PreparedQuery, TraceCase, TraceEvent
+from evaluation.trace_search import (
+    SupervisedEpisode,
+    is_search_event,
+    supervise_search_episodes,
+)
 
 __all__ = [
+    "GeneratedQuery",
+    "MiningBatch",
     "MiningOutcome",
     "OpenAIQueryGenerator",
     "QueryGenerator",
     "build_prompt",
+    "contains_shell_or_java_path",
+    "is_pure_direct_lookup",
     "is_search_event",
+    "mine_queries",
     "mine_query",
     "search_context",
 ]
 
-_DIRECT_LOOKUP = re.compile(
-    r"\b(?:files?\s+(?:that\s+)?(?:contain|reference)|implementations?\s+of|"
-    r"calls?\s+to|(?:class|method)\s+named)\b",
+_SHELL_OR_PATH = re.compile(r"(?:^|\s)(?:rg|grep|git\s+grep)\b|[\w./-]+\.java\b", re.IGNORECASE)
+_PURE_DIRECT_LOOKUP = re.compile(
+    r"\s*(?:find|list|locate|search for)\s+(?:all\s+)?(?:java\s+)?"
+    r"(?:files?\s+(?:that\s+)?(?:contain|reference)|implementations?\s+of|"
+    r"calls?\s+to|(?:class|method)\s+named)\b[^,.]*[.]?\s*",
     re.IGNORECASE,
 )
 
@@ -35,13 +45,25 @@ class QueryGenerator(Protocol):
 
 
 @dataclass(frozen=True, slots=True)
-class _GeneratedQuery:
+class GeneratedQuery:
     query: str
     reason: str
+    anchor_terms: tuple[str, ...]
+    semantic_constraints: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class MiningBatch:
+    queries: tuple[PreparedQuery, ...]
+    skip_reasons: tuple[str, ...]
+    search_episode_count: int
+    eligible_episode_count: int
 
 
 @dataclass(frozen=True, slots=True)
 class MiningOutcome:
+    """Compatibility view for callers that still consume one result."""
+
     query: PreparedQuery | None
     skip_reason: str | None = None
 
@@ -62,101 +84,139 @@ def search_context(events: Sequence[TraceEvent]) -> tuple[TraceEvent, ...]:
     )
 
 
-def build_prompt(case: TraceCase, *, prompt_version: str) -> str:
-    """Build the one-call prompt without exposing the reference patch."""
+def build_prompt(
+    case: TraceCase,
+    episode: SupervisedEpisode | None = None,
+    *,
+    prompt_version: str,
+) -> str:
+    """Expose issue, pre-search reasoning, and action but no answer-side event."""
     if not case.events:
         raise ValueError("cannot build a prompt for an empty trace")
-    context = search_context(case.events)
-    rendered_context = [rendered for event in context if (rendered := _render_context(event))]
-    search_hints = [event.index for event in case.events if is_search_event(event)]
+    context = episode.episode.context_events if episode is not None else search_context(case.events)
+    rendered = [text for event in context if (text := _render_prompt_event(event))]
     return f"""You create one semantic code-search query for a Java repository.
 
 Prompt version: {prompt_version}
 Issue statement:
 {case.issue_statement}
 
-Search-related assistant/tool trace windows:
-{chr(10).join(rendered_context) or "(none)"}
+Reasoning immediately before this search and the current search action:
+{chr(10).join(rendered) or "(none)"}
 
-Search event hints: {search_hints or "(none)"}
+A good query describes behavior, responsibility, state transitions, side effects,
+performance impact, or a failure mechanism. Exact technical, class, or method anchors
+from the action are allowed, but the query must also say what behavior or effect matters.
 
-A good semantic query describes behavior, responsibility, state transitions, side effects,
-performance impact, or a failure mechanism. Relevant code should not be obtainable merely by
-copying a path, class, method, reference, implementation, or call relation from the trace.
-
-Good example:
-Find the logic that can leave navigation state inconsistent when switching between
+Good: Find where isPoolLifo changes reusable connection selection.
+Good: Find the logic that can leave navigation state inconsistent when switching between
 cursor-based and page-based access.
-Why: it describes a state transition and failure mode without revealing code identifiers.
+Good: Find functions whose behavior can affect disk performance.
 
-Good example:
-Find functions whose behavior can affect disk performance.
-Why: relevant code may say I/O, buffering, flushing, persistence, synchronization, or storage
-without containing the words disk performance.
-
-Bad examples:
-Find Java files that reference PageRequest.
-List Java files containing getDoubleEvaluation.
-Find implementations of LoadBalance.
-Locate calls to isPoolLifo.
-Search for RetryUtils.java.
+Bad: Find Java files that reference PageRequest.
+Bad: Find implementations of LoadBalance.
+Bad: Locate calls to isPoolLifo.
+Bad: Search for RetryUtils.java.
 
 Return one JSON object only:
-{{"status":"valid","query":"...","reason":"..."}}
-If no semantic query can be supported by the issue and trace, return:
-{{"status":"invalid trace"}}
-Do not return files, functions, answers, shell commands, code fences, or multiple queries.
+{{"status":"valid","query":"...","reason":"...","anchor_terms":["..."],
+"semantic_constraints":["..."]}}
+`anchor_terms` may be empty. `semantic_constraints` must contain at least one behavioral,
+state, failure, performance, responsibility, or side-effect constraint.
+If this search cannot support such a query, return {{"status":"invalid trace"}}.
+Do not return a result path, shell command, code fence, answer, or future-trace information.
 """.strip()
+
+
+def mine_queries(
+    case: TraceCase,
+    generator: QueryGenerator,
+    *,
+    prompt_version: str = "trace-search-v2",
+) -> MiningBatch:
+    """Generate one query per supervised episode and isolate episode failures."""
+    supervision = supervise_search_episodes(case)
+    queries: list[PreparedQuery] = []
+    skipped = list(supervision.skip_reasons)
+    for supervised in supervision.episodes:
+        episode = supervised.episode
+        prompt = build_prompt(case, supervised, prompt_version=prompt_version)
+        generated, error = _parse_result(generator.generate(prompt))
+        if generated is None:
+            skipped.append(error or "invalid_model_json")
+            continue
+        if error := _query_error(generated):
+            skipped.append(error)
+            continue
+        provenance: dict[str, object] = {
+            "prompt_version": prompt_version,
+            "prompt": prompt,
+            "raw_action": episode.raw_action,
+            "query_reason": generated.reason,
+            "candidate_count": len(supervised.candidate_answers),
+        }
+        if model := getattr(generator, "model", None):
+            provenance["model"] = model
+        queries.append(
+            PreparedQuery(
+                query_id=f"{case.trajectory_id}:{episode.anchor_event}",
+                repo=case.repo,
+                instance_id=case.instance_id,
+                trajectory_id=case.trajectory_id,
+                issue_statement=case.issue_statement,
+                query=generated.query,
+                answer=supervised.answer,
+                candidate_answers=supervised.candidate_answers,
+                usage_evidence=supervised.usage_evidence,
+                anchor_terms=generated.anchor_terms,
+                semantic_constraints=generated.semantic_constraints,
+                source_event_indices=tuple(event.index for event in episode.context_events),
+                result_event_indices=tuple(event.index for event in episode.result_events),
+                strategy="trace-search-generated",
+                source_events=case.events,
+                provenance=provenance,
+            )
+        )
+    return MiningBatch(
+        tuple(queries),
+        tuple(skipped),
+        supervision.search_episode_count,
+        len(supervision.episodes),
+    )
 
 
 def mine_query(
     case: TraceCase,
     generator: QueryGenerator,
     *,
-    prompt_version: str = "semantic-query-v1",
+    prompt_version: str = "trace-search-v2",
 ) -> MiningOutcome:
-    """Generate and validate one semantic query, then attach deterministic patch gold."""
-    if case.gold_error:
-        return MiningOutcome(None, case.gold_error)
-    if not case.answer:
-        return MiningOutcome(None, "no_production_java_gold")
-    context = search_context(case.events)
-    if not context:
-        return MiningOutcome(None, "no_search_events")
-
-    prompt = build_prompt(case, prompt_version=prompt_version)
-    generated, error = _parse_result(generator.generate(prompt))
-    if generated is None:
-        return MiningOutcome(None, error)
-    if error := _query_error(generated.query, case.answer):
-        return MiningOutcome(None, error)
-
-    provenance: dict[str, object] = {
-        "prompt_version": prompt_version,
-        "prompt": prompt,
-        "query_reason": generated.reason,
-        "search_event_indices": [event.index for event in case.events if is_search_event(event)],
-    }
-    if model := getattr(generator, "model", None):
-        provenance["model"] = model
-    return MiningOutcome(
-        PreparedQuery(
-            query_id=case.trajectory_id,
-            repo=case.repo,
-            instance_id=case.instance_id,
-            trajectory_id=case.trajectory_id,
-            issue_statement=case.issue_statement,
-            query=generated.query,
-            answer=case.answer,
-            source_event_indices=tuple(event.index for event in context),
-            strategy="semantic-generated",
-            source_events=case.events,
-            provenance=provenance,
-        )
-    )
+    """Return the first batch result for transitional single-row callers."""
+    batch = mine_queries(case, generator, prompt_version=prompt_version)
+    if batch.queries:
+        return MiningOutcome(batch.queries[0])
+    return MiningOutcome(None, batch.skip_reasons[0] if batch.skip_reasons else None)
 
 
-def _render_context(event: TraceEvent) -> str:
+def contains_shell_or_java_path(query: str) -> bool:
+    return bool(_SHELL_OR_PATH.search(query))
+
+
+def is_pure_direct_lookup(query: str) -> bool:
+    return bool(_PURE_DIRECT_LOOKUP.fullmatch(query))
+
+
+def _query_error(generated: GeneratedQuery) -> str | None:
+    if not generated.semantic_constraints:
+        return "missing_semantic_constraint"
+    if contains_shell_or_java_path(generated.query):
+        return "query_leaks_result"
+    if is_pure_direct_lookup(generated.query):
+        return "direct_lookup_query"
+    return None
+
+
+def _render_prompt_event(event: TraceEvent) -> str:
     label = f"[event {event.index} role={event.role}"
     if event.tool_name:
         label += f" tool={event.tool_name}"
@@ -165,17 +225,15 @@ def _render_context(event: TraceEvent) -> str:
         parts.append(f"text: {_clip(event.text)}")
     if event.tool_input:
         parts.append(f"input: {_clip(event.tool_input)}")
-    if event.tool_output:
-        parts.append(f"output: {_clip(event.tool_output)}")
     return " ".join(parts) if len(parts) > 1 else ""
 
 
 def _clip(text: str, limit: int = 4000) -> str:
-    text = text.strip()
-    return text if len(text) <= limit else text[:limit] + "... [truncated]"
+    value = text.strip()
+    return value if len(value) <= limit else value[:limit] + "... [truncated]"
 
 
-def _parse_result(raw: str | None) -> tuple[_GeneratedQuery | None, str | None]:
+def _parse_result(raw: str | None) -> tuple[GeneratedQuery | None, str | None]:
     if not isinstance(raw, str):
         return None, "generator_failed"
     payload = _json_payload(raw)
@@ -186,13 +244,27 @@ def _parse_result(raw: str | None) -> tuple[_GeneratedQuery | None, str | None]:
         return None, "non_semantic_query"
     query = payload.get("query")
     reason = payload.get("reason")
-    if status != "valid" or not isinstance(query, str):
+    anchors = _string_tuple(payload.get("anchor_terms"))
+    constraints = _string_tuple(payload.get("semantic_constraints"))
+    if (
+        status != "valid"
+        or not isinstance(query, str)
+        or not isinstance(reason, str)
+        or anchors is None
+        or constraints is None
+    ):
         return None, "invalid_model_json"
     query = query.strip()
-    reason = reason.strip() if reason else "No reson outputs"
+    reason = reason.strip()
     if not query or not reason:
         return None, "invalid_model_json"
-    return _GeneratedQuery(query, reason), None
+    return GeneratedQuery(query, reason, anchors, constraints), None
+
+
+def _string_tuple(value: object) -> tuple[str, ...] | None:
+    if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
+        return None
+    return tuple(item.strip() for item in value if item.strip())
 
 
 def _json_payload(raw: str) -> object | None:
@@ -205,29 +277,6 @@ def _json_payload(raw: str) -> object | None:
         return json.loads(text)
     except json.JSONDecodeError:
         return None
-
-
-def _query_error(query: str, answer: Sequence[CodeLocation]) -> str | None:
-    if "\n" in query or "`" in query or re.search(r"(?:^|\s)/[^\s]+", query):
-        return "non_semantic_query"
-    if re.match(r"\s*(?:rg|grep|git\s+grep)\b", query):
-        return "non_semantic_query"
-    if re.match(r"\s*find\s+(?:/|\.|-)", query):
-        return "non_semantic_query"
-    if re.search(r"\b[\w./-]+\.java\b", query, re.IGNORECASE) or _DIRECT_LOOKUP.search(query):
-        return "non_semantic_query"
-
-    identifiers = {
-        identifier
-        for location in answer
-        for identifier in (PurePosixPath(location.file).stem, *location.functions)
-        if identifier
-    }
-    for identifier in identifiers:
-        # Lowercase prose such as "navigation" is not an exact Java identifier ``Navigation``.
-        if re.search(rf"(?<![\w$]){re.escape(identifier)}(?![\w$])", query):
-            return "query_leaks_gold_identifier"
-    return None
 
 
 class OpenAIQueryGenerator:
@@ -253,7 +302,7 @@ class OpenAIQueryGenerator:
             )
             response.raise_for_status()
             return str(response.json()["choices"][0]["message"]["content"])
-        except Exception as exc:  # noqa: BLE001 -- one bad trace must not stop the batch
+        except Exception as exc:  # noqa: BLE001 -- one bad episode must not stop the batch
             print(exc)
             return None
 

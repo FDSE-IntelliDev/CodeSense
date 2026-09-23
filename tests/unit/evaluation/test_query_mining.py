@@ -2,57 +2,28 @@ import json
 
 import pytest
 
-from evaluation.models import CodeLocation, TraceCase, TraceEvent
+from evaluation.models import TraceCase, TraceEvent
 from evaluation.query_mining import (
-    MiningOutcome,
+    MiningBatch,
     build_prompt,
+    contains_shell_or_java_path,
+    is_pure_direct_lookup,
     is_search_event,
-    mine_query,
-    search_context,
+    mine_queries,
 )
-
-
-def _case() -> TraceCase:
-    events = (
-        TraceEvent(0, "user", "Fix navigation mode state."),
-        TraceEvent(1, "assistant", "I will inspect navigation transitions."),
-        TraceEvent(2, "assistant", "", "rg", "rg cursor src/main/java", None),
-        TraceEvent(3, "tool", "", "rg", None, "src/main/java/example/Navigation.java"),
-        TraceEvent(4, "assistant", "I will compare page-based state."),
-        TraceEvent(5, "assistant", "", "rg", "rg page src/main/java", None),
-        TraceEvent(6, "tool", "", "rg", None, "src/main/java/example/PageState.java"),
-        TraceEvent(7, "assistant", "Updated navigation state handling."),
-    )
-    return TraceCase(
-        repo="acme/project",
-        language="java",
-        instance_id="issue-1",
-        trajectory_id="trace-1",
-        issue_statement=(
-            "Switching between cursor-based and page-based navigation can retain stale state."
-        ),
-        base_commit="abc123",
-        events=events,
-        raw={
-            "metadata": {
-                "reference_patch": {"patch": "SECRET_PATCH src/main/java/example/Navigation.java"}
-            }
-        },
-        answer=(CodeLocation("src/main/java/example/Navigation.java", ("afterCursor",)),),
-        gold_error=None,
-    )
+from evaluation.trace_search import supervise_search_episodes
 
 
 class _Generator:
     model = "test-model"
 
-    def __init__(self, answer: str | None) -> None:
-        self.answer = answer
+    def __init__(self, *answers: str | None) -> None:
+        self.answers = list(answers)
         self.prompts: list[str] = []
 
     def generate(self, prompt: str) -> str | None:
         self.prompts.append(prompt)
-        return self.answer
+        return self.answers.pop(0) if self.answers else None
 
 
 def _valid_response(query: str) -> str:
@@ -60,8 +31,61 @@ def _valid_response(query: str) -> str:
         {
             "status": "valid",
             "query": query,
-            "reason": "It describes a behavioral failure without exposing code identifiers.",
+            "reason": "The anchor is combined with its behavioral effect.",
+            "anchor_terms": ["isPoolLifo"],
+            "semantic_constraints": ["changes reusable connection selection"],
         }
+    )
+
+
+def _case(*, two_searches: bool = False) -> TraceCase:
+    events = [
+        TraceEvent(0, "user", "Pool reuse order can change request behavior."),
+        TraceEvent(1, "assistant", "I will inspect pool ordering."),
+        TraceEvent(2, "assistant", "", "rg", "rg isPoolLifo src/main/java", None),
+        TraceEvent(
+            3,
+            "tool",
+            "",
+            "rg",
+            None,
+            "src/main/java/Pool.java\nsrc/main/java/PoolConfig.java",
+        ),
+        TraceEvent(
+            4,
+            "assistant",
+            "I will read Pool.java now.",
+            "str_replace_editor",
+            '{"command":"view","path":"src/main/java/Pool.java"}',
+            None,
+        ),
+        TraceEvent(5, "tool", "", "str_replace_editor", None, "class Pool {}"),
+    ]
+    if two_searches:
+        events.extend(
+            [
+                TraceEvent(6, "assistant", "I will inspect buffer pressure."),
+                TraceEvent(7, "assistant", "", "rg", "rg watermark src/main/java", None),
+                TraceEvent(8, "tool", "", "rg", None, "src/main/java/Buffer.java"),
+                TraceEvent(
+                    9,
+                    "assistant",
+                    "",
+                    "str_replace_editor",
+                    '{"command":"view","path":"src/main/java/Buffer.java"}',
+                    None,
+                ),
+            ]
+        )
+    return TraceCase(
+        "acme/project",
+        "java",
+        "issue-1",
+        "trace-1",
+        "Pool reuse order can change request behavior.",
+        None,
+        tuple(events),
+        {"metadata": {"reference_patch": {"patch": "SECRET_PATCH"}}},
     )
 
 
@@ -88,75 +112,106 @@ def test_json_bash_command_with_find_is_a_search_event() -> None:
     assert is_search_event(quoted)
 
 
-def test_search_context_keeps_neighbors_and_excludes_user_events() -> None:
-    context = search_context(_case().events)
-
-    assert [event.index for event in context] == [1, 2, 3, 4, 5, 6]
-    assert all(event.role in {"assistant", "tool"} for event in context)
-
-
-def test_prompt_contains_full_issue_and_semantic_examples_but_not_patch() -> None:
+def test_prompt_contains_issue_reasoning_action_but_hides_result_and_future() -> None:
     case = _case()
+    episode = supervise_search_episodes(case).episodes[0]
 
-    prompt = build_prompt(case, prompt_version="semantic-query-v1")
+    prompt = build_prompt(case, episode, prompt_version="trace-search-v2")
 
     assert case.issue_statement in prompt
-    assert "Find functions whose behavior can affect disk performance." in prompt
-    assert "Find Java files that reference PageRequest." in prompt
-    assert "Find the logic that can leave navigation state inconsistent" in prompt
-    assert "rg cursor src/main/java" in prompt
+    assert "isPoolLifo" in prompt
+    assert "I will inspect pool ordering" in prompt
+    assert "src/main/java/Pool.java" not in prompt
+    assert "I will read Pool.java now." not in prompt
     assert "SECRET_PATCH" not in prompt
-    assert "reference_patch" not in prompt
 
 
-def test_mine_query_returns_one_semantic_query_with_patch_gold() -> None:
-    generator = _Generator(
-        _valid_response(
-            "Find the logic that can leave navigation state inconsistent when switching "
-            "between cursor-based and page-based access."
-        )
+def test_mine_queries_returns_one_row_per_supervised_episode() -> None:
+    response = _valid_response("Find code whose policy changes runtime behavior.")
+    generator = _Generator(response, response)
+
+    batch = mine_queries(_case(two_searches=True), generator)
+
+    assert [query.query_id for query in batch.queries] == ["trace-1:2", "trace-1:7"]
+    assert batch.search_episode_count == 2
+    assert batch.eligible_episode_count == 2
+    assert len(generator.prompts) == 2
+
+
+def test_mined_query_contains_episode_supervision_and_provenance() -> None:
+    batch = mine_queries(
+        _case(),
+        _Generator(_valid_response("Find where isPoolLifo changes reusable connection selection.")),
     )
 
-    outcome = mine_query(_case(), generator)
+    query = batch.queries[0]
+    assert [location.file for location in query.answer] == ["src/main/java/Pool.java"]
+    assert [location.file for location in query.candidate_answers] == [
+        "src/main/java/PoolConfig.java"
+    ]
+    assert query.anchor_terms == ("isPoolLifo",)
+    assert query.semantic_constraints == ("changes reusable connection selection",)
+    assert query.source_event_indices == (1, 2)
+    assert query.result_event_indices == (3,)
+    assert query.strategy == "trace-search-generated"
+    assert query.provenance["model"] == "test-model"
+    assert query.provenance["candidate_count"] == 1
 
-    assert outcome.skip_reason is None
-    assert outcome.query is not None
-    assert outcome.query.answer == _case().answer
-    assert outcome.query.source_event_indices == (1, 2, 3, 4, 5, 6)
-    assert outcome.query.strategy == "semantic-generated"
-    assert outcome.query.provenance["model"] == "test-model"
-    assert len(generator.prompts) == 1
+
+def test_exact_anchor_with_behavior_passes_but_missing_constraint_fails() -> None:
+    accepted = mine_queries(
+        _case(),
+        _Generator(_valid_response("Find where isPoolLifo changes reusable connection selection.")),
+    )
+    rejected = mine_queries(
+        _case(),
+        _Generator(
+            json.dumps(
+                {
+                    "status": "valid",
+                    "query": "Locate calls to isPoolLifo.",
+                    "reason": "Direct lookup.",
+                    "anchor_terms": ["isPoolLifo"],
+                    "semantic_constraints": [],
+                }
+            )
+        ),
+    )
+
+    assert len(accepted.queries) == 1
+    assert rejected.queries == ()
+    assert rejected.skip_reasons == ("missing_semantic_constraint",)
+
+
+def test_direct_lookup_with_claimed_constraint_is_still_rejected() -> None:
+    response = json.dumps(
+        {
+            "status": "valid",
+            "query": "Locate calls to isPoolLifo.",
+            "reason": "Direct lookup.",
+            "anchor_terms": ["isPoolLifo"],
+            "semantic_constraints": ["changes connection selection"],
+        }
+    )
+
+    batch = mine_queries(_case(), _Generator(response))
+
+    assert batch.queries == ()
+    assert batch.skip_reasons == ("direct_lookup_query",)
 
 
 @pytest.mark.parametrize(
-    "query",
+    ("query", "shell_or_path", "direct"),
     [
-        "Find Java files that reference PageRequest.",
-        "Find implementations of LoadBalance.",
-        "Locate calls to isPoolLifo.",
-        "Search for Navigation.java.",
-        "rg Navigation src/main/java",
+        ("rg isPoolLifo src/main/java", True, False),
+        ("Search for Pool.java", True, False),
+        ("Find Java files that reference PageRequest.", False, True),
+        ("Find where isPoolLifo changes reusable connection selection.", False, False),
     ],
 )
-def test_mine_query_rejects_direct_lookup_or_gold_leakage(query: str) -> None:
-    outcome = mine_query(_case(), _Generator(_valid_response(query)))
-
-    assert outcome.query is None
-    assert outcome.skip_reason in {"non_semantic_query", "query_leaks_gold_identifier"}
-
-
-def test_mine_query_rejects_exact_gold_identifier_but_allows_plain_english_term() -> None:
-    leaked = mine_query(
-        _case(),
-        _Generator(_valid_response("Find Navigation behavior that can retain stale state.")),
-    )
-    semantic = mine_query(
-        _case(),
-        _Generator(_valid_response("Find navigation behavior that can retain stale state.")),
-    )
-
-    assert leaked.skip_reason == "query_leaks_gold_identifier"
-    assert semantic.query is not None
+def test_semantic_gate_classifiers(query: str, shell_or_path: bool, direct: bool) -> None:
+    assert contains_shell_or_java_path(query) is shell_or_path
+    assert is_pure_direct_lookup(query) is direct
 
 
 @pytest.mark.parametrize(
@@ -167,45 +222,34 @@ def test_mine_query_rejects_exact_gold_identifier_but_allows_plain_english_term(
         ('{"status":"invalid trace"}', "non_semantic_query"),
     ],
 )
-def test_mine_query_reports_generation_failures_without_retry(
+def test_mine_queries_isolates_generation_failures_without_retry(
     response: str | None, reason: str
 ) -> None:
     generator = _Generator(response)
 
-    outcome = mine_query(_case(), generator)
+    batch = mine_queries(_case(), generator)
 
-    assert outcome == MiningOutcome(None, reason)
+    assert batch == MiningBatch((), (reason,), 1, 1)
     assert len(generator.prompts) == 1
 
 
-def test_mine_query_skips_invalid_gold_or_missing_search_without_calling_model() -> None:
+def test_mine_queries_skips_trace_without_search_supervision_before_model_call() -> None:
     case = _case()
-    missing_gold = TraceCase(
-        repo=case.repo,
-        language=case.language,
-        instance_id=case.instance_id,
-        trajectory_id=case.trajectory_id,
-        issue_statement=case.issue_statement,
-        base_commit=case.base_commit,
-        events=case.events,
-        raw=case.raw,
-        answer=(),
-        gold_error="missing_reference_patch",
-    )
     no_search = TraceCase(
-        repo=case.repo,
-        language=case.language,
-        instance_id=case.instance_id,
-        trajectory_id=case.trajectory_id,
-        issue_statement=case.issue_statement,
-        base_commit=case.base_commit,
-        events=case.events[:2],
-        raw=case.raw,
-        answer=case.answer,
-        gold_error=None,
+        case.repo,
+        case.language,
+        case.instance_id,
+        case.trajectory_id,
+        case.issue_statement,
+        case.base_commit,
+        case.events[:2],
+        case.raw,
     )
     generator = _Generator("unused")
 
-    assert mine_query(missing_gold, generator).skip_reason == "missing_reference_patch"
-    assert mine_query(no_search, generator).skip_reason == "no_search_events"
+    batch = mine_queries(no_search, generator)
+
+    assert batch.queries == ()
+    assert batch.search_episode_count == 0
+    assert batch.eligible_episode_count == 0
     assert generator.prompts == []

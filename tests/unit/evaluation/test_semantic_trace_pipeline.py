@@ -1,6 +1,6 @@
 import json
 
-from evaluation.query_mining import mine_query
+from evaluation.query_mining import mine_queries
 from evaluation.trace_adapters.open_swe_traces import normalize_record
 
 
@@ -19,12 +19,14 @@ class _Generator:
                     "Find the logic that can leave navigation state inconsistent when "
                     "switching between cursor-based and page-based access."
                 ),
-                "reason": "It describes a state transition failure without code identifiers.",
+                "reason": "It describes a state transition failure.",
+                "anchor_terms": ["cursor", "page"],
+                "semantic_constraints": ["leaves navigation state inconsistent"],
             }
         )
 
 
-def test_resolved_trace_becomes_one_semantic_query_with_hidden_patch_gold() -> None:
+def test_resolved_trace_becomes_episode_query_with_hidden_result_and_patch() -> None:
     record = {
         "repo": "owner/repo",
         "language": "java",
@@ -45,6 +47,16 @@ def test_resolved_trace_becomes_one_semantic_query_with_hidden_patch_gold() -> N
                 ],
             },
             {"role": "tool", "name": "rg", "content": "src/main/java/Navigation.java"},
+            {
+                "role": "assistant",
+                "content": [
+                    {
+                        "type": "tool_call",
+                        "name": "view",
+                        "arguments": {"path": "src/main/java/Navigation.java"},
+                    }
+                ],
+            },
         ],
         "metadata": {
             "reference_patch": {
@@ -62,16 +74,16 @@ diff --git a/src/main/java/Navigation.java b/src/main/java/Navigation.java
     case = normalize_record(record)
     generator = _Generator()
 
-    outcome = mine_query(case, generator)
+    batch = mine_queries(case, generator)
 
-    assert outcome.skip_reason is None
-    assert outcome.query is not None
-    payload = outcome.query.to_dict()
-    assert payload["query_id"] == "trace-1"
-    assert payload["answer"] == [
-        {"file": "src/main/java/Navigation.java", "functions": ["afterCursor"]}
-    ]
-    assert payload["source_event_indices"] == [1, 2, 3]
+    assert batch.skip_reasons == ()
+    assert len(batch.queries) == 1
+    payload = batch.queries[0].to_dict()
+    assert payload["query_id"] == "trace-1:2"
+    assert payload["answer"] == [{"file": "src/main/java/Navigation.java", "functions": []}]
+    assert payload["source_event_indices"] == [1, 2]
+    assert payload["result_event_indices"] == [3]
     assert len(generator.prompts) == 1
+    assert "src/main/java/Navigation.java" not in generator.prompts[0]
     assert "withoutPage" not in generator.prompts[0]
     assert "diff --git" not in generator.prompts[0]
