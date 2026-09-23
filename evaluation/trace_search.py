@@ -6,6 +6,7 @@ import ast
 import json
 import re
 import shlex
+from collections import defaultdict
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, replace
 from pathlib import PurePosixPath
@@ -18,6 +19,7 @@ __all__ = [
     "SearchEpisode",
     "SupervisedEpisode",
     "SupervisionBatch",
+    "extract_trace_answer",
     "find_search_episodes",
     "is_search_event",
     "normalize_action",
@@ -308,6 +310,80 @@ def _final_answer(events: Sequence[TraceEvent]) -> tuple[TraceEvent, str] | None
             if isinstance(message, str) and message.strip():
                 return event, message.strip()
     return None
+
+
+def extract_trace_answer(case: TraceCase) -> tuple[CodeLocation, ...]:
+    """Extract final locations while allowing only existing reference-gold files."""
+    final = _final_answer(case.events)
+    if final is None or not case.answer:
+        return ()
+    final_event, text = final
+    matched = _mentioned_trace_locations(text, case.answer)
+    if not matched:
+        return ()
+
+    candidates = {
+        location.file: tuple(
+            dict.fromkeys(
+                (
+                    *location.functions,
+                    *_edited_functions(case.events, location.file, -1, final_event.index),
+                )
+            )
+        )
+        for location in matched
+    }
+    owners: dict[str, set[str]] = defaultdict(set)
+    for file, functions in candidates.items():
+        for function in functions:
+            owners[function].add(file)
+
+    return tuple(
+        CodeLocation(
+            location.file,
+            tuple(
+                function
+                for function in candidates[location.file]
+                if _mentions_trace_function(text, location.file, function, owners[function])
+            ),
+        )
+        for location in matched
+    )
+
+
+def _mentioned_trace_locations(
+    text: str, locations: Sequence[CodeLocation]
+) -> tuple[CodeLocation, ...]:
+    """Return final-answer files, allowing a basename only when it is unique."""
+    basenames: dict[str, list[CodeLocation]] = defaultdict(list)
+    for location in locations:
+        basenames[PurePosixPath(location.file).name].append(location)
+
+    found: list[CodeLocation] = []
+    for location in locations:
+        basename = PurePosixPath(location.file).name
+        basename_match = re.search(rf"(?<![\w$]){re.escape(basename)}(?![\w$])", text)
+        if _mentions_exact_file(text, location.file) or (
+            len(basenames[basename]) == 1 and basename_match
+        ):
+            found.append(location)
+    return tuple(found)
+
+
+def _mentions_trace_function(text: str, file: str, function: str, owners: set[str]) -> bool:
+    """Accept an explicit function mention, disambiguating shared names by class."""
+    if not re.search(rf"(?<![\w$]){re.escape(function)}(?![\w$])", text):
+        return False
+    if len(owners) == 1:
+        return True
+    class_name = PurePosixPath(file).stem
+    return bool(
+        re.search(
+            rf"(?<![\w$]){re.escape(class_name)}\s*\.\s*"
+            rf"{re.escape(function)}(?![\w$])",
+            text,
+        )
+    )
 
 
 def _edited_functions(

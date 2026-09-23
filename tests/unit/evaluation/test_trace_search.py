@@ -2,6 +2,7 @@ from evaluation.models import CodeLocation, ToolCall, TraceCase, TraceEvent
 from evaluation.trace_search import (
     CandidateLocation,
     SearchEpisode,
+    extract_trace_answer,
     find_search_episodes,
     parse_episode_candidates,
     supervise_search_episodes,
@@ -146,7 +147,9 @@ def test_parse_candidates_excludes_tests_and_does_not_infer_call_names() -> None
     )
 
 
-def _trace_case(events: tuple[TraceEvent, ...]) -> TraceCase:
+def _trace_case(
+    events: tuple[TraceEvent, ...], *, answer: tuple[CodeLocation, ...] = ()
+) -> TraceCase:
     return TraceCase(
         repo="acme/project",
         language="java",
@@ -156,6 +159,16 @@ def _trace_case(events: tuple[TraceEvent, ...]) -> TraceCase:
         base_commit=None,
         events=events,
         raw={},
+        answer=answer,
+    )
+
+
+def _finish_event(message: str, index: int = 10) -> TraceEvent:
+    return TraceEvent(
+        index,
+        "assistant",
+        "",
+        tool_calls=(ToolCall("finish-1", "finish", f'{{"message":{message!r}}}'),),
     )
 
 
@@ -423,6 +436,98 @@ def test_final_answer_does_not_promote_candidate_without_edit_evidence() -> None
     assert episode.answer == (CodeLocation("src/main/java/Pool.java", ()),)
     assert episode.candidate_answers == (CodeLocation("src/main/java/PoolConfig.java", ()),)
     assert all(item.kind != "final_answer" for item in episode.usage_evidence)
+
+
+def test_trace_answer_extracts_existing_file_and_explicit_function() -> None:
+    case = _trace_case(
+        (_finish_event("Updated Navigation.afterCursor() in src/main/java/Navigation.java."),),
+        answer=(CodeLocation("src/main/java/Navigation.java", ("afterCursor",)),),
+    )
+
+    assert extract_trace_answer(case) == (
+        CodeLocation("src/main/java/Navigation.java", ("afterCursor",)),
+    )
+
+
+def test_trace_answer_recovers_explicit_function_from_edit() -> None:
+    case = _trace_case(
+        (
+            TraceEvent(
+                1,
+                "assistant",
+                "",
+                "str_replace_editor",
+                '{"command":"str_replace","path":"src/main/java/Navigation.java",'
+                '"new_str":"public void afterCursor() {}"}',
+                None,
+            ),
+            _finish_event("Updated Navigation.afterCursor() in src/main/java/Navigation.java."),
+        ),
+        answer=(CodeLocation("src/main/java/Navigation.java", ()),),
+    )
+
+    assert extract_trace_answer(case) == (
+        CodeLocation("src/main/java/Navigation.java", ("afterCursor",)),
+    )
+
+
+def test_trace_answer_accepts_only_a_unique_basename() -> None:
+    case = _trace_case(
+        (_finish_event("The behavior is implemented by Navigation.java."),),
+        answer=(CodeLocation("src/main/java/Navigation.java", ()),),
+    )
+
+    assert extract_trace_answer(case) == (CodeLocation("src/main/java/Navigation.java", ()),)
+
+
+def test_trace_answer_rejects_ambiguous_basename() -> None:
+    case = _trace_case(
+        (_finish_event("The behavior is implemented by Navigation.java."),),
+        answer=(
+            CodeLocation("module-a/src/Navigation.java", ()),
+            CodeLocation("module-b/src/Navigation.java", ()),
+        ),
+    )
+
+    assert extract_trace_answer(case) == ()
+
+
+def test_trace_answer_ignores_missing_or_malformed_finish_message() -> None:
+    missing = _trace_case(())
+    malformed = _trace_case(
+        (
+            TraceEvent(
+                1,
+                "assistant",
+                "",
+                tool_calls=(ToolCall("finish-1", "finish", '{"message": 42}'),),
+            ),
+        )
+    )
+
+    assert extract_trace_answer(missing) == ()
+    assert extract_trace_answer(malformed) == ()
+
+
+def test_trace_answer_requires_qualification_for_shared_function_name() -> None:
+    answers = (
+        CodeLocation("src/main/java/First.java", ("run",)),
+        CodeLocation("src/main/java/Second.java", ("run",)),
+    )
+    unqualified = _trace_case(
+        (_finish_event("First.java and Second.java use run()."),), answer=answers
+    )
+    qualified = _trace_case(
+        (_finish_event("First.java uses First.run(); Second.java is involved."),),
+        answer=answers,
+    )
+
+    assert extract_trace_answer(unqualified) == (
+        CodeLocation("src/main/java/First.java", ()),
+        CodeLocation("src/main/java/Second.java", ()),
+    )
+    assert extract_trace_answer(qualified)[0].functions == ("run",)
+    assert extract_trace_answer(qualified)[1].functions == ()
 
 
 def test_exact_duplicate_episodes_keep_the_later_search() -> None:
