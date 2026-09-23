@@ -108,6 +108,8 @@ Reasoning immediately before this search and the current search action:
 A good query describes behavior, responsibility, state transitions, side effects,
 performance impact, or a failure mechanism. Exact technical, class, or method anchors
 from the action are allowed, but the query must also say what behavior or effect matters.
+A good query should be concise: use one short sentence that keeps only the core search
+intent, without repeating issue background, explanations, or implementation steps.
 
 The following examples are fictional. Learn the distinction, but do not reuse their names
 or wording in the generated query.
