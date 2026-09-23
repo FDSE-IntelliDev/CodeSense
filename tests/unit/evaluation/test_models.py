@@ -80,6 +80,7 @@ def test_prepared_query_serializes_source_events_and_provenance() -> None:
             "between cursor-based and page-based access."
         ),
         answer=(CodeLocation("src/main/java/Navigation.java", ("afterCursor",)),),
+        trace_answer=(CodeLocation("src/main/java/Navigation.java", ("afterCursor",)),),
         candidate_answers=(CodeLocation("src/main/java/PageState.java", ()),),
         usage_evidence=(
             UsageEvidence(
@@ -107,6 +108,9 @@ def test_prepared_query_serializes_source_events_and_provenance() -> None:
     assert payload["answer"] == [
         {"file": "src/main/java/Navigation.java", "functions": ["afterCursor"]}
     ]
+    assert payload["trace_answer"] == [
+        {"file": "src/main/java/Navigation.java", "functions": ["afterCursor"]}
+    ]
     assert payload["candidate_answers"] == [
         {"file": "src/main/java/PageState.java", "functions": []}
     ]
@@ -129,3 +133,18 @@ def test_prepared_query_serializes_source_events_and_provenance() -> None:
     }
     assert "searches" not in payload
     assert "final_answer" not in payload
+
+
+def test_prepared_query_defaults_trace_answer_to_empty() -> None:
+    query = PreparedQuery(
+        query_id="trace-1:2",
+        repo="owner/repo",
+        instance_id="issue-1",
+        trajectory_id="trace-1",
+        issue_statement="State can remain stale.",
+        query="Find transition logic that can retain stale state.",
+        answer=(),
+    )
+
+    assert query.trace_answer == ()
+    assert query.to_dict()["trace_answer"] == []

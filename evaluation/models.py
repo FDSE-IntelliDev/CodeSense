@@ -112,6 +112,7 @@ class PreparedQuery:
     issue_statement: str
     query: str
     answer: tuple[CodeLocation, ...]
+    trace_answer: tuple[CodeLocation, ...] = ()
     candidate_answers: tuple[CodeLocation, ...] = ()
     usage_evidence: tuple[UsageEvidence, ...] = ()
     anchor_terms: tuple[str, ...] = ()
@@ -131,6 +132,7 @@ class PreparedQuery:
             "issue_statement": self.issue_statement,
             "query": self.query,
             "answer": [location.to_dict() for location in self.answer],
+            "trace_answer": [location.to_dict() for location in self.trace_answer],
             "candidate_answers": [location.to_dict() for location in self.candidate_answers],
             "usage_evidence": [item.to_dict() for item in self.usage_evidence],
             "anchor_terms": list(self.anchor_terms),
