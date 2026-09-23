@@ -85,6 +85,27 @@ def test_normalize_record_preserves_identity_and_separates_tool_output() -> None
     assert case.events[2].tool_output == "src/main/java/Watermark.java:10: class Watermark"
 
 
+def test_normalize_record_preserves_every_tool_call_and_result_id() -> None:
+    record = _record()
+    trajectory = record["trajectory"]
+    assert isinstance(trajectory, list)
+    assistant = trajectory[1]
+    result = trajectory[2]
+    assert isinstance(assistant, dict)
+    assert isinstance(result, dict)
+    assistant["content"] = "Inspect pool-related files."
+    assistant["tool_calls"] = [
+        {"id": "a", "function": {"name": "rg", "arguments": '{"pattern":"pool"}'}},
+        {"id": "b", "function": {"name": "find", "arguments": '{"path":"src"}'}},
+    ]
+    result["tool_call_id"] = "a"
+
+    case = normalize_record(record)
+
+    assert [call.id for call in case.events[1].tool_calls] == ["a", "b"]
+    assert case.events[2].tool_call_id == "a"
+
+
 def test_normalize_record_extracts_existing_production_java_patch_gold() -> None:
     case = normalize_record(_record())
 

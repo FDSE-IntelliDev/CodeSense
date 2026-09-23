@@ -3,10 +3,27 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
-__all__ = ["CodeLocation", "PreparedQuery", "TraceCase", "TraceEvent"]
+__all__ = [
+    "CodeLocation",
+    "PreparedQuery",
+    "ToolCall",
+    "TraceCase",
+    "TraceEvent",
+    "UsageEvidence",
+]
+
+
+@dataclass(frozen=True, slots=True)
+class ToolCall:
+    id: str | None
+    name: str
+    arguments: str | None
+
+    def to_dict(self) -> dict[str, object]:
+        return {"id": self.id, "name": self.name, "arguments": self.arguments}
 
 
 @dataclass(frozen=True, slots=True)
@@ -17,6 +34,8 @@ class TraceEvent:
     tool_name: str | None = None
     tool_input: str | None = None
     tool_output: str | None = None
+    tool_calls: tuple[ToolCall, ...] = ()
+    tool_call_id: str | None = None
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -26,6 +45,8 @@ class TraceEvent:
             "tool_name": self.tool_name,
             "tool_input": self.tool_input,
             "tool_output": self.tool_output,
+            "tool_calls": [call.to_dict() for call in self.tool_calls],
+            "tool_call_id": self.tool_call_id,
         }
 
 
@@ -67,6 +88,22 @@ class CodeLocation:
 
 
 @dataclass(frozen=True, slots=True)
+class UsageEvidence:
+    file: str
+    functions: tuple[str, ...]
+    event_index: int
+    kind: str
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "file": self.file,
+            "functions": list(self.functions),
+            "event_index": self.event_index,
+            "kind": self.kind,
+        }
+
+
+@dataclass(frozen=True, slots=True)
 class PreparedQuery:
     query_id: str
     repo: str
@@ -75,10 +112,15 @@ class PreparedQuery:
     issue_statement: str
     query: str
     answer: tuple[CodeLocation, ...]
-    source_event_indices: tuple[int, ...]
-    strategy: str
-    source_events: tuple[TraceEvent, ...]
-    provenance: Mapping[str, object]
+    candidate_answers: tuple[CodeLocation, ...] = ()
+    usage_evidence: tuple[UsageEvidence, ...] = ()
+    anchor_terms: tuple[str, ...] = ()
+    semantic_constraints: tuple[str, ...] = ()
+    source_event_indices: tuple[int, ...] = ()
+    result_event_indices: tuple[int, ...] = ()
+    strategy: str = ""
+    source_events: tuple[TraceEvent, ...] = ()
+    provenance: Mapping[str, object] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -89,7 +131,14 @@ class PreparedQuery:
             "issue_statement": self.issue_statement,
             "query": self.query,
             "answer": [location.to_dict() for location in self.answer],
+            "candidate_answers": [
+                location.to_dict() for location in self.candidate_answers
+            ],
+            "usage_evidence": [item.to_dict() for item in self.usage_evidence],
+            "anchor_terms": list(self.anchor_terms),
+            "semantic_constraints": list(self.semantic_constraints),
             "source_event_indices": list(self.source_event_indices),
+            "result_event_indices": list(self.result_event_indices),
             "strategy": self.strategy,
             "source_events": [event.to_dict() for event in self.source_events],
             "provenance": dict(self.provenance),

@@ -7,7 +7,7 @@ import re
 from collections.abc import Iterator, Mapping, Sequence
 from pathlib import Path, PurePosixPath
 
-from evaluation.models import CodeLocation, TraceCase, TraceEvent
+from evaluation.models import CodeLocation, ToolCall, TraceCase, TraceEvent
 
 __all__ = ["extract_patch_locations", "iter_jsonl", "normalize_record"]
 
@@ -178,8 +178,12 @@ def _event(index: int, message: Mapping[str, object]) -> TraceEvent:
     role = str(message.get("role") or "unknown")
     content = message.get("content", "")
     text = _content_text(content)
-    tool_name, tool_input = _tool_call(message, content)
+    tool_calls = _tool_calls(message, content)
+    primary = tool_calls[0] if tool_calls else None
+    tool_name = primary.name if primary else None
+    tool_input = primary.arguments if primary else None
     tool_output = None
+    tool_call_id = _as_optional_text(message.get("tool_call_id"))
     if role == "tool" or str(message.get("type") or "").lower() == "tool_result":
         tool_output = _as_text(content)
         tool_name = str(message.get("name") or message.get("tool_name") or "") or None
@@ -191,10 +195,12 @@ def _event(index: int, message: Mapping[str, object]) -> TraceEvent:
         tool_name=tool_name,
         tool_input=tool_input,
         tool_output=tool_output,
+        tool_calls=tool_calls,
+        tool_call_id=tool_call_id,
     )
 
 
-def _tool_call(message: Mapping[str, object], content: object) -> tuple[str | None, str | None]:
+def _tool_calls(message: Mapping[str, object], content: object) -> tuple[ToolCall, ...]:
     calls: list[object] = []
     raw_calls = message.get("tool_calls")
     if isinstance(raw_calls, list):
@@ -202,6 +208,7 @@ def _tool_call(message: Mapping[str, object], content: object) -> tuple[str | No
     if isinstance(content, list):
         calls.extend(block for block in content if isinstance(block, Mapping))
 
+    found: list[ToolCall] = []
     for call in calls:
         if not isinstance(call, Mapping):
             continue
@@ -213,8 +220,14 @@ def _tool_call(message: Mapping[str, object], content: object) -> tuple[str | No
             name = _as_optional_text(call.get("name"))
             arguments = call.get("arguments") or call.get("input")
         if name:
-            return name, _json_text(arguments)
-    return None, None
+            found.append(
+                ToolCall(
+                    id=_as_optional_text(call.get("id")),
+                    name=name,
+                    arguments=_json_text(arguments),
+                )
+            )
+    return tuple(found)
 
 
 def _content_text(content: object) -> str:

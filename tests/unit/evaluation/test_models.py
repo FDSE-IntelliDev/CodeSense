@@ -1,4 +1,29 @@
-from evaluation.models import CodeLocation, PreparedQuery, TraceCase, TraceEvent
+from evaluation.models import (
+    CodeLocation,
+    PreparedQuery,
+    ToolCall,
+    TraceCase,
+    TraceEvent,
+    UsageEvidence,
+)
+
+
+def test_trace_event_serializes_multiple_tool_calls_and_result_identity() -> None:
+    event = TraceEvent(
+        index=2,
+        role="assistant",
+        text="inspect both paths",
+        tool_calls=(
+            ToolCall("call-a", "rg", '{"pattern":"pool"}'),
+            ToolCall("call-b", "find", '{"path":"src/main/java"}'),
+        ),
+        tool_call_id="result-a",
+    )
+
+    payload = event.to_dict()
+
+    assert [call["id"] for call in payload["tool_calls"]] == ["call-a", "call-b"]
+    assert payload["tool_call_id"] == "result-a"
 
 
 def test_trace_event_serializes_all_event_fields() -> None:
@@ -18,6 +43,8 @@ def test_trace_event_serializes_all_event_fields() -> None:
         "tool_name": "rg",
         "tool_input": "rg watermark src/main/java",
         "tool_output": "src/main/java/Watermark.java",
+        "tool_calls": [],
+        "tool_call_id": None,
     }
 
 
@@ -53,25 +80,51 @@ def test_prepared_query_serializes_source_events_and_provenance() -> None:
             "between cursor-based and page-based access."
         ),
         answer=(CodeLocation("src/main/java/Navigation.java", ("afterCursor",)),),
+        candidate_answers=(CodeLocation("src/main/java/PageState.java", ()),),
+        usage_evidence=(
+            UsageEvidence(
+                "src/main/java/Navigation.java",
+                ("afterCursor",),
+                3,
+                "opened",
+            ),
+        ),
+        anchor_terms=("cursor",),
+        semantic_constraints=("navigation state can remain inconsistent",),
         source_event_indices=(0,),
-        strategy="semantic-generated",
+        result_event_indices=(1,),
+        strategy="trace-search-generated",
         source_events=(event,),
-        provenance={"prompt_version": "semantic-query-v1", "query_reason": "behavioral"},
+        provenance={"prompt_version": "trace-search-v2", "query_reason": "behavioral"},
     )
 
     payload = query.to_dict()
 
     assert payload["query_id"] == "trace-1"
-    assert payload["strategy"] == "semantic-generated"
+    assert payload["strategy"] == "trace-search-generated"
     assert payload["issue_statement"] == "Navigation mode can leave stale state."
     assert payload["query"].startswith("Find the logic")
     assert payload["answer"] == [
         {"file": "src/main/java/Navigation.java", "functions": ["afterCursor"]}
     ]
+    assert payload["candidate_answers"] == [
+        {"file": "src/main/java/PageState.java", "functions": []}
+    ]
+    assert payload["usage_evidence"] == [
+        {
+            "file": "src/main/java/Navigation.java",
+            "functions": ["afterCursor"],
+            "event_index": 3,
+            "kind": "opened",
+        }
+    ]
+    assert payload["anchor_terms"] == ["cursor"]
+    assert payload["semantic_constraints"] == ["navigation state can remain inconsistent"]
     assert payload["source_event_indices"] == [0]
+    assert payload["result_event_indices"] == [1]
     assert payload["source_events"] == [event.to_dict()]
     assert payload["provenance"] == {
-        "prompt_version": "semantic-query-v1",
+        "prompt_version": "trace-search-v2",
         "query_reason": "behavioral",
     }
     assert "searches" not in payload
