@@ -75,6 +75,7 @@ def test_viewer_page_defines_live_diff_and_safe_dom_contract() -> None:
             "candidate",
             "extra",
             "gold_hit",
+            "trace_answer_hit",
             "candidate_hit",
             "unlabeled_hit",
         )
@@ -90,6 +91,10 @@ def test_viewer_page_defines_live_diff_and_safe_dom_contract() -> None:
         )
     )
     assert "matched_files" in page and "matched_functions" in page
+    assert "query_plus_trace_answer" in page
+    assert "trace_answer_coverage" in page
+    assert "evaluation.trace_answer" in page
+    assert "Trace answer diff" in page
     assert "record.evaluation" in page
     assert "evaluation.answer" in page
     assert "evaluation.candidate_answers" in page
@@ -97,6 +102,35 @@ def test_viewer_page_defines_live_diff_and_safe_dom_contract() -> None:
     assert "search.answers" not in page
     assert ".textContent" in page
     assert ".innerHTML" not in page
+
+
+def test_viewer_page_explains_the_hit_and_diff_color_legend() -> None:
+    page = viewer_page()
+
+    # A persistent legend at the top of the page, above the result cards.
+    assert 'id="legend"' in page
+    # Search hits: each result is colored by which kind of answer it matched.
+    assert "Search hits：每条搜索结果按其命中的答案类型着色" in page
+    assert "绿色 · gold_hit：命中该 query 的主标准答案（answer 字段）" in page
+    assert "紫色 · trace_answer_hit：命中 trace 的最终答案（加分项，不属于主答案）" in page
+    assert "黄色 · candidate_hit：命中候选答案（candidate_answers，弱相关加分项）" in page
+    assert "灰色 · extra：搜到但不属于任何答案，即多余结果" in page
+    # Answer diff: only the gold answers, marked found (green) / missed (red).
+    assert "Answer diff：只展示 gold_answer，逐条标注是否被搜到" in page
+    assert "绿色 · matched：这条 gold 被搜索命中" in page
+    assert "红色 · missed：这条 gold 没被搜到（漏召回）" in page
+
+
+def test_viewer_page_explains_the_three_answer_types() -> None:
+    page = viewer_page()
+
+    # The legend also defines the three answer kinds, each tied to the same
+    # color the search-hits list uses for it.
+    assert "答案类型：gold / trace_answer / candidate 分别是什么" in page
+    assert 'class="row matched">gold_answer（answer）：这条 query 自身的检索答案' in page
+    assert 'class="row trace-answer">trace_answer：整个 issue 修复任务的最终答案' in page
+    assert 'class="row candidate">candidate_answer：' in page
+    assert "同一次搜索返回、但后续未观察到被使用的弱标注候选" in page
 
 
 def test_viewer_serves_the_page_and_current_snapshot() -> None:

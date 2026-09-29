@@ -109,7 +109,7 @@ def viewer_page() -> str:
     :root { color-scheme:light; --ink:#182230; --muted:#667085; --line:#dbe2ea;
       --paper:#fff; --wash:#f5f7fa; --blue:#175cd3; --green:#067647; --green-bg:#ecfdf3;
       --red:#b42318; --red-bg:#fef3f2; --gray:#475467; --gray-bg:#f2f4f7;
-      --amber:#b54708; --amber-bg:#fffaeb; }
+      --amber:#b54708; --amber-bg:#fffaeb; --purple:#6941c6; --purple-bg:#f4f3ff; }
     * { box-sizing:border-box; }
     body { margin:0; color:var(--ink); background:var(--wash);
       font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; }
@@ -140,10 +140,15 @@ def viewer_page() -> str:
     .matched { color:var(--green); background:var(--green-bg); }
     .missed { color:var(--red); background:var(--red-bg); }
     .candidate { color:var(--amber); background:var(--amber-bg); }
+    .trace-answer { color:var(--purple); background:var(--purple-bg); }
     .extra { color:var(--gray); background:var(--gray-bg); }
     .neutral { color:var(--gray); background:#f8fafc; }
     .error { color:var(--red); white-space:pre-wrap; }
     .empty { color:var(--muted); font-style:italic; }
+    #legend { margin-bottom:18px; padding:16px; border:1px solid var(--line);
+      border-radius:12px; background:var(--paper); }
+    .legend-group + .legend-group { margin-top:12px; }
+    .legend-heading { margin-bottom:7px; font-size:12px; font-weight:700; color:var(--ink); }
     code { font:12px ui-monospace,SFMono-Regular,Menlo,monospace; }
     @media(max-width:760px) { header { position:static; display:block; } #connection { display:inline-block;
       margin-top:9px; } main { padding:12px; } .routes { display:block; } .route { border-right:0;
@@ -153,7 +158,27 @@ def viewer_page() -> str:
 <body>
   <header><div><h1>CodeSense Live Evaluation</h1><p id="progress">等待评测结果</p></div>
     <div id="connection">连接中</div></header>
-  <main><section id="summary"></section><section id="records"></section></main>
+  <main><section id="legend">
+      <div class="block-title">图例说明</div>
+      <div class="legend-group">
+        <div class="legend-heading">Search hits：每条搜索结果按其命中的答案类型着色</div>
+        <div class="row matched">绿色 · gold_hit：命中该 query 的主标准答案（answer 字段）</div>
+        <div class="row trace-answer">紫色 · trace_answer_hit：命中 trace 的最终答案（加分项，不属于主答案）</div>
+        <div class="row candidate">黄色 · candidate_hit：命中候选答案（candidate_answers，弱相关加分项）</div>
+        <div class="row extra">灰色 · extra：搜到但不属于任何答案，即多余结果</div>
+      </div>
+      <div class="legend-group">
+        <div class="legend-heading">Answer diff：只展示 gold_answer，逐条标注是否被搜到</div>
+        <div class="row matched">绿色 · matched：这条 gold 被搜索命中</div>
+        <div class="row missed">红色 · missed：这条 gold 没被搜到（漏召回）</div>
+      </div>
+      <div class="legend-group">
+        <div class="legend-heading">答案类型：gold / trace_answer / candidate 分别是什么</div>
+        <div class="row matched">gold_answer（answer）：这条 query 自身的检索答案——搜索结果中后续 trace 确实打开/搜索/编辑过（有 usage evidence）的生产 Java 位置，是评分的主目标（强标注）。</div>
+        <div class="row trace-answer">trace_answer：整个 issue 修复任务的最终答案——Agent 最终回答里可确定的代码定位，同一 trace 的多条 query 共享；作为加分项，不计入新增/删除/测试文件。</div>
+        <div class="row candidate">candidate_answer：同一次搜索返回、但后续未观察到被使用的弱标注候选——弱监督、未确认相关，不是负例，与 gold 互斥。</div>
+      </div>
+    </section><section id="summary"></section><section id="records"></section></main>
   <script>
     const seen = new Set();
     let routeOrder = [];
@@ -194,6 +219,7 @@ def viewer_page() -> str:
     }
 
     function rawAnswers(evaluation) { return answerRows(evaluation.answer); }
+    function rawTraceAnswers(evaluation) { return answerRows(evaluation.trace_answer); }
 
     function goldDiff(metrics) {
       const rows = [];
@@ -210,6 +236,15 @@ def viewer_page() -> str:
       return rows;
     }
 
+    function traceAnswerDiff(metrics) {
+      return goldDiff({
+        gold_files: metrics.files,
+        gold_functions: metrics.functions,
+        matched_files: metrics.matched_files,
+        matched_functions: metrics.matched_functions,
+      });
+    }
+
     function hitRows(routeResult) {
       return sequence(routeResult.hits).map(hit => {
         const location = String(hit.file || '') + ':' + String(hit.line || 0);
@@ -218,6 +253,7 @@ def viewer_page() -> str:
           String(hit.name || '') + ' — ' + location + ' · ' + metric(hit.score) +
           ' · ' + hitStatus;
         const className = hitStatus === 'gold_hit' ? 'matched' :
+          hitStatus === 'trace_answer_hit' ? 'trace-answer' :
           hitStatus === 'candidate_hit' ? 'candidate' : 'extra';
         const row = element('div', 'row ' + className, label);
         if (hit.why) row.append(element('div', 'route-meta', hit.why));
@@ -246,9 +282,15 @@ def viewer_page() -> str:
       const actual = routeResult.actual_route ? 'actual: ' + routeResult.actual_route : 'not completed';
       section.append(element('div', 'route-meta', actual + ' · ' + metric(routeResult.elapsed) + 's'));
       if (routeResult.error) section.append(element('div', 'error', routeResult.error));
+      section.append(element('div', 'block-title', 'Query answer metrics'));
       renderMetrics(section, metrics);
-      section.append(element('div', 'block-title', 'Answer diff'));
+      section.append(element('div', 'block-title', 'Query + trace answer metrics'));
+      renderMetrics(section, mapping(metrics.query_plus_trace_answer));
+      section.append(element('div', 'block-title', 'Query answer diff'));
       appendRows(section, Object.keys(metrics).length ? goldDiff(metrics) : rawAnswers(evaluation), '没有标准答案');
+      section.append(element('div', 'block-title', 'Trace answer diff'));
+      appendRows(section, Object.keys(mapping(metrics.trace_answer)).length ?
+        traceAnswerDiff(mapping(metrics.trace_answer)) : rawTraceAnswers(evaluation), '没有 trace answer');
       section.append(element('div', 'block-title', 'Search hits'));
       appendRows(section, hitRows(routeResult), '没有搜索结果');
       return section;
@@ -265,8 +307,10 @@ def viewer_page() -> str:
       head.append(element('h2', '', evaluation.query || '(empty query)'));
       card.append(head);
       const answers = element('section', 'answers');
-      answers.append(element('h3', '', 'Gold answers'));
+      answers.append(element('h3', '', 'Query answers'));
       appendRows(answers, rawAnswers(evaluation), '没有标准答案');
+      answers.append(element('h3', '', 'Trace answers'));
+      appendRows(answers, rawTraceAnswers(evaluation), '没有 trace answer');
       answers.append(element('h3', '', 'Candidate answers'));
       appendRows(answers, answerRows(evaluation.candidate_answers), '没有候选答案');
       card.append(answers);
@@ -283,12 +327,37 @@ def viewer_page() -> str:
       const section = document.getElementById('summary');
       section.style.display = 'block';
       section.replaceChildren(element('h2', '', '评测完成'));
-      Object.entries(mapping(summary)).forEach(([route, values]) => {
+      const routeSummary = mapping(summary.routes || summary);
+      Object.entries(routeSummary).forEach(([route, values]) => {
         const data = mapping(values);
+        const augmented = mapping(data.query_plus_trace_answer);
+        const traceCoverage = mapping(data.trace_answer_coverage);
         section.append(element('div', '', route + ': ' + String(data.completed || 0) + '/' +
           String(data.queries || 0) + ' completed · observed file P/R ' +
           metric(data.observed_file_precision) + '/' + metric(data.file_recall) +
           ' · MRR ' + metric(data.mrr)));
+        section.append(element('div', 'route-meta', 'query + trace answer P/R ' +
+          metric(augmented.observed_file_precision) + '/' + metric(augmented.file_recall) +
+          ' · trace coverage (' + String(traceCoverage.traces || 0) + ' traces) file/function recall ' +
+          metric(traceCoverage.file_recall) + '/' + metric(traceCoverage.function_recall)));
+      });
+      sequence(summary.trace_coverage).forEach(trace => {
+        const title = 'Trace ' + String(trace.trajectory_id || '') + ' · ' +
+          String(trace.repo || '') + ' · ' + String(trace.query_count || 0) + ' queries';
+        section.append(element('div', 'block-title', title));
+        Object.entries(mapping(trace.routes)).forEach(([route, rawValues]) => {
+          const values = mapping(rawValues);
+          section.append(element('div', '', route + ': ' + String(values.completed_queries || 0) +
+            ' completed · file/function recall ' + metric(values.file_recall) + '/' +
+            metric(values.function_recall)));
+          appendRows(section, goldDiff({
+            gold_files: sequence(trace.trace_answer).map(item => item.file),
+            gold_functions: sequence(trace.trace_answer).flatMap(item =>
+              sequence(item.functions).map(name => ({file:item.file, function:name}))),
+            matched_files: values.matched_files,
+            matched_functions: values.matched_functions,
+          }), '没有 trace answer');
+        });
       });
     }
 
