@@ -341,6 +341,174 @@ class TestRouting:
         assert result.hits
         assert judge.concepts == ["script criterion"]
 
+    def test_codegen_repairs_invalid_signature_before_execution(
+        self, ctx, monkeypatch: pytest.MonkeyPatch
+    ) -> None:  # type: ignore[no-untyped-def]
+        invalid = (
+            'unit = QueryUnit("q", satisfiers=(LexicalSatisfier(terms=(Term("alloc"),)),))\n'
+            "answer = eval_unit(unit)"
+        )
+        repaired = invalid.replace("eval_unit(unit)", "eval_unit(unit, ctx)")
+        repairs: list[tuple[str, str]] = []
+        monkeypatch.setattr("codesense.llm.ScriptGenerator.generate", lambda *a, **k: invalid)
+
+        def repair(self, query, project, script, diagnostic, **kwargs):  # type: ignore[no-untyped-def]
+            repairs.append((script, diagnostic))
+            return repaired
+
+        monkeypatch.setattr("codesense.llm.ScriptGenerator.repair", repair)
+
+        result = search("alloc", ctx, route="codegen", llm=object(), trace=False)
+
+        assert result.route == "codegen"
+        assert result.hits
+        assert result.script == repaired
+        assert any("attempts=2" in note for note in result.notes)
+        assert repairs[0][0] == invalid
+        assert "line 2" in repairs[0][1] and "ctx" in repairs[0][1]
+
+    def test_codegen_exhausted_validation_retries_fall_back_with_reason(
+        self, ctx, monkeypatch: pytest.MonkeyPatch
+    ) -> None:  # type: ignore[no-untyped-def]
+        invalid = "answer = eval_unit('x')"
+        monkeypatch.setattr("codesense.llm.ScriptGenerator.generate", lambda *a, **k: invalid)
+        monkeypatch.setattr("codesense.llm.ScriptGenerator.repair", lambda *a, **k: invalid)
+
+        result = search("alloc", ctx, route="codegen", llm=object(), trace=False)
+
+        assert result.route == "lexical"
+        assert result.script == invalid
+        assert any("attempts=2" in note and "ctx" in note for note in result.notes)
+
+    def test_codegen_zero_repair_budget_does_not_request_repair(
+        self, ctx, monkeypatch: pytest.MonkeyPatch
+    ) -> None:  # type: ignore[no-untyped-def]
+        monkeypatch.setattr(
+            "codesense.llm.ScriptGenerator.generate", lambda *a, **k: "answer = eval_unit('x')"
+        )
+
+        def unexpected_repair(*args, **kwargs):  # type: ignore[no-untyped-def]
+            pytest.fail("repair must not be called")
+
+        monkeypatch.setattr("codesense.llm.ScriptGenerator.repair", unexpected_repair)
+        result = search(
+            "alloc", ctx, route="codegen", llm=object(), max_codegen_repairs=0, trace=False
+        )
+
+        assert result.route == "lexical"
+        assert any("attempts=1" in note for note in result.notes)
+
+    def test_codegen_repair_exception_records_attempt_count(
+        self, ctx, monkeypatch: pytest.MonkeyPatch
+    ) -> None:  # type: ignore[no-untyped-def]
+        monkeypatch.setattr(
+            "codesense.llm.ScriptGenerator.generate", lambda *a, **k: "answer = eval_unit('x')"
+        )
+
+        def fail_repair(*args, **kwargs):  # type: ignore[no-untyped-def]
+            raise RuntimeError("repair endpoint unavailable")
+
+        monkeypatch.setattr("codesense.llm.ScriptGenerator.repair", fail_repair)
+
+        result = search("alloc", ctx, route="codegen", llm=object(), trace=False)
+
+        assert result.route == "lexical"
+        assert any(
+            "attempts=2" in note and "repair endpoint unavailable" in note for note in result.notes
+        )
+
+    def test_codegen_execution_failure_does_not_trigger_repair(
+        self, ctx, monkeypatch: pytest.MonkeyPatch
+    ) -> None:  # type: ignore[no-untyped-def]
+        source = "answer = intent(1 / 0, 'criterion', ctx)"
+        monkeypatch.setattr(
+            "codesense.llm.ScriptGenerator.generate",
+            lambda *a, **k: source,
+        )
+
+        def unexpected_repair(*args, **kwargs):  # type: ignore[no-untyped-def]
+            pytest.fail("execution failure must not trigger repair")
+
+        monkeypatch.setattr("codesense.llm.ScriptGenerator.repair", unexpected_repair)
+        result = search("alloc", ctx, route="codegen", llm=object(), trace=False)
+
+        assert result.route == "lexical"
+        assert result.script == source
+        assert any("attempts=1" in note and "ZeroDivisionError" in note for note in result.notes)
+
+    def test_codegen_empty_frag_falls_back_to_lexical_and_preserves_script(
+        self, ctx, monkeypatch: pytest.MonkeyPatch
+    ) -> None:  # type: ignore[no-untyped-def]
+        source = 'answer = eval_unit(QueryUnit("none"), ctx)'
+        monkeypatch.setattr("codesense.llm.ScriptGenerator.generate", lambda *a, **k: source)
+
+        result = search("alloc", ctx, route="codegen", llm=object(), trace=False)
+
+        assert result.route == "lexical"
+        assert result.hits
+        assert result.script == source
+        assert any("empty Frag" in note for note in result.notes)
+
+    def test_codegen_empty_frag_fallback_preserves_file_target(
+        self, ctx, monkeypatch: pytest.MonkeyPatch
+    ) -> None:  # type: ignore[no-untyped-def]
+        source = 'answer = eval_unit(QueryUnit("none"), ctx)'
+        monkeypatch.setattr("codesense.llm.ScriptGenerator.generate", lambda *a, **k: source)
+
+        result = search(
+            "Find Java files containing alloc",
+            ctx,
+            route="codegen",
+            llm=object(),
+            trace=False,
+        )
+
+        assert result.route == "lexical"
+        assert result.target == ("file",)
+        assert result.hits
+        assert {hit.kind for hit in result.hits} == {"file"}
+        assert result.script == source
+
+    def test_codegen_validates_real_intent_signature_even_when_judging_disabled(
+        self, ctx, monkeypatch: pytest.MonkeyPatch
+    ) -> None:  # type: ignore[no-untyped-def]
+        monkeypatch.setattr(
+            "codesense.llm.ScriptGenerator.generate",
+            lambda *a, **k: "answer = intent(1, 'criterion')",
+        )
+
+        result = search(
+            "alloc", ctx, route="codegen", llm=object(), max_codegen_repairs=0, trace=False
+        )
+
+        assert result.route == "lexical"
+        assert any("intent()" in note and "ctx" in note for note in result.notes)
+
+    def test_codegen_validation_failure_never_calls_earlier_intent(
+        self, ctx, monkeypatch: pytest.MonkeyPatch
+    ) -> None:  # type: ignore[no-untyped-def]
+        judge = CountingJudge()
+        ctx = replace(ctx, judge=judge)
+        script = (
+            'unit = QueryUnit("q", satisfiers=(LexicalSatisfier(terms=(Term("alloc"),)),))\n'
+            'judged = intent(eval_unit(unit, ctx), "criterion", ctx)\n'
+            "answer = eval_unit(unit)"
+        )
+        monkeypatch.setattr("codesense.llm.ScriptGenerator.generate", lambda *a, **k: script)
+
+        result = search(
+            "alloc",
+            ctx,
+            route="codegen",
+            llm=object(),
+            judge=True,
+            max_codegen_repairs=0,
+            trace=False,
+        )
+
+        assert result.route == "lexical"
+        assert judge.concepts == []
+
 
 class TestIntentFallback:
     @staticmethod
@@ -357,7 +525,7 @@ class TestIntentFallback:
         monkeypatch.setattr(
             search_module,
             "_codegen",
-            lambda *args: (frag, "", [], ()),
+            lambda *args, **kwargs: (frag, "", [], ()),
         )
         return search(
             "find allocation implementations",
@@ -420,7 +588,7 @@ class TestIntentFallback:
         frag = scored_frag(ctx, scores)
         search_module = importlib.import_module("codesense.search")
 
-        def route(query, route_ctx, *args):  # type: ignore[no-untyped-def]
+        def route(query, route_ctx, *args, **kwargs):  # type: ignore[no-untyped-def]
             return intent(frag, query, route_ctx, max_items=60), "", [], ()
 
         monkeypatch.setattr(search_module, "_codegen", route)
@@ -814,7 +982,7 @@ class TestResultTarget:
         monkeypatch.setattr(
             search_module,
             "_codegen",
-            lambda *args: (file_frag, "", [], ()),
+            lambda *args, **kwargs: (file_frag, "", [], ()),
         )
 
         result = search("alloc", ctx, route="codegen", llm=object())

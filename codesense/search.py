@@ -26,7 +26,7 @@ import re
 import time
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass, field, replace
-from functools import wraps
+from functools import partial, wraps
 from typing import Any
 
 from codesense.ql.compile.spec import normalise_target
@@ -236,6 +236,21 @@ class _PlannedFailure(RuntimeError):
         self.cause = cause
 
 
+class _CodegenFailure(RuntimeError):
+    """A generated-script failure that retains the last attempted artifact."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        source: str,
+        diagnostics: Sequence[str] = (),
+    ) -> None:
+        super().__init__(message)
+        self.source = source
+        self.diagnostics = tuple(diagnostics)
+
+
 @dataclass(frozen=True, slots=True)
 class Hit:
     """One result, with enough to act on and enough to doubt it."""
@@ -256,7 +271,11 @@ class Hit:
 
 @dataclass
 class SearchResult:
-    """Results plus the artifact that produced them."""
+    """Results plus the requested route's artifact and diagnostics.
+
+    After degradation, ``route`` names the fallback that produced ``hits`` while
+    ``script`` retains the last generated artifact that failed before fallback.
+    """
 
     query: str
     hits: list[Hit] = field(default_factory=list)
@@ -299,6 +318,7 @@ def search(
     intent_fallback: IntentFallbackPolicy = DEFAULT_INTENT_FALLBACK,
     target: str | Sequence[str] | None = None,
     trace: bool = True,
+    max_codegen_repairs: int = 1,
 ) -> SearchResult:
     """Run a query.
 
@@ -314,9 +334,14 @@ def search(
     ``trace`` prints compact progress events for route stages and operators.
     It is on by default so long-running searches remain observable; callers
     that require quiet stdout can pass ``trace=False``.
+
+    ``max_codegen_repairs`` bounds LLM repair calls after static validation
+    failures. Once execution starts, no repair is attempted.
     """
     if route not in ROUTES:
         raise ValueError(f"route must be one of {ROUTES}, got {route!r}")
+    if max_codegen_repairs < 0:
+        raise ValueError("max_codegen_repairs must be non-negative")
     started = time.perf_counter()
     progress: Progress | None = _write_progress if trace else None
     _notify(
@@ -341,6 +366,8 @@ def search(
         route = "lexical"
 
     runner = {"codegen": _codegen, "planned": _planned, "lexical": _lexical}[route]
+    if route == "codegen":
+        runner = partial(runner, max_repairs=max_codegen_repairs)
     _notify(progress, "route.start", route=route)
     try:
         frag, script, notes, route_target = runner(
@@ -355,6 +382,34 @@ def search(
             limit,
             progress,
         )
+    except _CodegenFailure as exc:
+        _log.exception("route %s failed", route)
+        _notify(
+            progress,
+            "route.fallback",
+            route=route,
+            fallback="lexical",
+            reason=str(exc),
+        )
+        frag, fallback_script, notes, route_target = _lexical(
+            query,
+            ctx,
+            project,
+            vocabulary,
+            None,
+            requested_target,
+            target_was_explicit,
+            judge,
+            limit,
+            progress,
+        )
+        script = exc.source or fallback_script
+        notes = [
+            f"{route} failed ({exc}); fell back to lexical",
+            *(f"codegen diagnostic: {diagnostic}" for diagnostic in exc.diagnostics),
+            *notes,
+        ]
+        route = "lexical"
     except _PlannedFailure as exc:
         _log.exception("route %s failed", route)
         _notify(
@@ -737,36 +792,111 @@ def _codegen(
     judge: bool,
     _limit: int,
     progress: Progress | None,
+    *,
+    max_repairs: int = 1,
 ) -> tuple[Frag, str, list[str], tuple[str, ...] | None]:
-    """Have the model write the script, then run it behind the whitelist."""
+    """Repair only static script errors, then execute the valid script once."""
     from codesense.llm import ScriptGenerator
     from codesense.ql import ScriptError, run_script
+    from codesense.ql.script import validate_script
 
     _notify(progress, "codegen.generate.start", symbols=ctx.symbols.count())
     generated_started = time.perf_counter()
-    source = ScriptGenerator(llm).generate(
+    generator = ScriptGenerator(llm)
+    project_name = project or "the project"
+    symbols = ctx.symbols.count()
+    edges = _edge_estimate(ctx)
+    source = generator.generate(
         query,
-        project or "the project",
-        symbols=ctx.symbols.count(),
-        edges=_edge_estimate(ctx),
+        project_name,
+        symbols=symbols,
+        edges=edges,
         judge_enabled=judge,
     )
+    attempts = 1
     if not source:
-        raise RuntimeError("the model returned no script")
+        raise RuntimeError("codegen attempts=1: the model returned no script")
     _notify(
         progress,
         "codegen.generate.done",
         lines=source.count("\n") + 1,
         elapsed=time.perf_counter() - generated_started,
     )
+    namespace = _namespace(ctx, judge=judge, progress=progress)
+    # The disabled runtime stub is variadic; validate against the real paid
+    # operator's contract so malformed intent calls are still caught early.
+    validation_namespace = namespace if judge else {**namespace, "intent": intent}
+    prior_errors: list[str] = []
+    while True:
+        _notify(progress, "codegen.validate.start", attempt=attempts)
+        try:
+            validate_script(source, validation_namespace)
+        except ScriptError as exc:
+            diagnostic = str(exc)
+            prior_errors.append(diagnostic)
+            _notify(progress, "codegen.validate.failed", attempt=attempts, reason=diagnostic)
+            if attempts > max_repairs:
+                raise _CodegenFailure(
+                    f"codegen attempts={attempts}: static validation failed: {diagnostic}",
+                    source=source,
+                    diagnostics=prior_errors,
+                ) from exc
+            previous_source = source
+            attempts += 1
+            _notify(progress, "codegen.repair.start", attempt=attempts)
+            try:
+                source = generator.repair(
+                    query,
+                    project_name,
+                    previous_source,
+                    diagnostic,
+                    symbols=symbols,
+                    edges=edges,
+                    judge_enabled=judge,
+                )
+            except Exception as repair_exc:
+                repair_diagnostic = f"repair failed: {type(repair_exc).__name__}: {repair_exc}"
+                raise _CodegenFailure(
+                    f"codegen attempts={attempts}: {repair_diagnostic}",
+                    source=previous_source,
+                    diagnostics=(*prior_errors, repair_diagnostic),
+                ) from repair_exc
+            if not source:
+                repair_diagnostic = f"repair returned no script after {diagnostic}"
+                raise _CodegenFailure(
+                    f"codegen attempts={attempts}: {repair_diagnostic}",
+                    source=previous_source,
+                    diagnostics=(*prior_errors, repair_diagnostic),
+                ) from exc
+            _notify(progress, "codegen.repair.done", attempt=attempts, lines=source.count("\n") + 1)
+        else:
+            _notify(progress, "codegen.validate.done", attempt=attempts)
+            break
     _notify(progress, "codegen.execute.start")
     executed_started = time.perf_counter()
     try:
-        answer = run_script(source, _namespace(ctx, judge=judge, progress=progress))
+        answer = run_script(source, namespace)
     except ScriptError as exc:
-        raise RuntimeError(f"generated script rejected: {exc}") from exc
+        diagnostic = str(exc)
+        raise _CodegenFailure(
+            f"codegen attempts={attempts}: {diagnostic}",
+            source=source,
+            diagnostics=(*prior_errors, diagnostic),
+        ) from exc
     if not isinstance(answer, Frag):
-        raise TypeError(f"the script produced a {type(answer).__name__}, not a Frag")
+        diagnostic = f"the script produced a {type(answer).__name__}, not a Frag"
+        raise _CodegenFailure(
+            f"codegen attempts={attempts}: {diagnostic}",
+            source=source,
+            diagnostics=(*prior_errors, diagnostic),
+        )
+    if not answer:
+        diagnostic = "generated script returned an empty Frag"
+        raise _CodegenFailure(
+            f"codegen attempts={attempts}: {diagnostic}",
+            source=source,
+            diagnostics=(*prior_errors, diagnostic),
+        )
     _notify(
         progress,
         "codegen.execute.done",
@@ -776,7 +906,10 @@ def _codegen(
     return (
         answer,
         source,
-        [f"{source.count(chr(10)) + 1}-line generated script"],
+        [
+            f"{source.count(chr(10)) + 1}-line generated script; codegen attempts={attempts}",
+            *(f"repaired static error: {error}" for error in prior_errors),
+        ],
         target if target is not None else _returned_target(answer),
     )
 

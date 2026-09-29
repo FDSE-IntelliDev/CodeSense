@@ -10,7 +10,7 @@ from __future__ import annotations
 import pytest
 
 from codesense.ql import ScriptError, ScriptPolicy, run_script
-from codesense.ql.script import ALLOWED_CALLS, BUILTIN_NAMES, SAFE_BUILTINS
+from codesense.ql.script import ALLOWED_CALLS, BUILTIN_NAMES, SAFE_BUILTINS, validate_script
 
 
 class TestControlFlow:
@@ -111,6 +111,40 @@ class TestIsolation:
 
 
 class TestContract:
+    def test_direct_operator_missing_ctx_reports_line_before_execution(self) -> None:
+        calls: list[str] = []
+
+        def eval_unit(unit: object, ctx: object) -> object:
+            calls.append("executed")
+            return unit
+
+        source = "unit = 'x'\nanswer = eval_unit(unit)"
+        with pytest.raises(ScriptError, match=r"line 2: eval_unit\(\).*ctx"):
+            validate_script(source, {"eval_unit": eval_unit, "ctx": object()})
+        assert calls == []
+
+    def test_direct_constructor_unknown_keyword_reports_line(self) -> None:
+        def term(value: str, *, weight: float = 1.0) -> object:
+            return value, weight
+
+        with pytest.raises(ScriptError, match=r"line 1: Term\(\).*unknown"):
+            validate_script("answer = Term('x', unknown=1)", {"Term": term})
+
+    def test_valid_direct_operator_call_passes_signature_check(self) -> None:
+        def eval_unit(unit: object, ctx: object) -> object:
+            return unit, ctx
+
+        source = "answer = eval_unit('x', ctx)"
+        validate_script(source, {"eval_unit": eval_unit, "ctx": object()})
+
+    def test_script_local_function_is_not_checked_as_injected_operator(self) -> None:
+        def injected_eval_unit(unit: object, ctx: object) -> object:
+            return unit, ctx
+
+        source = "def eval_unit(unit):\n    return unit\nanswer = eval_unit('x')"
+
+        validate_script(source, {"eval_unit": injected_eval_unit})
+
     def test_answer_must_be_produced(self) -> None:
         with pytest.raises(ScriptError, match="answer"):
             run_script("x = 1", {})

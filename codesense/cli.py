@@ -134,7 +134,13 @@ def _query(args: argparse.Namespace) -> int:
         vocab_size=args.vocab_size,
         vocab_min_df=args.vocab_min_df,
     )
-    result = project.search(args.text, route=args.route, limit=args.limit, judge=args.judge)
+    result = project.search(
+        args.text,
+        route=args.route,
+        limit=args.limit,
+        judge=args.judge,
+        max_codegen_repairs=args.codegen_repairs,
+    )
 
     if args.script:
         print(result.explain())
@@ -277,6 +283,13 @@ def _parser() -> argparse.ArgumentParser:
         help="codegen writes a script, planned plans, lexical uses no model",
     )
     query.add_argument("-n", "--limit", type=int, default=20, help="how many results")
+    query.add_argument(
+        "--codegen-repairs",
+        type=int,
+        default=1,
+        metavar="N",
+        help="repair attempts after codegen static validation fails (default: 1)",
+    )
     query.add_argument(
         "--vocab-size",
         type=int,

@@ -49,6 +49,17 @@ Key semantics:
   the scored candidate set with a reach result. project carries source evidence.
 - Different concepts usually match different elements: retrieve them separately and
   connect them through graph edges instead of intersecting unrelated lexical hits.
+- `contains` edges point from a container to its direct member. Forward projection
+  from a type finds its members; backward projection from a member finds its owning
+  type. Never project backward over `contains` with `kind="method"`, because the
+  backward result is a container.
+- A source-level type may be a class, interface, record, or enum. For a general type
+  or owner, use `kind=("class", "interface", "record", "enum")` or omit the kind;
+  use only `kind="class"` when the query explicitly requires a class.
+- Choose the most discriminative exact or literal concept as the primary anchor.
+  Never intersect a non-empty fragment with an empty fragment. If a secondary
+  branch is empty, or a strict intersection becomes empty, fall back to the primary
+  anchor, preferably after structural narrowing.
 - `direction="backward"` finds sources pointing at a matched target. For example,
   files referencing PageRequest are found by matching PageRequest, projecting
   backward over references/imports, then forward over in_file with kind="file".
@@ -93,6 +104,20 @@ Output the script only, with no explanation. The script must:
 a step limit). No imports, and nothing beyond the operators and Frag.
 """
 
+REPAIR_PROMPT = """\
+{original_prompt}
+
+The previous script failed static validation before execution. Repair only the
+reported error while preserving its retrieval intent. Output the complete
+corrected script only, with no explanation.
+
+Diagnostic: {diagnostic}
+Previous script:
+```python
+{script}
+```
+"""
+
 _FENCE = re.compile(r"```(?:python)?\s*(.*?)```", re.S)
 
 _log = logging.getLogger(__name__)
@@ -129,10 +154,36 @@ class ScriptGenerator:
             judging="enabled" if judge_enabled else "disabled",
         )
         content = self._ask(prompt)
-        if content is None:
-            return None
-        fenced = _FENCE.search(content)
-        return (fenced.group(1) if fenced else content).strip()
+        return _script_from_content(content)
+
+    def repair(
+        self,
+        query: str,
+        project: str,
+        script: str,
+        diagnostic: str,
+        *,
+        symbols: int,
+        edges: int,
+        judge_enabled: bool = False,
+    ) -> str | None:
+        """Ask for a full corrected script after a pre-execution failure."""
+        original_prompt = PROMPT.format(
+            project=project,
+            query=query,
+            spec=OPERATOR_SPEC,
+            symbols=f"{symbols:,}",
+            edges=f"{edges:,}",
+            judging="enabled" if judge_enabled else "disabled",
+        )
+        content = self._ask(
+            REPAIR_PROMPT.format(
+                original_prompt=original_prompt,
+                script=script,
+                diagnostic=diagnostic,
+            )
+        )
+        return _script_from_content(content)
 
     def _ask(self, prompt: str) -> str | None:
         session = self._session
@@ -156,3 +207,11 @@ class ScriptGenerator:
         except Exception:  # noqa: BLE001 -- generation failures must degrade
             _log.exception("code generation request failed")
             return None
+
+
+def _script_from_content(content: str | None) -> str | None:
+    """Strip an optional code fence from either generation response."""
+    if content is None:
+        return None
+    fenced = _FENCE.search(content)
+    return (fenced.group(1) if fenced else content).strip()

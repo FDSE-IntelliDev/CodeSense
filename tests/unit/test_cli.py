@@ -94,6 +94,38 @@ class TestExitCodes:
 
 
 class TestQueryOutput:
+    def test_codegen_repair_budget_reaches_project_search(
+        self, tmp_path: Path, monkeypatch
+    ) -> None:  # type: ignore[no-untyped-def]
+        from codesense.project import Project
+        from codesense.search import SearchResult
+
+        captured: dict[str, object] = {}
+
+        class Opened:
+            def search(self, query: str, **kwargs: object) -> SearchResult:
+                captured.update(kwargs)
+                return SearchResult(query=query)
+
+            def describe(self) -> str:
+                return "demo"
+
+        monkeypatch.setattr(Project, "open", lambda *a, **k: Opened())
+        main(
+            [
+                "query",
+                "anything",
+                "--route",
+                "codegen",
+                "--index",
+                str(tmp_path / "index"),
+                "--codegen-repairs",
+                "2",
+            ]
+        )
+
+        assert captured["max_codegen_repairs"] == 2
+
     def test_vocabulary_flags_reach_project_open(self, tmp_path: Path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
         from codesense.project import Project
         from codesense.search import SearchResult

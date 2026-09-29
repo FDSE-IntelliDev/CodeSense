@@ -18,6 +18,7 @@ deliberate attack. Defending against that needs process isolation.
 from __future__ import annotations
 
 import ast
+import inspect
 import itertools
 import sys
 from collections.abc import Iterable, Iterator, Mapping
@@ -25,7 +26,15 @@ from contextlib import contextmanager
 from dataclasses import dataclass, field
 from typing import Any
 
-__all__ = ["DEFAULT_POLICY", "SAFE_BUILTINS", "ScriptError", "ScriptPolicy", "check", "run_script"]
+__all__ = [
+    "DEFAULT_POLICY",
+    "SAFE_BUILTINS",
+    "ScriptError",
+    "ScriptPolicy",
+    "check",
+    "run_script",
+    "validate_script",
+]
 
 #: Builtins available to the script. All pure; no IO, no reflection.
 #:
@@ -252,6 +261,45 @@ def _bound_names(tree: ast.Module) -> frozenset[str]:
         elif isinstance(node, ast.Lambda):
             found.update(arg.arg for arg in node.args.args)
     return frozenset(found)
+
+
+def validate_script(
+    source: str, namespace: Mapping[str, Any], *, policy: ScriptPolicy | None = None
+) -> ast.Module:
+    """Check syntax, permissions and statically known direct-call signatures.
+
+    Bind AST placeholders against the actual injected callables. Calls using
+    ``*args`` or ``**kwargs`` cannot be bound safely without executing code,
+    so their argument errors remain runtime errors.
+    """
+    tree = check(source, policy, provided=namespace.keys())
+    local_names = _bound_names(tree)
+    diagnostics: list[tuple[int, str]] = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call) or not isinstance(node.func, ast.Name):
+            continue
+        name = node.func.id
+        if name in local_names:
+            continue
+        candidate = namespace.get(name)
+        if not callable(candidate) or any(isinstance(arg, ast.Starred) for arg in node.args):
+            continue
+        if any(keyword.arg is None for keyword in node.keywords):
+            continue
+        try:
+            signature = inspect.signature(candidate)
+        except (TypeError, ValueError):
+            continue
+        try:
+            signature.bind(
+                *(object() for _ in node.args),
+                **{keyword.arg: object() for keyword in node.keywords if keyword.arg is not None},
+            )
+        except TypeError as exc:
+            diagnostics.append((node.lineno, f"line {node.lineno}: {name}() {exc}"))
+    if diagnostics:
+        raise ScriptError("; ".join(message for _, message in sorted(diagnostics)))
+    return tree
 
 
 def run_script(

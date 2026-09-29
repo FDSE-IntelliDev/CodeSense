@@ -79,6 +79,52 @@ def test_codegen_prompt_documents_hierarchy_relations_and_direction() -> None:
     assert "confidence" in spec
 
 
+def test_codegen_prompt_documents_contains_direction_and_container_kinds() -> None:
+    spec = " ".join(OPERATOR_SPEC.lower().split())
+
+    assert "container to its direct member" in spec
+    assert "forward projection from a type finds its members" in spec
+    assert "backward projection from a member finds its owning type" in spec
+    assert 'backward over `contains` with `kind="method"`' in spec
+    for kind in ("class", "interface", "record", "enum"):
+        assert kind in spec
+
+
+def test_codegen_prompt_protects_non_empty_anchor_from_empty_intersections() -> None:
+    spec = " ".join(OPERATOR_SPEC.lower().split())
+
+    assert "primary anchor" in spec
+    assert "never intersect a non-empty fragment with an empty fragment" in spec
+    assert "fall back to the primary anchor" in spec
+
+
+def test_repair_prompt_includes_script_and_compact_diagnostic(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    prompts: list[str] = []
+    monkeypatch.setattr(
+        ScriptGenerator,
+        "_ask",
+        lambda self, prompt: (
+            prompts.append(prompt) or "```python\nanswer = eval_unit(unit, ctx)\n```"
+        ),
+    )
+
+    repaired = ScriptGenerator(LlmConfig(api_key="test")).repair(
+        "find allocators",
+        "demo",
+        "answer = eval_unit(unit)",
+        "line 1: eval_unit() missing a required argument: 'ctx'",
+        symbols=10,
+        edges=20,
+    )
+
+    assert repaired == "answer = eval_unit(unit, ctx)"
+    assert "answer = eval_unit(unit)" in prompts[0]
+    assert "line 1: eval_unit()" in prompts[0]
+    assert "eval_unit(unit, ctx)" in prompts[0]
+
+
 def test_project_is_available_to_safe_generated_scripts() -> None:
     ctx = EvalContext(
         symbols=InMemorySymbolStore(()),
