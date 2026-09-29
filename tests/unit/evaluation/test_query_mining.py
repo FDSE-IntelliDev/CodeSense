@@ -131,6 +131,17 @@ def test_prompt_contains_issue_reasoning_action_but_hides_result_and_future() ->
     assert "Find Java files that reference PageRequest." not in prompt
 
 
+def test_mine_queries_propagates_base_commit_from_the_trace() -> None:
+    case = replace(_case(), base_commit="deadbeefcafe")
+
+    batch = mine_queries(
+        case,
+        _Generator(_valid_response("Find where isPoolLifo changes reusable connection selection.")),
+    )
+
+    assert batch.queries[0].base_commit == "deadbeefcafe"
+
+
 def test_mine_queries_returns_one_row_per_supervised_episode() -> None:
     response = _valid_response("Find code whose policy changes runtime behavior.")
     generator = _Generator(response, response)

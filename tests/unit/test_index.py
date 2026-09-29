@@ -113,6 +113,14 @@ class TestRoundTrip:
         make_index(project="netty").save(tmp_path)
         assert Index.load(tmp_path).meta.project == "netty"
 
+    def test_commit_survives(self, tmp_path: Path) -> None:
+        make_index(commit="deadbeefcafe").save(tmp_path)
+        assert Index.load(tmp_path).meta.commit == "deadbeefcafe"
+
+    def test_commit_defaults_to_empty_for_indexes_built_without_one(self, tmp_path: Path) -> None:
+        make_index().save(tmp_path)
+        assert Index.load(tmp_path).meta.commit == ""
+
     def test_creates_the_directory(self, tmp_path: Path) -> None:
         make_index().save(tmp_path / "deep" / "nested")
         assert (tmp_path / "deep" / "nested" / "meta.json").is_file()
@@ -329,3 +337,27 @@ class TestProject:
         assert seen["total_symbols"] == 2
         assert project.index.meta.declarations == 2
         assert project.index.meta.files == 1
+
+    def test_build_records_the_commit_it_was_told_to(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The commit is what makes an index reproducible against a checkout."""
+        from codesense.indexing.pipeline import BuildResult, Stats
+
+        result = BuildResult(
+            payload=payload(),
+            stats=Stats(declarations=2, symbols=3, postings=3, edges=1, languages=("java",)),
+        )
+        monkeypatch.setattr(
+            "codesense.indexing.pipeline.build_index", lambda *args, **kwargs: result
+        )
+        monkeypatch.setattr(
+            "codesense.indexing.grounding.ground_vocabulary_result",
+            lambda *args, **kwargs: SimpleNamespace(
+                table={}, profile="lexical", status="ready", reason=""
+            ),
+        )
+
+        project = Project.build(tmp_path, index_dir=None, verbose=False, commit="deadbeefcafe")
+
+        assert project.index.meta.commit == "deadbeefcafe"

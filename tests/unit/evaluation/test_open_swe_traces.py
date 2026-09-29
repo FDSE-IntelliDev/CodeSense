@@ -85,6 +85,36 @@ def test_normalize_record_preserves_identity_and_separates_tool_output() -> None
     assert case.events[2].tool_output == "src/main/java/Watermark.java:10: class Watermark"
 
 
+def test_normalize_record_falls_back_to_the_base_commit_in_the_prompt_prose() -> None:
+    # SWE-rebench-V2 records carry no structured base_commit; the SHA only
+    # appears inside the task-prompt prose of a trajectory message.
+    record = _record()
+    del record["base_commit"]
+    sha = "c1b84971523837292feb394d4a1ec3ce699fa284"
+    trajectory = record["trajectory"]
+    assert isinstance(trajectory, list)
+    first = trajectory[0]
+    assert isinstance(first, dict)
+    first["content"] = (
+        "Re-read the problem and check the difference between the current "
+        f"code and the base commit {sha}. Do you think it is solved?"
+    )
+
+    assert normalize_record(record).base_commit == sha
+
+
+def test_normalize_record_prefers_the_structured_base_commit_over_prose() -> None:
+    record = _record()  # keeps the structured base_commit == "abc123"
+    sha = "c1b84971523837292feb394d4a1ec3ce699fa284"
+    trajectory = record["trajectory"]
+    assert isinstance(trajectory, list)
+    first = trajectory[0]
+    assert isinstance(first, dict)
+    first["content"] = f"...the base commit {sha}..."
+
+    assert normalize_record(record).base_commit == "abc123"
+
+
 def test_normalize_record_preserves_every_tool_call_and_result_id() -> None:
     record = _record()
     trajectory = record["trajectory"]

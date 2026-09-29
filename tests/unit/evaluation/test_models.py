@@ -148,3 +148,34 @@ def test_prepared_query_defaults_trace_answer_to_empty() -> None:
 
     assert query.trace_answer == ()
     assert query.to_dict()["trace_answer"] == []
+
+
+def test_prepared_query_serializes_base_commit() -> None:
+    query = PreparedQuery(
+        query_id="trace-1:2",
+        repo="owner/repo",
+        instance_id="issue-1",
+        trajectory_id="trace-1",
+        issue_statement="State can remain stale.",
+        query="Find transition logic that can retain stale state.",
+        answer=(),
+        base_commit="deadbeefcafe",
+    )
+
+    assert query.base_commit == "deadbeefcafe"
+    assert query.to_dict()["base_commit"] == "deadbeefcafe"
+
+
+def test_prepared_query_defaults_base_commit_to_none() -> None:
+    query = PreparedQuery(
+        query_id="trace-1:2",
+        repo="owner/repo",
+        instance_id="issue-1",
+        trajectory_id="trace-1",
+        issue_statement="State can remain stale.",
+        query="Find transition logic that can retain stale state.",
+        answer=(),
+    )
+
+    assert query.base_commit is None
+    assert query.to_dict()["base_commit"] is None

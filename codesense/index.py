@@ -52,6 +52,10 @@ class IndexMeta:
     project: str
     root: str
     built_at: str
+    #: Repository revision this index was built from, when known. Empty for an
+    #: index built over an arbitrary working tree. Recorded so a benchmark can
+    #: refuse to reuse an index whose commit does not match its checkout.
+    commit: str = ""
     symbols: int = 0
     declarations: int = 0
     files: int = 0

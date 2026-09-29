@@ -49,6 +49,11 @@ TIMEOUT = 300.0
 
 _REPOSITORY = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
 
+#: Gold fields checked against the checkout, in the order they are reported.
+_GOLD_FIELDS = ("answer", "trace_answer", "candidate_answers")
+#: Characters that make a gold path a glob rather than a real file location.
+_GLOB_CHARS = frozenset("*?[]")
+
 
 class _Viewer(Protocol):
     """Narrow observer interface used by the evaluation loop."""
@@ -78,8 +83,9 @@ def main() -> int:
     viewer_active = viewer is not None
     if viewer is not None:
         print(f"live evaluation: {viewer.url}")
-    projects: dict[str, Project] = {}
-    project_errors: dict[str, str] = {}
+    projects: dict[tuple[str, str | None], Project] = {}
+    project_errors: dict[tuple[str, str | None], str] = {}
+    project_roots: dict[tuple[str, str | None], Path] = {}
     cases: list[dict[str, object]] = []
     evaluated = 0
 
@@ -88,33 +94,46 @@ def main() -> int:
             if QUERY_LIMIT and evaluated >= QUERY_LIMIT:
                 break
             repo = str(record.get("repo") or "").strip()
-            if repo not in projects and repo not in project_errors:
+            base_commit = _text_or_none(record.get("base_commit"))
+            # Keyed by commit as well as repo: two revisions of one repository
+            # need separate checkouts and separate indexes.
+            key = (repo, base_commit)
+            if key not in projects and key not in project_errors:
                 try:
-                    root = _project_path(repo, PROJECT_PATHS, Path(PROJECTS_DIR).expanduser())
-                    projects[repo] = _open_project(
+                    root = _project_path(
+                        repo,
+                        PROJECT_PATHS,
+                        Path(PROJECTS_DIR).expanduser(),
+                        base_commit=base_commit,
+                    )
+                    project_roots[key] = root
+                    projects[key] = _open_project(
                         repo,
                         root,
                         Path(INDEXES_DIR).expanduser(),
                         llm,
+                        base_commit=base_commit,
                     )
                 except Exception as exc:  # noqa: BLE001 -- one repository must not stop the run
-                    project_errors[repo] = f"{type(exc).__name__}: {exc}"
+                    project_errors[key] = f"{type(exc).__name__}: {exc}"
 
-            if repo in projects:
+            if key in projects:
                 evaluation = _evaluate_query(
-                    projects[repo],
+                    projects[key],
                     record,
                     routes=ROUTES,
                     limit=SEARCH_LIMIT,
                     include_test_files=INCLUDE_TEST_FILES,
+                    root=project_roots.get(key),
                 )
             else:
                 evaluation = _failed_query(
-                    record, ROUTES, project_errors.get(repo, "project unavailable")
+                    record, ROUTES, project_errors.get(key, "project unavailable")
                 )
             case_result = {
                 "query_id": record.get("query_id"),
                 "repo": repo,
+                "base_commit": base_commit,
                 "instance_id": record.get("instance_id"),
                 "trajectory_id": record.get("trajectory_id"),
                 "evaluation": evaluation,
@@ -127,6 +146,15 @@ def main() -> int:
                 )
             evaluated += not evaluation.get("skipped", False)
 
+            if case_number % 5 == 0:
+                break
+
+        trace_coverage = _trace_coverage(
+            cases,
+            ROUTES,
+            include_test_files=INCLUDE_TEST_FILES,
+        )
+        summary = _summarize(cases, ROUTES, trace_coverage=trace_coverage)
         report = {
             "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
             "benchmark": str(Path(BENCHMARK).expanduser().resolve()),
@@ -138,14 +166,18 @@ def main() -> int:
                 "grounding_strategy": GROUNDING_STRATEGY,
                 "model": MODEL,
             },
-            "summary": _summarize(cases, ROUTES),
+            "summary": summary,
+            "trace_coverage": trace_coverage,
             "cases": cases,
         }
         output = Path(OUTPUT).expanduser()
         output.parent.mkdir(parents=True, exist_ok=True)
         output.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
         if viewer_active and viewer is not None:
-            _finish_viewer(viewer, _mapping(report["summary"]))
+            _finish_viewer(
+                viewer,
+                {"routes": summary, "trace_coverage": trace_coverage},
+            )
         print(f"evaluated {evaluated} queries; report: {output.resolve()}")
         if viewer_active and viewer is not None:
             _wait_for_viewer(viewer.url)
@@ -219,9 +251,17 @@ def _project_path(
     manual_paths: Mapping[str, str],
     projects_dir: Path,
     *,
+    base_commit: str | None = None,
     run: Callable[..., object] = subprocess.run,
 ) -> Path:
-    """Resolve a manual project, cached clone, or shallow-clone latest HEAD."""
+    """Resolve a manual project, cached clone, or clone pinned to a commit.
+
+    ``base_commit`` moves the working tree onto the revision the gold was mined
+    against; without it the behaviour is the old shallow clone of the default
+    branch. A manual path is returned untouched and never checked out -- it
+    points at a repository the user manages elsewhere, and moving its HEAD would
+    be destructive.
+    """
     manual = manual_paths.get(repo)
     if manual:
         path = Path(manual).expanduser().resolve()
@@ -233,35 +273,59 @@ def _project_path(
 
     projects_dir.mkdir(parents=True, exist_ok=True)
     target = projects_dir / repo.replace("/", "__")
+    url = f"https://github.com/{repo}.git"
     if target.is_dir():
+        if base_commit:
+            _checkout(run, target, base_commit)
         return target.resolve()
-    run(
-        [
-            "git",
-            "clone",
-            "--depth",
-            "1",
-            f"https://github.com/{repo}.git",
-            str(target),
-        ],
-        check=True,
-    )
+    if base_commit:
+        # A shallow clone of the default branch cannot reach an arbitrary
+        # commit, so clone in full and then check the exact revision out.
+        run(["git", "clone", url, str(target)], check=True)
+        run(["git", "-C", str(target), "checkout", base_commit], check=True)
+    else:
+        run(["git", "clone", "--depth", "1", url, str(target)], check=True)
     if not target.is_dir():
         raise RuntimeError(f"git clone did not create {target}")
     return target.resolve()
 
 
-def _open_project(repo: str, root: Path, indexes_dir: Path, llm: object) -> Project:
-    """Reuse one repository index, building the lexical index on first use."""
-    index_dir = indexes_dir / repo.replace("/", "__")
+def _checkout(run: Callable[..., object], target: Path, commit: str) -> None:
+    """Move an existing clone onto ``commit``, fetching it if it is not local."""
+    run(["git", "-C", str(target), "fetch", "--depth", "1", "origin", commit], check=True)
+    run(["git", "-C", str(target), "checkout", commit], check=True)
+
+
+def _open_project(
+    repo: str,
+    root: Path,
+    indexes_dir: Path,
+    llm: object,
+    *,
+    base_commit: str | None = None,
+) -> Project:
+    """Reuse one repository index, isolated by commit, building it on first use.
+
+    The index directory name carries the commit so two revisions of the same
+    repository never share an artifact. When the directory already exists its
+    ``meta.json`` commit is checked against the expected one; a mismatch means
+    the artifact predates commit isolation, so it is rebuilt rather than trusted.
+    """
+    name = repo.replace("/", "__")
+    if base_commit:
+        name = f"{name}__{base_commit}"
+    index_dir = indexes_dir / name
     if (index_dir / "meta.json").is_file():
-        return Project.open(index_dir, llm=llm)
+        project = Project.open(index_dir, llm=llm)
+        if not base_commit or project.index.meta.commit == base_commit:
+            return project
     return Project.build(
         root,
         index_dir=index_dir,
         strategy=GROUNDING_STRATEGY,
         llm=llm,
         name=repo,
+        commit=base_commit or "",
     )
 
 
@@ -272,10 +336,19 @@ def _evaluate_query(
     routes: Sequence[str],
     limit: int,
     include_test_files: bool = False,
+    root: Path | None = None,
 ) -> dict[str, object]:
-    """Run one benchmark query through each route and retain inspectable hits."""
+    """Run one benchmark query through each route and retain inspectable hits.
+
+    ``root`` is the checked-out repository. When given, every gold path is
+    verified against it first: a glob or a path absent from this revision cannot
+    be scored honestly, so a case whose *primary* gold is invalid is skipped
+    rather than allowed to deflate recall. Problems on bonus gold are recorded
+    for inspection but do not skip the case.
+    """
     query = str(record.get("query") or "").strip()
     answers = list(_mappings(record.get("answer")))
+    trace_answers = list(_mappings(record.get("trace_answer")))
     candidates = list(_mappings(record.get("candidate_answers")))
     usable_answers = [
         answer
@@ -286,10 +359,16 @@ def _evaluate_query(
         "query": query,
         "source_event_indices": list(_integers(record.get("source_event_indices"))),
         "answer": answers,
+        "trace_answer": trace_answers,
         "candidate_answers": candidates,
     }
+    gold_problems = _gold_problems(record, root) if root is not None else []
+    if gold_problems:
+        base["gold_problems"] = gold_problems
     if not usable_answers:
         return {**base, "skipped": True, "skip_reason": "no production-code gold", "routes": {}}
+    if _primary_gold_invalid(usable_answers, gold_problems):
+        return {**base, "skipped": True, "skip_reason": "invalid gold path", "routes": {}}
 
     route_results: dict[str, object] = {}
     for route in routes:
@@ -299,25 +378,32 @@ def _evaluate_query(
                 result.hits,
                 answers,
                 candidates,
+                trace_answers=trace_answers,
                 include_test_files=include_test_files,
             )
             route_result = {
                 "actual_route": result.route,
+                # Route fidelity is a separate dimension from retrieval quality:
+                # a degraded search still returns hits worth scoring, so metrics
+                # are always kept and the fallback is flagged rather than thrown
+                # away as an error. Only a raised exception loses the metrics.
+                "route_fidelity": result.route == route,
                 "elapsed": result.elapsed,
                 "notes": list(result.notes),
                 "script": str(getattr(result, "script", "") or ""),
+                "metrics": metrics,
                 "hits": [
                     {**_hit_dict(hit), "label": label}
                     for hit, label in zip(result.hits, labels, strict=True)
                 ],
             }
-            if result.route == route:
-                route_result["metrics"] = metrics
-            else:
-                route_result["error"] = f"requested {route} but search used {result.route}"
             route_results[route] = route_result
         except Exception as exc:  # noqa: BLE001 -- preserve other route results
-            route_results[route] = {"error": f"{type(exc).__name__}: {exc}", "hits": []}
+            route_results[route] = {
+                "error": f"{type(exc).__name__}: {exc}",
+                "route_fidelity": False,
+                "hits": [],
+            }
     return {**base, "skipped": False, "routes": route_results}
 
 
@@ -328,10 +414,51 @@ def _failed_query(
         "query": str(record.get("query") or "").strip(),
         "source_event_indices": list(_integers(record.get("source_event_indices"))),
         "answer": list(_mappings(record.get("answer"))),
+        "trace_answer": list(_mappings(record.get("trace_answer"))),
         "candidate_answers": list(_mappings(record.get("candidate_answers"))),
         "skipped": False,
-        "routes": {route: {"error": error, "hits": []} for route in routes},
+        "routes": {
+            route: {"error": error, "route_fidelity": False, "hits": []} for route in routes
+        },
     }
+
+
+def _gold_problems(record: Mapping[str, object], root: Path) -> list[dict[str, str]]:
+    """List every gold path that is a glob or absent from the checked-out tree.
+
+    Deduplicated by path so a file listed as both primary and bonus gold is
+    reported once, under the first field that names it.
+    """
+    problems: list[dict[str, str]] = []
+    seen: set[str] = set()
+    for field_name in _GOLD_FIELDS:
+        for location in _mappings(record.get(field_name)):
+            file = _path(location.get("file"))
+            if not file or file in seen:
+                continue
+            seen.add(file)
+            reason = _gold_path_problem(file, root)
+            if reason is not None:
+                problems.append({"file": file, "reason": reason, "field": field_name})
+    return problems
+
+
+def _gold_path_problem(file: str, root: Path) -> str | None:
+    """Classify one gold path: ``glob``, ``missing``, or None when it is valid."""
+    if any(character in file for character in _GLOB_CHARS):
+        return "glob"
+    if not (root / file).exists():
+        return "missing"
+    return None
+
+
+def _primary_gold_invalid(
+    usable_answers: Sequence[Mapping[str, object]],
+    problems: Sequence[Mapping[str, str]],
+) -> bool:
+    """True when any scoreable primary gold path cannot be trusted."""
+    invalid = {problem["file"] for problem in problems}
+    return any(_path(answer.get("file")) in invalid for answer in usable_answers)
 
 
 def _score(
@@ -339,16 +466,19 @@ def _score(
     answers: Sequence[Mapping[str, object]],
     candidate_answers: Sequence[Mapping[str, object]],
     *,
+    trace_answers: Sequence[Mapping[str, object]] = (),
     include_test_files: bool,
 ) -> tuple[dict[str, object], list[str]]:
-    """Compute file-level metrics and optional exact function-level metrics."""
-    gold_locations = [
-        answer
-        for answer in answers
-        if include_test_files or not _is_test_file(str(answer.get("file") or ""))
-    ]
-    gold_files = _unique(_path(answer.get("file")) for answer in gold_locations)
-    gold_file_set = set(gold_files)
+    """Score query gold, the augmented gold, and trace-only bonus coverage."""
+    primary = _location_metrics(hits, answers, include_test_files=include_test_files)
+    trace = _location_metrics(hits, trace_answers, include_test_files=include_test_files)
+    augmented = _location_metrics(
+        hits,
+        (*answers, *trace_answers),
+        include_test_files=include_test_files,
+    )
+    gold_file_set = set(_strings(primary.get("gold_files")))
+    trace_file_set = set(_strings(trace.get("gold_files"))) - gold_file_set
     candidate_files = (
         set(
             _unique(
@@ -358,38 +488,66 @@ def _score(
             )
         )
         - gold_file_set
+        - trace_file_set
     )
-    hit_paths = [_path(getattr(hit, "file", "")) for hit in hits]
+    hit_paths = [_hit_file(hit) for hit in hits]
     labels = [
         (
             "gold_hit"
             if path in gold_file_set
+            else "trace_answer_hit"
+            if path in trace_file_set
             else "candidate_hit"
             if path in candidate_files
             else "unlabeled_hit"
         )
         for path in hit_paths
     ]
+    metrics = dict(primary)
+    metrics["query_plus_trace_answer"] = augmented
+    metrics["trace_answer"] = {
+        "files": trace["gold_files"],
+        "functions": trace["gold_functions"],
+        "matched_files": trace["matched_files"],
+        "matched_functions": trace["matched_functions"],
+        "file_recall": trace["file_recall"],
+        "function_recall": trace["function_recall"],
+    }
+    return metrics, labels
+
+
+def _location_metrics(
+    hits: Sequence[object],
+    locations: Sequence[Mapping[str, object]],
+    *,
+    include_test_files: bool,
+) -> dict[str, object]:
+    """Compute one consistent metric set for a collection of answer locations."""
+    gold_locations = [
+        location
+        for location in locations
+        if include_test_files or not _is_test_file(str(location.get("file") or ""))
+    ]
+    gold_files = _unique(_path(location.get("file")) for location in gold_locations)
+    gold_file_set = set(gold_files)
+    hit_paths = [_hit_file(hit) for hit in hits]
     hit_files = _unique(hit_paths)
     hit_file_set = set(hit_files)
     matched_files = [file for file in gold_files if file in hit_file_set]
     first_gold_rank = next(
-        (index for index, label in enumerate(labels, 1) if label == "gold_hit"),
+        (index for index, path in enumerate(hit_paths, 1) if path in gold_file_set),
         None,
     )
 
     gold_functions = _unique_pairs(
-        (_path(answer.get("file")), _function_name(function))
-        for answer in gold_locations
-        for function in _strings(answer.get("functions"))
+        (_path(location.get("file")), _function_name(function))
+        for location in gold_locations
+        for function in _strings(location.get("functions"))
     )
-    hit_functions = _unique_pairs(
-        (_path(getattr(hit, "file", "")), _function_name(getattr(hit, "name", ""))) for hit in hits
-    )
+    hit_functions = _unique_pairs((_hit_file(hit), _function_name(_hit_name(hit))) for hit in hits)
     hit_function_set = set(hit_functions)
     matched_functions = [pair for pair in gold_functions if pair in hit_function_set]
-
-    metrics = {
+    return {
         "gold_files": gold_files,
         "gold_functions": [_pair_dict(pair) for pair in gold_functions],
         "matched_files": matched_files,
@@ -405,7 +563,6 @@ def _score(
             _ratio(len(matched_functions), len(gold_functions)) if gold_functions else None
         ),
     }
-    return metrics, labels
 
 
 def _hit_dict(hit: object) -> dict[str, object]:
@@ -420,7 +577,89 @@ def _hit_dict(hit: object) -> dict[str, object]:
     }
 
 
-def _summarize(cases: Sequence[Mapping[str, object]], routes: Sequence[str]) -> dict[str, object]:
+def _trace_coverage(
+    cases: Sequence[Mapping[str, object]],
+    routes: Sequence[str],
+    *,
+    include_test_files: bool,
+) -> list[dict[str, object]]:
+    """Measure how the union of each trace's query hits covers its final answer."""
+    grouped: dict[tuple[str, str, str], list[Mapping[str, object]]] = {}
+    for case in cases:
+        trajectory = str(case.get("trajectory_id") or case.get("query_id") or "")
+        key = (
+            str(case.get("repo") or ""),
+            str(case.get("instance_id") or ""),
+            trajectory,
+        )
+        grouped.setdefault(key, []).append(case)
+
+    coverage: list[dict[str, object]] = []
+    for (repo, instance_id, trajectory_id), trace_cases in grouped.items():
+        trace_answers = _merge_locations(
+            *(
+                _mappings(_mapping(case.get("evaluation")).get("trace_answer"))
+                for case in trace_cases
+            )
+        )
+        trace_answers = [
+            answer
+            for answer in trace_answers
+            if include_test_files or not _is_test_file(str(answer.get("file") or ""))
+        ]
+        # Some mined traces have no patch-derived final answer. They cannot
+        # contribute a meaningful coverage denominator, so keep them only in
+        # per-query evaluation and omit them from this secondary aggregate.
+        if not trace_answers:
+            continue
+        route_coverage: dict[str, object] = {}
+        for route in routes:
+            # A degraded query still returned hits, so end-to-end coverage counts
+            # it; route fidelity is reported separately rather than used to drop
+            # the fallback's contribution.
+            completed_results = [
+                result
+                for case in trace_cases
+                for evaluation in [_mapping(case.get("evaluation"))]
+                if not evaluation.get("skipped")
+                for result in [_mapping(_mapping(evaluation.get("routes")).get(route))]
+                if "metrics" in result
+            ]
+            hits = [hit for result in completed_results for hit in _mappings(result.get("hits"))]
+            metrics = _location_metrics(
+                hits,
+                trace_answers,
+                include_test_files=include_test_files,
+            )
+            route_coverage[route] = {
+                "completed_queries": len(completed_results),
+                "faithful_queries": sum(
+                    bool(result.get("route_fidelity")) for result in completed_results
+                ),
+                "matched_files": metrics["matched_files"],
+                "matched_functions": metrics["matched_functions"],
+                "file_recall": metrics["file_recall"],
+                "function_recall": metrics["function_recall"],
+            }
+        coverage.append(
+            {
+                "repo": repo,
+                "instance_id": instance_id,
+                "trajectory_id": trajectory_id,
+                "query_count": len(trace_cases),
+                "trace_answer": trace_answers,
+                "routes": route_coverage,
+            }
+        )
+    return coverage
+
+
+def _summarize(
+    cases: Sequence[Mapping[str, object]],
+    routes: Sequence[str],
+    *,
+    trace_coverage: Sequence[Mapping[str, object]] = (),
+) -> dict[str, object]:
     summary: dict[str, object] = {}
     for route in routes:
         results = [
@@ -431,11 +670,21 @@ def _summarize(cases: Sequence[Mapping[str, object]], routes: Sequence[str]) -> 
             for route_result in [_mapping(_mapping(evaluation.get("routes")).get(route))]
         ]
         valid = [result for result in results if "metrics" in result]
+        faithful = [result for result in valid if result.get("route_fidelity")]
         metrics = [_mapping(result.get("metrics")) for result in valid]
+        augmented = [_mapping(metric.get("query_plus_trace_answer")) for metric in metrics]
+        trace_metrics = [
+            _mapping(_mapping(trace.get("routes")).get(route)) for trace in trace_coverage
+        ]
         summary[route] = {
             "queries": len(results),
             "completed": len(valid),
             "errors": sum("error" in result for result in results),
+            # Route fidelity is reported apart from retrieval quality: `completed`
+            # counts every search that returned hits (faithful or degraded), while
+            # `degraded` isolates how many fell back to another route.
+            "degraded": len(valid) - len(faithful),
+            "route_fidelity": _ratio(len(faithful), len(valid)),
             "observed_file_precision": _mean(
                 metric.get("observed_file_precision") for metric in metrics
             ),
@@ -443,6 +692,22 @@ def _summarize(cases: Sequence[Mapping[str, object]], routes: Sequence[str]) -> 
             "mrr": _mean(metric.get("mrr") for metric in metrics),
             "function_precision": _mean(metric.get("function_precision") for metric in metrics),
             "function_recall": _mean(metric.get("function_recall") for metric in metrics),
+            "query_plus_trace_answer": {
+                "observed_file_precision": _mean(
+                    metric.get("observed_file_precision") for metric in augmented
+                ),
+                "file_recall": _mean(metric.get("file_recall") for metric in augmented),
+                "mrr": _mean(metric.get("mrr") for metric in augmented),
+                "function_precision": _mean(
+                    metric.get("function_precision") for metric in augmented
+                ),
+                "function_recall": _mean(metric.get("function_recall") for metric in augmented),
+            },
+            "trace_answer_coverage": {
+                "traces": len(trace_metrics),
+                "file_recall": _mean(metric.get("file_recall") for metric in trace_metrics),
+                "function_recall": _mean(metric.get("function_recall") for metric in trace_metrics),
+            },
         }
     return summary
 
@@ -480,6 +745,11 @@ def _path(value: object) -> str:
     return str(value or "").strip().replace("\\", "/").removeprefix("./")
 
 
+def _text_or_none(value: object) -> str | None:
+    """Normalize an optional string field, treating blank as absent."""
+    return value.strip() if isinstance(value, str) and value.strip() else None
+
+
 def _function_name(value: object) -> str:
     return str(value or "").strip().split("(", 1)[0].rsplit(".", 1)[-1]
 
@@ -490,6 +760,18 @@ def _mappings(value: object) -> tuple[Mapping[str, object], ...]:
 
 def _mapping(value: object) -> Mapping[str, object]:
     return value if isinstance(value, Mapping) else {}
+
+
+def _hit_file(hit: object) -> str:
+    """Read a normalized hit path from either runtime objects or saved mappings."""
+    value = hit.get("file") if isinstance(hit, Mapping) else getattr(hit, "file", "")
+    return _path(value)
+
+
+def _hit_name(hit: object) -> str:
+    """Read a hit name from either runtime objects or saved mappings."""
+    value = hit.get("name") if isinstance(hit, Mapping) else getattr(hit, "name", "")
+    return str(value or "")
 
 
 def _integers(value: object) -> tuple[int, ...]:
@@ -512,6 +794,23 @@ def _unique(values: Any) -> list[str]:
 
 def _unique_pairs(values: Any) -> list[tuple[str, str]]:
     return list(dict.fromkeys(pair for pair in values if all(pair)))
+
+
+def _merge_locations(
+    *groups: Sequence[Mapping[str, object]],
+) -> list[dict[str, object]]:
+    """Union answer locations by file while preserving first-seen order."""
+    merged: dict[str, list[str]] = {}
+    for group in groups:
+        for location in group:
+            file = _path(location.get("file"))
+            if not file:
+                continue
+            functions = merged.setdefault(file, [])
+            for function in _strings(location.get("functions")):
+                if function not in functions:
+                    functions.append(function)
+    return [{"file": file, "functions": functions} for file, functions in merged.items()]
 
 
 def _pair_dict(pair: tuple[str, str]) -> dict[str, str]:

@@ -108,6 +108,7 @@ class Project:
         vocab_size: int = DEFAULT_VOCAB,
         vocab_min_df: int = DEFAULT_VOCAB_MIN_DF,
         name: str = "",
+        commit: str = "",
         verbose: bool = True,
         **grounding: Any,
     ) -> Project:
@@ -120,6 +121,10 @@ class Project:
         ``index_dir`` defaults to ``<root>/.codesense``. Passing None for it
         explicitly is not the same as omitting it -- None means build in memory
         and save nothing.
+
+        ``commit`` records the repository revision being indexed so a caller can
+        later refuse to reuse an index whose commit no longer matches its
+        checkout. It is metadata only; nothing here verifies it against git.
         """
         from codesense.indexing.finetune import FinetuneConfig
         from codesense.indexing.finetune.corpus import CorpusStore
@@ -172,6 +177,7 @@ class Project:
                 project=project_name,
                 root=str(source),
                 built_at=datetime.now(timezone.utc).isoformat(timespec="seconds"),
+                commit=commit,
                 symbols=stats.symbols,
                 declarations=stats.declarations,
                 files=stats.symbols - stats.declarations,

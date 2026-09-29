@@ -132,6 +132,8 @@ def _run_cases(
             written += len(rows)
             search_episodes += search_count
             eligible_episodes += eligible_count
+            if processed % 10 == 0:
+                break
     return {
         "processed_traces": processed,
         "search_episodes": search_episodes,

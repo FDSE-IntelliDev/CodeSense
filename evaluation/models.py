@@ -112,6 +112,9 @@ class PreparedQuery:
     issue_statement: str
     query: str
     answer: tuple[CodeLocation, ...]
+    #: Repository revision the gold was mined against. Carried through so the
+    #: evaluator can check out the exact version instead of the latest HEAD.
+    base_commit: str | None = None
     trace_answer: tuple[CodeLocation, ...] = ()
     candidate_answers: tuple[CodeLocation, ...] = ()
     usage_evidence: tuple[UsageEvidence, ...] = ()
@@ -131,6 +134,7 @@ class PreparedQuery:
             "trajectory_id": self.trajectory_id,
             "issue_statement": self.issue_statement,
             "query": self.query,
+            "base_commit": self.base_commit,
             "answer": [location.to_dict() for location in self.answer],
             "trace_answer": [location.to_dict() for location in self.trace_answer],
             "candidate_answers": [location.to_dict() for location in self.candidate_answers],

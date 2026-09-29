@@ -14,6 +14,9 @@ __all__ = ["extract_patch_locations", "iter_jsonl", "normalize_record"]
 _DIFF_HEADER = re.compile(r"^diff --git a/(.+) b/(.+)$")
 _HUNK_HEADER = re.compile(r"^@@ .*? @@\s*(.*)$")
 _IDENTIFIER = re.compile(r"[A-Za-z_$][\w$]*")
+# SWE-rebench task prompts embed the revision as prose --
+# "...the base commit <sha>..." -- instead of a structured field.
+_BASE_COMMIT_PHRASE = re.compile(r'base commit["\s:=]*([0-9a-f]{40})', re.IGNORECASE)
 _CONTROL_WORDS = {"catch", "do", "for", "if", "new", "return", "switch", "throw", "while"}
 _IGNORED_DIRS = {"build", "generated", "target", "test", "tests"}
 
@@ -251,7 +254,25 @@ def _base_commit(record: Mapping[str, object]) -> str | None:
     value = record.get("base_commit")
     if not value and isinstance(record.get("metadata"), Mapping):
         value = record["metadata"].get("base_commit")  # type: ignore[index]
-    return _as_optional_text(value)
+    structured = _as_optional_text(value)
+    if structured:
+        return structured
+    # Datasets such as SWE-rebench-V2 carry no structured commit; fall back to
+    # the SHA embedded in the task-prompt prose so the trace stays versionable.
+    return _base_commit_from_trajectory(record.get("trajectory"))
+
+
+def _base_commit_from_trajectory(trajectory: object) -> str | None:
+    """Scan trajectory message text for the first ``base commit <sha>`` mention."""
+    if not isinstance(trajectory, list):
+        return None
+    for message in trajectory:
+        if not isinstance(message, Mapping):
+            continue
+        match = _BASE_COMMIT_PHRASE.search(_content_text(message.get("content")))
+        if match:
+            return match.group(1)
+    return None
 
 
 def _reference_patch(record: Mapping[str, object]) -> str | None:

@@ -59,6 +59,140 @@ def test_project_path_clones_missing_repository(tmp_path: Path) -> None:
     ]
 
 
+def test_project_path_clones_full_and_checks_out_base_commit(tmp_path: Path) -> None:
+    module = _load_script()
+    projects = tmp_path / "projects"
+    target = projects / "owner__repo"
+    calls: list[list[str]] = []
+
+    def run(command: list[str], *, check: bool) -> None:
+        assert check is True
+        calls.append(command)
+        if command[1] == "clone":
+            Path(command[-1]).mkdir(parents=True)
+
+    found = module._project_path("owner/repo", {}, projects, base_commit="abc123", run=run)
+
+    # A shallow clone of the default branch cannot reach an arbitrary commit, so
+    # the clone is full and then checked out to the exact revision.
+    assert found == target.resolve()
+    assert calls == [
+        ["git", "clone", "https://github.com/owner/repo.git", str(target)],
+        ["git", "-C", str(target), "checkout", "abc123"],
+    ]
+
+
+def test_project_path_checks_out_base_commit_in_an_existing_clone(tmp_path: Path) -> None:
+    module = _load_script()
+    projects = tmp_path / "projects"
+    target = projects / "owner__repo"
+    target.mkdir(parents=True)
+    calls: list[list[str]] = []
+
+    def run(command: list[str], *, check: bool) -> None:
+        assert check is True
+        calls.append(command)
+
+    found = module._project_path("owner/repo", {}, projects, base_commit="abc123", run=run)
+
+    # A previously cached (possibly shallow) clone is fetched and moved onto the
+    # commit rather than reused at whatever revision it happens to be.
+    assert found == target.resolve()
+    assert calls == [
+        ["git", "-C", str(target), "fetch", "--depth", "1", "origin", "abc123"],
+        ["git", "-C", str(target), "checkout", "abc123"],
+    ]
+
+
+def test_open_project_names_the_index_by_repo_and_commit(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    module = _load_script()
+    built: list[tuple[str, object]] = []
+
+    class FakeProject:
+        def __init__(self, commit: str) -> None:
+            self.index = SimpleNamespace(meta=SimpleNamespace(commit=commit))
+
+        @classmethod
+        def open(cls, index_dir: object, *, llm: object = None) -> FakeProject:
+            return cls("abc123")
+
+        @classmethod
+        def build(cls, root: object, *, index_dir: object, **kwargs: object) -> FakeProject:
+            built.append((Path(index_dir).name, kwargs.get("commit")))
+            return cls(str(kwargs.get("commit", "")))
+
+    monkeypatch.setattr(module, "Project", FakeProject)
+    indexes = tmp_path / "indexes"
+
+    module._open_project("owner/repo", tmp_path, indexes, None, base_commit="abc123")
+
+    assert built == [("owner__repo__abc123", "abc123")]
+
+
+def test_open_project_reuses_an_index_whose_meta_commit_matches(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    module = _load_script()
+    index_dir = tmp_path / "indexes" / "owner__repo__abc123"
+    index_dir.mkdir(parents=True)
+    (index_dir / "meta.json").write_text("{}", encoding="utf-8")
+    calls = {"open": 0, "build": 0}
+
+    class FakeProject:
+        def __init__(self, commit: str) -> None:
+            self.index = SimpleNamespace(meta=SimpleNamespace(commit=commit))
+
+        @classmethod
+        def open(cls, index_dir: object, *, llm: object = None) -> FakeProject:
+            calls["open"] += 1
+            return cls("abc123")
+
+        @classmethod
+        def build(cls, root: object, *, index_dir: object, **kwargs: object) -> FakeProject:
+            calls["build"] += 1
+            return cls(str(kwargs.get("commit", "")))
+
+    monkeypatch.setattr(module, "Project", FakeProject)
+
+    module._open_project("owner/repo", tmp_path, tmp_path / "indexes", None, base_commit="abc123")
+
+    assert calls == {"open": 1, "build": 0}
+
+
+def test_open_project_rebuilds_when_the_meta_commit_mismatches(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    module = _load_script()
+    index_dir = tmp_path / "indexes" / "owner__repo__abc123"
+    index_dir.mkdir(parents=True)
+    (index_dir / "meta.json").write_text("{}", encoding="utf-8")
+    calls = {"open": 0, "build": 0}
+
+    class FakeProject:
+        def __init__(self, commit: str) -> None:
+            self.index = SimpleNamespace(meta=SimpleNamespace(commit=commit))
+
+        @classmethod
+        def open(cls, index_dir: object, *, llm: object = None) -> FakeProject:
+            calls["open"] += 1
+            return cls("stale-commit")
+
+        @classmethod
+        def build(cls, root: object, *, index_dir: object, **kwargs: object) -> FakeProject:
+            calls["build"] += 1
+            return cls(str(kwargs.get("commit", "")))
+
+    monkeypatch.setattr(module, "Project", FakeProject)
+
+    module._open_project("owner/repo", tmp_path, tmp_path / "indexes", None, base_commit="abc123")
+
+    # The directory name promises a commit the artifact does not carry, so it is
+    # rebuilt instead of silently scoring against the wrong version.
+    assert calls == {"open": 1, "build": 1}
+
+
 def test_score_reports_file_and_function_metrics_without_test_gold() -> None:
     module = _load_script()
     answers = [
@@ -75,7 +209,11 @@ def test_score_reports_file_and_function_metrics_without_test_gold() -> None:
 
     score, labels = module._score(hits, answers, candidate_answers=[], include_test_files=False)
 
-    assert score == {
+    assert {
+        key: value
+        for key, value in score.items()
+        if key not in {"query_plus_trace_answer", "trace_answer"}
+    } == {
         "gold_files": [
             "src/main/java/example/Client.java",
             "src/main/java/example/Retry.java",
@@ -92,6 +230,15 @@ def test_score_reports_file_and_function_metrics_without_test_gold() -> None:
         "mrr": 1.0,
         "function_precision": 0.25,
         "function_recall": 1.0,
+    }
+    assert score["query_plus_trace_answer"]["file_recall"] == 1.0
+    assert score["trace_answer"] == {
+        "files": [],
+        "functions": [],
+        "matched_files": [],
+        "matched_functions": [],
+        "file_recall": 0.0,
+        "function_recall": None,
     }
     assert labels == ["gold_hit", "gold_hit", "unlabeled_hit", "gold_hit"]
 
@@ -116,6 +263,44 @@ def test_score_reports_observed_precision_rank_and_candidate_labels() -> None:
     assert metrics["first_gold_rank"] == 2
     assert metrics["mrr"] == 0.5
     assert labels == ["candidate_hit", "gold_hit", "unlabeled_hit"]
+
+
+def test_score_keeps_query_metrics_and_adds_trace_answer_bonus_metrics() -> None:
+    module = _load_script()
+    hits = [
+        SimpleNamespace(file="src/Query.java", name="queryMethod"),
+        SimpleNamespace(file="src/Trace.java", name="traceMethod"),
+        SimpleNamespace(file="src/Candidate.java", name="Candidate"),
+        SimpleNamespace(file="src/Other.java", name="Other"),
+    ]
+
+    metrics, labels = module._score(
+        hits,
+        answers=[{"file": "src/Query.java", "functions": ["queryMethod"]}],
+        candidate_answers=[{"file": "src/Candidate.java", "functions": []}],
+        trace_answers=[
+            {"file": "src/Query.java", "functions": ["traceOnlyMethod"]},
+            {"file": "src/Trace.java", "functions": ["traceMethod"]},
+        ],
+        include_test_files=False,
+    )
+
+    assert metrics["observed_file_precision"] == pytest.approx(1 / 4)
+    assert metrics["file_recall"] == 1.0
+    assert metrics["query_plus_trace_answer"]["observed_file_precision"] == pytest.approx(2 / 4)
+    assert metrics["query_plus_trace_answer"]["file_recall"] == 1.0
+    assert metrics["trace_answer"] == {
+        "files": ["src/Query.java", "src/Trace.java"],
+        "functions": [
+            {"file": "src/Query.java", "function": "traceOnlyMethod"},
+            {"file": "src/Trace.java", "function": "traceMethod"},
+        ],
+        "matched_files": ["src/Query.java", "src/Trace.java"],
+        "matched_functions": [{"file": "src/Trace.java", "function": "traceMethod"}],
+        "file_recall": 1.0,
+        "function_recall": 0.5,
+    }
+    assert labels == ["gold_hit", "trace_answer_hit", "candidate_hit", "unlabeled_hit"]
 
 
 def test_evaluate_query_runs_every_route_and_keeps_ranked_hits() -> None:
@@ -147,6 +332,7 @@ def test_evaluate_query_runs_every_route_and_keeps_ranked_hits() -> None:
         "query": "Find the client send method.",
         "source_event_indices": [4],
         "answer": [{"file": "src/main/java/example/Client.java", "functions": ["send"]}],
+        "trace_answer": [{"file": "src/main/java/example/Client.java", "functions": ["send"]}],
         "candidate_answers": [{"file": "src/main/java/example/ClientConfig.java", "functions": []}],
     }
 
@@ -181,18 +367,196 @@ def test_evaluate_query_runs_every_route_and_keeps_ranked_hits() -> None:
     assert result["candidate_answers"] == [
         {"file": "src/main/java/example/ClientConfig.java", "functions": []}
     ]
+    assert result["trace_answer"] == [
+        {"file": "src/main/java/example/Client.java", "functions": ["send"]}
+    ]
+    assert result["routes"]["codegen"]["metrics"]["trace_answer"]["matched_files"] == [
+        "src/main/java/example/Client.java"
+    ]
 
 
-def test_evaluate_query_does_not_score_a_fallback_as_the_requested_route() -> None:
+def test_trace_coverage_includes_fallbacks_in_end_to_end_coverage() -> None:
+    module = _load_script()
+    trace_answer = [
+        {"file": "src/A.java", "functions": ["a"]},
+        {"file": "src/B.java", "functions": ["b"]},
+    ]
+    cases = [
+        {
+            "query_id": "q1",
+            "repo": "owner/repo",
+            "instance_id": "issue-1",
+            "trajectory_id": "trace-1",
+            "evaluation": {
+                "trace_answer": trace_answer,
+                "skipped": False,
+                "routes": {
+                    "planned": {
+                        "actual_route": "planned",
+                        "route_fidelity": True,
+                        "metrics": {},
+                        "hits": [{"file": "src/A.java", "name": "a"}],
+                    },
+                    "codegen": {
+                        # codegen degraded to lexical but still returned a hit;
+                        # end-to-end coverage must not discard it.
+                        "actual_route": "lexical",
+                        "route_fidelity": False,
+                        "metrics": {},
+                        "hits": [{"file": "src/B.java", "name": "b"}],
+                    },
+                },
+            },
+        },
+        {
+            "query_id": "q2",
+            "repo": "owner/repo",
+            "instance_id": "issue-1",
+            "trajectory_id": "trace-1",
+            "evaluation": {
+                "trace_answer": trace_answer,
+                "skipped": False,
+                "routes": {
+                    "planned": {
+                        "actual_route": "planned",
+                        "route_fidelity": True,
+                        "metrics": {},
+                        "hits": [{"file": "src/B.java", "name": "b"}],
+                    },
+                    "codegen": {
+                        "actual_route": "codegen",
+                        "route_fidelity": True,
+                        "metrics": {},
+                        "hits": [{"file": "src/A.java", "name": "a"}],
+                    },
+                },
+            },
+        },
+    ]
+
+    coverage = module._trace_coverage(cases, ("planned", "codegen"), include_test_files=False)
+
+    assert coverage == [
+        {
+            "repo": "owner/repo",
+            "instance_id": "issue-1",
+            "trajectory_id": "trace-1",
+            "query_count": 2,
+            "trace_answer": trace_answer,
+            "routes": {
+                "planned": {
+                    "completed_queries": 2,
+                    "faithful_queries": 2,
+                    "matched_files": ["src/A.java", "src/B.java"],
+                    "matched_functions": [
+                        {"file": "src/A.java", "function": "a"},
+                        {"file": "src/B.java", "function": "b"},
+                    ],
+                    "file_recall": 1.0,
+                    "function_recall": 1.0,
+                },
+                "codegen": {
+                    "completed_queries": 2,
+                    "faithful_queries": 1,
+                    "matched_files": ["src/A.java", "src/B.java"],
+                    "matched_functions": [
+                        {"file": "src/A.java", "function": "a"},
+                        {"file": "src/B.java", "function": "b"},
+                    ],
+                    "file_recall": 1.0,
+                    "function_recall": 1.0,
+                },
+            },
+        }
+    ]
+
+    summary = module._summarize(cases, ("planned", "codegen"), trace_coverage=coverage)
+    assert summary["planned"]["trace_answer_coverage"] == {
+        "traces": 1,
+        "file_recall": 1.0,
+        "function_recall": 1.0,
+    }
+    assert summary["codegen"]["trace_answer_coverage"] == {
+        "traces": 1,
+        "file_recall": 1.0,
+        "function_recall": 1.0,
+    }
+
+
+def test_summarize_separates_route_fidelity_from_retrieval_quality() -> None:
+    module = _load_script()
+    cases = [
+        {
+            "evaluation": {
+                "skipped": False,
+                "routes": {"codegen": {"route_fidelity": True, "metrics": {"file_recall": 1.0}}},
+            }
+        },
+        {
+            "evaluation": {
+                "skipped": False,
+                "routes": {
+                    # Degraded but still produced hits and metrics.
+                    "codegen": {"route_fidelity": False, "metrics": {"file_recall": 0.0}}
+                },
+            }
+        },
+        {
+            "evaluation": {
+                "skipped": False,
+                "routes": {"codegen": {"error": "boom", "route_fidelity": False, "hits": []}},
+            }
+        },
+    ]
+
+    summary = module._summarize(cases, ("codegen",))
+
+    assert summary["codegen"]["queries"] == 3
+    # Two produced metrics (one faithful, one degraded); one raised.
+    assert summary["codegen"]["completed"] == 2
+    assert summary["codegen"]["errors"] == 1
+    assert summary["codegen"]["degraded"] == 1
+    assert summary["codegen"]["route_fidelity"] == 0.5
+    # Retrieval quality is averaged over both faithful and degraded results.
+    assert summary["codegen"]["file_recall"] == 0.5
+
+
+def test_trace_coverage_omits_traces_without_a_final_answer() -> None:
+    module = _load_script()
+    cases = [
+        {
+            "query_id": "q1",
+            "repo": "owner/repo",
+            "trajectory_id": "trace-without-answer",
+            "evaluation": {"trace_answer": [], "skipped": False, "routes": {}},
+        }
+    ]
+
+    assert module._trace_coverage(cases, ("lexical",), include_test_files=False) == []
+
+
+def test_evaluate_query_keeps_metrics_and_flags_route_fidelity_on_fallback() -> None:
     module = _load_script()
 
     class Project:
         def search(self, query: str, *, route: str, limit: int) -> object:
+            # codegen degrades to lexical, and the lexical fallback still hits gold.
             return SimpleNamespace(
                 route="lexical",
                 elapsed=0.1,
                 notes=["codegen failed; fell back to lexical"],
-                hits=[],
+                script="",
+                hits=[
+                    SimpleNamespace(
+                        rank=1,
+                        name="send",
+                        kind="method",
+                        file="src/main/java/example/Client.java",
+                        line=12,
+                        score=0.9,
+                        why="send@name",
+                    )
+                ],
             )
 
     record = {
@@ -204,9 +568,154 @@ def test_evaluate_query_does_not_score_a_fallback_as_the_requested_route() -> No
     result = module._evaluate_query(Project(), record, routes=("codegen",), limit=20)
     codegen = result["routes"]["codegen"]
 
+    # The fallback's real end-to-end quality is preserved, not discarded ...
     assert codegen["actual_route"] == "lexical"
-    assert codegen["error"] == "requested codegen but search used lexical"
-    assert "metrics" not in codegen
+    assert codegen["metrics"]["file_recall"] == 1.0
+    # ... and route fidelity is tracked as a separate, explicit dimension.
+    assert codegen["route_fidelity"] is False
+    assert "error" not in codegen
+
+
+def test_evaluate_query_marks_a_faithful_route_with_route_fidelity() -> None:
+    module = _load_script()
+
+    class Project:
+        def search(self, query: str, *, route: str, limit: int) -> object:
+            return SimpleNamespace(
+                route=route,
+                elapsed=0.1,
+                notes=[],
+                script="",
+                hits=[
+                    SimpleNamespace(
+                        rank=1,
+                        name="send",
+                        kind="method",
+                        file="src/main/java/example/Client.java",
+                        line=12,
+                        score=0.9,
+                        why="send@name",
+                    )
+                ],
+            )
+
+    record = {
+        "query": "Find the client send method.",
+        "answer": [{"file": "src/main/java/example/Client.java", "functions": ["send"]}],
+    }
+
+    result = module._evaluate_query(Project(), record, routes=("codegen",), limit=20)
+    codegen = result["routes"]["codegen"]
+
+    assert codegen["route_fidelity"] is True
+    assert codegen["metrics"]["file_recall"] == 1.0
+
+
+def test_evaluate_query_records_error_without_metrics_when_search_raises() -> None:
+    module = _load_script()
+
+    class Project:
+        def search(self, query: str, *, route: str, limit: int) -> object:
+            raise RuntimeError("the model could not interpret the query")
+
+    record = {
+        "query": "Find the client send method.",
+        "answer": [{"file": "src/main/java/example/Client.java", "functions": ["send"]}],
+    }
+
+    result = module._evaluate_query(Project(), record, routes=("planned",), limit=20)
+    planned = result["routes"]["planned"]
+
+    assert planned["error"] == "RuntimeError: the model could not interpret the query"
+    assert planned["route_fidelity"] is False
+    assert planned["hits"] == []
+    assert "metrics" not in planned
+
+
+def test_gold_problems_flags_globs_and_paths_missing_from_the_checkout(
+    tmp_path: Path,
+) -> None:
+    module = _load_script()
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "Real.java").write_text("class Real {}", encoding="utf-8")
+    record = {
+        "answer": [
+            {"file": "src/Real.java", "functions": []},
+            {"file": "src/Gone.java", "functions": []},
+        ],
+        "trace_answer": [{"file": "*.java", "functions": []}],
+    }
+
+    problems = module._gold_problems(record, tmp_path)
+
+    assert {"file": "src/Gone.java", "reason": "missing", "field": "answer"} in problems
+    assert {"file": "*.java", "reason": "glob", "field": "trace_answer"} in problems
+    # An existing, well-formed path is not a problem.
+    assert all(problem["file"] != "src/Real.java" for problem in problems)
+
+
+def test_evaluate_query_skips_when_primary_gold_is_missing_from_the_checkout(
+    tmp_path: Path,
+) -> None:
+    module = _load_script()
+
+    class Project:
+        def search(self, query: str, *, route: str, limit: int) -> object:
+            raise AssertionError("invalid gold must not reach the search")
+
+    record = {
+        "query": "Find the client send method.",
+        "answer": [{"file": "src/Gone.java", "functions": ["send"]}],
+    }
+
+    result = module._evaluate_query(Project(), record, routes=("lexical",), limit=20, root=tmp_path)
+
+    assert result["skipped"] is True
+    assert result["skip_reason"] == "invalid gold path"
+    assert result["gold_problems"] == [
+        {"file": "src/Gone.java", "reason": "missing", "field": "answer"}
+    ]
+    assert result["routes"] == {}
+
+
+def test_evaluate_query_scores_when_only_trace_gold_is_invalid(tmp_path: Path) -> None:
+    module = _load_script()
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "Real.java").write_text("class Real {}", encoding="utf-8")
+
+    class Project:
+        def search(self, query: str, *, route: str, limit: int) -> object:
+            return SimpleNamespace(
+                route=route,
+                elapsed=0.0,
+                notes=[],
+                script="",
+                hits=[
+                    SimpleNamespace(
+                        rank=1,
+                        name="Real",
+                        kind="file",
+                        file="src/Real.java",
+                        line=1,
+                        score=1.0,
+                        why="real@name",
+                    )
+                ],
+            )
+
+    record = {
+        "query": "Find the real logic.",
+        "answer": [{"file": "src/Real.java", "functions": []}],
+        "trace_answer": [{"file": "*.java", "functions": []}],
+    }
+
+    result = module._evaluate_query(Project(), record, routes=("lexical",), limit=20, root=tmp_path)
+
+    # Primary gold is valid, so the case is still scored; the bad trace gold is
+    # surfaced for inspection instead of silently deflating a bonus metric.
+    assert result["skipped"] is False
+    assert result["routes"]["lexical"]["metrics"]["file_recall"] == 1.0
+    assert {"file": "*.java", "reason": "glob", "field": "trace_answer"} in result["gold_problems"]
 
 
 def test_main_streams_each_completed_query_and_summary(
@@ -217,6 +726,9 @@ def test_main_streams_each_completed_query_and_summary(
     output = tmp_path / "report.json"
     project_root = tmp_path / "repo"
     project_root.mkdir()
+    # The gold must exist in the checkout or the case is (correctly) skipped.
+    (project_root / "src").mkdir()
+    (project_root / "src" / "Client.java").write_text("class Client {}", encoding="utf-8")
     benchmark.write_text(
         json.dumps(
             {
@@ -227,6 +739,7 @@ def test_main_streams_each_completed_query_and_summary(
                 "query": "Find the production logic responsible for creating clients.",
                 "source_event_indices": [3, 8],
                 "answer": [{"file": "src/Client.java", "functions": []}],
+                "trace_answer": [{"file": "src/Client.java", "functions": []}],
             }
         )
         + "\n",
@@ -278,7 +791,7 @@ def test_main_streams_each_completed_query_and_summary(
     monkeypatch.setattr(module, "INDEXES_DIR", str(tmp_path / "indexes"))
     monkeypatch.setattr(module, "ROUTES", ("lexical",))
     monkeypatch.setattr(module, "_llm", lambda: None)
-    monkeypatch.setattr(module, "_open_project", lambda *_args: Project())
+    monkeypatch.setattr(module, "_open_project", lambda *_args, **_kwargs: Project())
     monkeypatch.setattr(module, "_start_viewer", lambda _meta: viewer, raising=False)
     waited_for: list[str] = []
     monkeypatch.setattr(
@@ -294,7 +807,11 @@ def test_main_streams_each_completed_query_and_summary(
     assert [record["key"] for record in viewer.records] == ["1"]
     assert viewer.records[0]["evaluation"] == report["cases"][0]["evaluation"]
     assert viewer.records[0]["evaluation"]["routes"]["lexical"]["metrics"]["file_recall"] == 1.0
-    assert viewer.summary == report["summary"]
+    assert report["trace_coverage"][0]["routes"]["lexical"]["file_recall"] == 1.0
+    assert viewer.summary == {
+        "routes": report["summary"],
+        "trace_coverage": report["trace_coverage"],
+    }
     assert waited_for == [viewer.url]
     assert viewer.closed is True
     assert viewer.url in capsys.readouterr().out
@@ -398,7 +915,7 @@ def test_viewer_startup_and_publish_failures_do_not_stop_the_report(
     monkeypatch.setattr(module, "PROJECT_PATHS", {"owner/repo": str(project_root)})
     monkeypatch.setattr(module, "ROUTES", ("lexical",))
     monkeypatch.setattr(module, "_llm", lambda: None)
-    monkeypatch.setattr(module, "_open_project", lambda *_args: Project())
+    monkeypatch.setattr(module, "_open_project", lambda *_args, **_kwargs: Project())
     monkeypatch.setattr(module, "_start_viewer", lambda _meta: viewer)
 
     assert module.main() == 0
