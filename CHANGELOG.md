@@ -1,5 +1,51 @@
 # CodeSense Changelog
 
+## 2026-09-29 — 评测版本对齐与降级指标保留
+
+- benchmark 记录新增 `base_commit`：`PreparedQuery` 携带该字段并在 `mine_queries` 从 trace
+  透传，挖掘产物 jsonl 因此保留 gold 所属的代码版本。提取来源因数据集而异：
+  `open_swe_traces._base_commit` 先找结构化字段，缺失时兜底解析 SWE-rebench-V2 提示词散文里
+  的固定短语 `base commit <sha>`（本项目源数据无结构化 commit，169/169 条靠兜底命中）。
+- evaluator 按 `base_commit` checkout：缺失时全量 clone 后 checkout 到该 commit，已缓存目录
+  fetch+checkout；索引目录名改为 `repo__commit` 隔离，`IndexMeta` 新增 `commit` 字段
+  （`Project.build(commit=...)` 写入），复用前校验 `meta.json` 的 commit，不一致则重建。
+  未提供 commit 时行为与旧的浅克隆一致。手动指定的仓库路径不做 checkout，避免破坏用户仓库。
+- gold 路径预检：搜索前对照 checkout 校验每条 `answer/trace_answer/candidate_answers`，
+  拒绝 `*?[]` 等 glob、标记不存在的路径；主 gold 非法的 case 跳过评分并记 `skip_reason`
+  与 `gold_problems`，仅加分 gold 非法则记录但不跳过。
+- 降级不再丢指标：`_evaluate_query` 无条件保留已算出的 metrics，并以 `route_fidelity`
+  单独标记是否降级；`_summarize` 新增 `degraded`、`route_fidelity`，检索质量在保真与降级
+  结果上一并求均值。**此举改变 2026-09-24 的行为**：降级结果现在计入该 route 的 trace 覆盖，
+  路由保真度改为独立维度统计。
+
+## 2026-09-24 — 多 query trace 评测
+
+- evaluator 同时计算 query 自身 answer 指标与 `answer ∪ trace_answer` 加分指标，并单独记录
+  每条 query 命中的 trace final answer；现有根级指标语义保持不变。
+- 同一 trace 的各 query 搜索结果按 route 合并，新增不参与主搜索评分的最终答案覆盖率；
+  requested route 发生降级的结果不会计入该 route 的 trace 覆盖。
+- 实时与离线 viewer 增加 query/trace 两组答案、紫色 trace-only 命中、双指标和逐 trace
+  覆盖展示，并继续兼容没有 `trace_answer` 的旧评估报告。
+
+## 2026-09-23 — codegen 空结果与失败可观测性
+
+- codegen 静态校验耗尽、修复失败、执行异常或返回空 `Frag` 时统一降级到 lexical，并保留
+  最后一次生成的脚本、尝试次数和精简诊断，便于在 evaluation 报告中复盘失败原因。
+- codegen 算子约束明确 `contains` 的 container → member 方向、Java 类型的
+  class/interface/record/enum 范围，以及空概念分支不得参与硬交集的主锚点回退规则。
+
+## 2026-09-21 — codegen 脚本预检与修复
+
+- codegen 在执行前用 AST 和实际注入的算子、构造器签名检查直接调用，定位缺少 `ctx`、未知参数等错误的行号；校验不执行算子。
+- 静态校验失败时携带原脚本和诊断请求模型修复，默认最多修复一次，可通过 `max_codegen_repairs` 或 CLI 的 `--codegen-repairs` 调整；每版脚本重新校验后才运行。
+- 执行开始后不重试，避免重复调用付费 `intent`；最终失败仍降级 lexical，并在搜索日志及结果备注中保留尝试次数和失败原因。
+
+## 2026-09-21 — 离线评估报告页面
+
+- 新增 `evaluation/evaluation_viewer.py`，从可在文件顶部配置的评估 JSON 路径读取已完成
+  的报告，复用现有评估 HTML 展示指标、标准答案、搜索命中及红绿差异；支持新旧两种
+  `cases` 结构，不需要重新运行搜索。
+
 ## 2026-09-21 — 完整代码元素名检索
 
 - 索引在保留现有标识符拆词的同时，额外保存元素完整名称的 `casefold` 形式；查询词优先按

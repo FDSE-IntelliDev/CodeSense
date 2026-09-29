@@ -3,12 +3,12 @@
 研究脚手架：trace 适配、query mining、指标、评测编排和实验归档。
 
 当前 query mining 只读取严格满足 `resolved == 1` 的 Open-SWE-Traces Java 记录。一条
-trace 最多调用一次 LLM，并产生一条行为、职责、状态变化或失效机制导向的英语语义 query。
+trace 可以产生多条行为、职责、状态变化或失效机制导向的英语语义 query。
 模型输入由完整原始 issue 和每个搜索事件的前一条、当前、后一条 assistant/tool 事件组成；
 reference patch 不进入 prompt。
 
-输出使用扁平 schema：顶层 `query` 是传给 `Project.search()` 的唯一查询，顶层 `answer`
-来自 reference patch 中被修改的既有生产 Java 文件和可确定函数。新增、删除和测试文件不进入
+输出使用扁平 schema：每行是一条 query，顶层 `answer` 是该 query 自身的检索答案；同一
+trace 的多行共享 `trace_answer`，表示 issue 修复任务的最终答案。新增、删除和测试文件不进入
 主答案；函数无法确定时仍保留文件，并令 `functions` 为空。
 
 ## 生成语义 query
@@ -35,6 +35,9 @@ conda run -n codesearch python scripts/mine_trace_queries.py
   "answer": [
     {"file": "src/main/java/Navigation.java", "functions": ["afterCursor"]}
   ],
+  "trace_answer": [
+    {"file": "src/main/java/Navigation.java", "functions": ["afterCursor", "page"]}
+  ],
   "source_event_indices": [7, 8, 9],
   "strategy": "semantic-generated",
   "source_events": [],
@@ -57,6 +60,10 @@ conda run -n codesearch python evaluation/query_viewer.py
 `scripts/evaluation.py` 对 query JSONL 中每条记录的顶层 `query` 执行一次评测，并按照
 `ROUTES` 分别运行 `lexical`、`planned`、`codegen` 中选定的搜索路径。每条路径保留 Top 20
 结果并计算文件级 Precision/Recall；存在函数 gold 时还会计算函数级 Precision/Recall。
+每条 query 同时保留两组分数：根级指标只对 query 自身的 `answer` 评分，
+`query_plus_trace_answer` 则对 `answer ∪ trace_answer` 评分；`trace_answer` 子项单独列出本次
+搜索命中的最终答案。报告还按 trace 合并所有 query 的搜索结果，在顶层 `trace_coverage`
+记录各 route 对最终答案的覆盖率；该值仅作为下游任务能力的旁证，不替代 query 自身指标。
 如果 requested route 降级为其他 route，该结果会记录为错误，不计入 requested route 指标。
 
 运行前直接编辑脚本顶部的 `BENCHMARK`、`PROJECT_PATHS`、`ROUTES` 和模型参数，然后执行：
@@ -67,11 +74,24 @@ conda run -n codesearch python scripts/evaluation.py
 
 默认会在 `127.0.0.1:8765` 启动只读的实时结果页，并只在终端打印访问地址，不会自动
 打开浏览器。手动打开该地址后，每完成一条 query 就会追加一张结果卡：绿色表示命中的
-gold 文件或函数，红色表示未命中的 gold，灰色表示额外搜索结果；页面同时显示每个 route
-的文件级和函数级 Precision/Recall。所有卡片都保留在同一页中，评测结束时展示汇总。
+query answer，紫色表示只命中 trace answer，红色表示未命中的答案，灰色表示额外搜索结果；
+页面同时显示每个 route 的 query 指标与 `query + trace answer` 指标。所有卡片都保留在同一
+页中，评测结束时展示 route 汇总及逐 trace 的最终答案覆盖情况。
 这个轻量页面只在评测进程运行期间提供；如不需要，可将脚本顶部的 `VIEWER_ENABLED` 改为
 `False`，端口可通过 `VIEWER_PORT` 调整。viewer 启动、推送或浏览器断连不会中止评测，
-最终 JSON 报告格式不受影响。
+也不会影响最终 JSON 报告写出。
+
+评测进程退出后，如需离线查看已保存的报告，修改 `evaluation/evaluation_viewer.py` 顶部的
+`INPUT` 和 `PORT`，然后运行：
+
+```bash
+conda run -n codesearch python evaluation/evaluation_viewer.py
+```
+
+默认读取 `outputs/open_swe_traces/codesense-evaluation.json`，监听 `127.0.0.1:8767`；
+终端只打印访问地址，页面继续使用上述指标、gold、搜索结果和红绿 diff 展示。它兼容当前
+单 query 的报告结构，以及早期一个 case 包含多条 `searches` 的报告结构。报告在启动时
+读取一次；若文件发生变化，重启脚本即可。按 Ctrl+C 退出页面服务。
 
 项目路径优先使用 `PROJECT_PATHS`；未映射的仓库会在 `evaluation/projects/` 中查找，
 不存在则从 GitHub 浅克隆最新默认分支。CodeSense 索引保存在
