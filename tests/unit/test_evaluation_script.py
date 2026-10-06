@@ -22,88 +22,6 @@ def _load_script() -> ModuleType:
     return module
 
 
-def test_project_path_prefers_manual_mapping(tmp_path: Path) -> None:
-    module = _load_script()
-    manual = tmp_path / "manual"
-    cached = tmp_path / "projects" / "owner__repo"
-    manual.mkdir()
-    cached.mkdir(parents=True)
-
-    found = module._project_path("owner/repo", {"owner/repo": str(manual)}, tmp_path / "projects")
-
-    assert found == manual.resolve()
-
-
-def test_project_path_clones_missing_repository(tmp_path: Path) -> None:
-    module = _load_script()
-    projects = tmp_path / "projects"
-    calls: list[list[str]] = []
-
-    def clone(command: list[str], *, check: bool) -> None:
-        assert check is True
-        calls.append(command)
-        Path(command[-1]).mkdir(parents=True)
-
-    found = module._project_path("owner/repo", {}, projects, run=clone)
-
-    assert found == (projects / "owner__repo").resolve()
-    assert calls == [
-        [
-            "git",
-            "clone",
-            "--depth",
-            "1",
-            "https://github.com/owner/repo.git",
-            str(projects / "owner__repo"),
-        ]
-    ]
-
-
-def test_project_path_clones_full_and_checks_out_base_commit(tmp_path: Path) -> None:
-    module = _load_script()
-    projects = tmp_path / "projects"
-    target = projects / "owner__repo"
-    calls: list[list[str]] = []
-
-    def run(command: list[str], *, check: bool) -> None:
-        assert check is True
-        calls.append(command)
-        if command[1] == "clone":
-            Path(command[-1]).mkdir(parents=True)
-
-    found = module._project_path("owner/repo", {}, projects, base_commit="abc123", run=run)
-
-    # A shallow clone of the default branch cannot reach an arbitrary commit, so
-    # the clone is full and then checked out to the exact revision.
-    assert found == target.resolve()
-    assert calls == [
-        ["git", "clone", "https://github.com/owner/repo.git", str(target)],
-        ["git", "-C", str(target), "checkout", "abc123"],
-    ]
-
-
-def test_project_path_checks_out_base_commit_in_an_existing_clone(tmp_path: Path) -> None:
-    module = _load_script()
-    projects = tmp_path / "projects"
-    target = projects / "owner__repo"
-    target.mkdir(parents=True)
-    calls: list[list[str]] = []
-
-    def run(command: list[str], *, check: bool) -> None:
-        assert check is True
-        calls.append(command)
-
-    found = module._project_path("owner/repo", {}, projects, base_commit="abc123", run=run)
-
-    # A previously cached (possibly shallow) clone is fetched and moved onto the
-    # commit rather than reused at whatever revision it happens to be.
-    assert found == target.resolve()
-    assert calls == [
-        ["git", "-C", str(target), "fetch", "--depth", "1", "origin", "abc123"],
-        ["git", "-C", str(target), "checkout", "abc123"],
-    ]
-
-
 def test_open_project_names_the_index_by_repo_and_commit(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -241,6 +159,66 @@ def test_score_reports_file_and_function_metrics_without_test_gold() -> None:
         "function_recall": None,
     }
     assert labels == ["gold_hit", "gold_hit", "unlabeled_hit", "gold_hit"]
+
+
+def test_score_excludes_files_and_functions_marked_absent_from_the_revision() -> None:
+    module = _load_script()
+    answers = [
+        {
+            "file": "src/Missing.java",
+            "functions": ["ghost"],
+            "file_exist": False,
+            "function_exist": {"ghost": False},
+        },
+        {
+            "file": "src/Present.java",
+            "functions": ["existing", "addedLater"],
+            "file_exist": True,
+            "function_exist": {"existing": True, "addedLater": False},
+        },
+    ]
+    hits = [
+        SimpleNamespace(file="src/Present.java", name="existing"),
+        SimpleNamespace(file="src/Missing.java", name="ghost"),
+    ]
+
+    metrics, labels = module._score(
+        hits,
+        answers,
+        candidate_answers=[],
+        include_test_files=False,
+    )
+
+    assert metrics["gold_files"] == ["src/Present.java"]
+    assert metrics["gold_functions"] == [{"file": "src/Present.java", "function": "existing"}]
+    assert metrics["matched_files"] == ["src/Present.java"]
+    assert metrics["matched_functions"] == [{"file": "src/Present.java", "function": "existing"}]
+    assert labels == ["gold_hit", "unlabeled_hit"]
+
+
+def test_evaluate_query_skips_when_all_primary_files_are_marked_absent() -> None:
+    module = _load_script()
+
+    class Project:
+        def search(self, *args: object, **kwargs: object) -> object:
+            pytest.fail("a query without scoreable primary gold must not run")
+
+    record = {
+        "query": "Find missing logic",
+        "answer": [
+            {
+                "file": "src/Missing.java",
+                "functions": ["ghost"],
+                "file_exist": False,
+                "function_exist": {"ghost": False},
+            }
+        ],
+    }
+
+    result = module._evaluate_query(Project(), record, routes=("lexical",), limit=20)
+
+    assert result["skipped"] is True
+    assert result["skip_reason"] == "no production-code gold"
 
 
 def test_score_reports_observed_precision_rank_and_candidate_labels() -> None:
@@ -923,3 +901,19 @@ def test_viewer_startup_and_publish_failures_do_not_stop_the_report(
     assert viewer.publish_calls == 1
     assert viewer.finished is False
     assert viewer.closed is True
+
+
+def test_script_imports_package_when_scripts_directory_precedes_root(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = SCRIPT.parents[1]
+    scripts = root / "scripts"
+    remaining = [path for path in sys.path if path not in {str(root), str(scripts)}]
+    monkeypatch.setattr(sys, "path", [str(scripts), str(root), *remaining])
+    for name in tuple(sys.modules):
+        if name == "evaluation" or name.startswith("evaluation."):
+            monkeypatch.delitem(sys.modules, name)
+
+    module = _load_script()
+
+    assert module.resolve_repo.__module__ == "evaluation.repo_cache"

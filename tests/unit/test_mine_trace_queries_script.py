@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 import sys
 from pathlib import Path
 from types import ModuleType, SimpleNamespace
@@ -131,3 +132,58 @@ def test_prompt_rows_returns_one_row_per_eligible_episode(
         1,
         ("no_usage_evidence",),
     )
+
+
+def test_run_cases_annotates_answer_existence_in_the_pinned_revision(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    module = _load_script()
+
+    # Fixture repo: the target file declares only value(), not unquote().
+    repo_root = tmp_path / "repo"
+    pkg = repo_root / "src/main/java/com/amihaiemil/eoyaml"
+    pkg.mkdir(parents=True)
+    (pkg / "ReadPlainScalarValue.java").write_text(
+        "package com.amihaiemil.eoyaml;\n"
+        "public final class ReadPlainScalarValue {\n"
+        '    public String value() { return ""; }\n'
+        "}\n",
+        encoding="utf-8",
+    )
+    # Never clone: hand back the fixture for any (repo, commit).
+    monkeypatch.setattr(module, "resolve_repo", lambda repo, commit, *a, **k: repo_root)
+
+    java_file = "src/main/java/com/amihaiemil/eoyaml/ReadPlainScalarValue.java"
+    row = {
+        "repo": "decorators-squad/eo-yaml",
+        "base_commit": "95a4860",
+        "query": "q",
+        "answer": [],
+        "trace_answer": [{"file": java_file, "functions": ["value", "unquote"]}],
+        "candidate_answers": [],
+    }
+    batch = SimpleNamespace(
+        queries=(SimpleNamespace(to_dict=lambda: dict(row)),),
+        skip_reasons=(),
+        search_episode_count=1,
+        eligible_episode_count=1,
+    )
+    monkeypatch.setattr(module, "mine_queries", lambda *a, **k: batch)
+
+    output_path = tmp_path / "benchmark.jsonl"
+    summary = module._run_cases(
+        (SimpleNamespace(repo="decorators-squad/eo-yaml", base_commit="95a4860"),),
+        object(),
+        output_path,
+        limit=0,
+        prompt_version="trace-search-v3",
+        dry_run=False,
+    )
+
+    written = json.loads(output_path.read_text().splitlines()[0])
+    location = written["trace_answer"][0]
+    assert location["functions"] == ["value", "unquote"]
+    assert location["file"] == java_file
+    assert location["file_exist"] is True
+    assert location["function_exist"] == {"value": True, "unquote": False}
+    assert summary["written_queries"] == 1

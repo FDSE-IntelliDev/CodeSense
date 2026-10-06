@@ -3,11 +3,9 @@
 from __future__ import annotations
 
 import json
-import re
-import subprocess
 import sys
 import threading
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Mapping, Sequence
 from contextlib import suppress
 from datetime import datetime, timezone
 from pathlib import Path
@@ -18,16 +16,11 @@ from codesense.llm import LlmConfig
 
 # Edit these values before running the evaluation. Parameters intentionally do
 # not come from a CLI, matching the other manual debugging scripts.
-BENCHMARK = (
-    "/Users/huangzhuochen/PycharmProjects/CodeSense/outputs/open_swe_traces/"
-    "codesense-semantic-query.jsonl"
-)
-PROJECTS_DIR = "/Users/huangzhuochen/PycharmProjects/CodeSense/evaluation/projects"
+_ROOT = Path(__file__).resolve().parents[1]
+BENCHMARK = str(_ROOT / "outputs/open_swe_traces/codesense-semantic-query.jsonl")
+PROJECTS_DIR = str(_ROOT / "evaluation/projects")
 INDEXES_DIR = f"{PROJECTS_DIR}/.indexes"
-OUTPUT = (
-    "/Users/huangzhuochen/PycharmProjects/CodeSense/outputs/open_swe_traces/"
-    "codesense-evaluation.json"
-)
+OUTPUT = str(_ROOT / "outputs/open_swe_traces/codesense-evaluation.json")
 
 # This mapping wins over PROJECTS_DIR. Use it for repositories already present
 # elsewhere on the machine; missing entries are cloned automatically.
@@ -47,7 +40,15 @@ BASE_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1"
 MODEL = "qwen3.7-plus"
 TIMEOUT = 300.0
 
-_REPOSITORY = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
+# Keep the repository-local evaluation package importable when this file is
+# launched as ``python scripts/evaluation.py``. The scripts directory holds
+# evaluation.py, which would otherwise shadow the sibling ``evaluation``
+# package; promote the repository root even when an IDE added it later.
+with suppress(ValueError):
+    sys.path.remove(str(_ROOT))
+sys.path.insert(0, str(_ROOT))
+
+from evaluation.repo_cache import resolve_repo  # noqa: E402
 
 #: Gold fields checked against the checkout, in the order they are reported.
 _GOLD_FIELDS = ("answer", "trace_answer", "candidate_answers")
@@ -100,11 +101,11 @@ def main() -> int:
             key = (repo, base_commit)
             if key not in projects and key not in project_errors:
                 try:
-                    root = _project_path(
+                    root = resolve_repo(
                         repo,
-                        PROJECT_PATHS,
+                        base_commit,
                         Path(PROJECTS_DIR).expanduser(),
-                        base_commit=base_commit,
+                        manual_paths=PROJECT_PATHS,
                     )
                     project_roots[key] = root
                     projects[key] = _open_project(
@@ -146,8 +147,8 @@ def main() -> int:
                 )
             evaluated += not evaluation.get("skipped", False)
 
-            if case_number % 5 == 0:
-                break
+            # if case_number % 5 == 0:
+            #     break
 
         trace_coverage = _trace_coverage(
             cases,
@@ -246,56 +247,6 @@ def _wait_for_viewer(url: str) -> None:
         threading.Event().wait()
 
 
-def _project_path(
-    repo: str,
-    manual_paths: Mapping[str, str],
-    projects_dir: Path,
-    *,
-    base_commit: str | None = None,
-    run: Callable[..., object] = subprocess.run,
-) -> Path:
-    """Resolve a manual project, cached clone, or clone pinned to a commit.
-
-    ``base_commit`` moves the working tree onto the revision the gold was mined
-    against; without it the behaviour is the old shallow clone of the default
-    branch. A manual path is returned untouched and never checked out -- it
-    points at a repository the user manages elsewhere, and moving its HEAD would
-    be destructive.
-    """
-    manual = manual_paths.get(repo)
-    if manual:
-        path = Path(manual).expanduser().resolve()
-        if not path.is_dir():
-            raise NotADirectoryError(path)
-        return path
-    if not _REPOSITORY.fullmatch(repo):
-        raise ValueError(f"invalid GitHub repository name: {repo!r}")
-
-    projects_dir.mkdir(parents=True, exist_ok=True)
-    target = projects_dir / repo.replace("/", "__")
-    url = f"https://github.com/{repo}.git"
-    if target.is_dir():
-        if base_commit:
-            _checkout(run, target, base_commit)
-        return target.resolve()
-    if base_commit:
-        # A shallow clone of the default branch cannot reach an arbitrary
-        # commit, so clone in full and then check the exact revision out.
-        run(["git", "clone", url, str(target)], check=True)
-        run(["git", "-C", str(target), "checkout", base_commit], check=True)
-    else:
-        run(["git", "clone", "--depth", "1", url, str(target)], check=True)
-    if not target.is_dir():
-        raise RuntimeError(f"git clone did not create {target}")
-    return target.resolve()
-
-
-def _checkout(run: Callable[..., object], target: Path, commit: str) -> None:
-    """Move an existing clone onto ``commit``, fetching it if it is not local."""
-    run(["git", "-C", str(target), "fetch", "--depth", "1", "origin", commit], check=True)
-    run(["git", "-C", str(target), "checkout", commit], check=True)
-
-
 def _open_project(
     repo: str,
     root: Path,
@@ -350,11 +301,10 @@ def _evaluate_query(
     answers = list(_mappings(record.get("answer")))
     trace_answers = list(_mappings(record.get("trace_answer")))
     candidates = list(_mappings(record.get("candidate_answers")))
-    usable_answers = [
-        answer
-        for answer in answers
-        if include_test_files or not _is_test_file(str(answer.get("file") or ""))
-    ]
+    usable_answers = _scoreable_locations(
+        answers,
+        include_test_files=include_test_files,
+    )
     base: dict[str, object] = {
         "query": query,
         "source_event_indices": list(_integers(record.get("source_event_indices"))),
@@ -483,8 +433,10 @@ def _score(
         set(
             _unique(
                 _path(answer.get("file"))
-                for answer in candidate_answers
-                if include_test_files or not _is_test_file(str(answer.get("file") or ""))
+                for answer in _scoreable_locations(
+                    candidate_answers,
+                    include_test_files=include_test_files,
+                )
             )
         )
         - gold_file_set
@@ -523,11 +475,10 @@ def _location_metrics(
     include_test_files: bool,
 ) -> dict[str, object]:
     """Compute one consistent metric set for a collection of answer locations."""
-    gold_locations = [
-        location
-        for location in locations
-        if include_test_files or not _is_test_file(str(location.get("file") or ""))
-    ]
+    gold_locations = _scoreable_locations(
+        locations,
+        include_test_files=include_test_files,
+    )
     gold_files = _unique(_path(location.get("file")) for location in gold_locations)
     gold_file_set = set(gold_files)
     hit_paths = [_hit_file(hit) for hit in hits]
@@ -598,15 +549,13 @@ def _trace_coverage(
     for (repo, instance_id, trajectory_id), trace_cases in grouped.items():
         trace_answers = _merge_locations(
             *(
-                _mappings(_mapping(case.get("evaluation")).get("trace_answer"))
+                _scoreable_locations(
+                    _mappings(_mapping(case.get("evaluation")).get("trace_answer")),
+                    include_test_files=include_test_files,
+                )
                 for case in trace_cases
             )
         )
-        trace_answers = [
-            answer
-            for answer in trace_answers
-            if include_test_files or not _is_test_file(str(answer.get("file") or ""))
-        ]
         # Some mined traces have no patch-derived final answer. They cannot
         # contribute a meaningful coverage denominator, so keep them only in
         # per-query evaluation and omit them from this secondary aggregate.
@@ -811,6 +760,33 @@ def _merge_locations(
                 if function not in functions:
                     functions.append(function)
     return [{"file": file, "functions": functions} for file, functions in merged.items()]
+
+
+def _scoreable_locations(
+    locations: Sequence[Mapping[str, object]],
+    *,
+    include_test_files: bool,
+) -> list[dict[str, object]]:
+    """Return revision-valid gold while preserving legacy benchmark support.
+
+    New benchmarks annotate every location. A missing file is excluded
+    completely; an existing file remains valid file-level gold while only
+    functions explicitly marked present contribute function-level gold.
+    Records without the annotations retain the previous scoring behaviour.
+    """
+    scoreable: list[dict[str, object]] = []
+    for location in locations:
+        file = str(location.get("file") or "")
+        if location.get("file_exist") is False:
+            continue
+        if not include_test_files and _is_test_file(file):
+            continue
+        functions = list(_strings(location.get("functions")))
+        existence = location.get("function_exist")
+        if isinstance(existence, Mapping):
+            functions = [function for function in functions if existence.get(function) is True]
+        scoreable.append({**dict(location), "functions": functions})
+    return scoreable
 
 
 def _pair_dict(pair: tuple[str, str]) -> dict[str, str]:

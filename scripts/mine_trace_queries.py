@@ -11,11 +11,9 @@ from pathlib import Path
 
 # Edit these values before running this script. The API key is still read from
 # the CODESENSE_API_KEY environment variable by LlmConfig.
-INPUT = (
-    "/Users/huangzhuochen/PycharmProjects/CodeSense/outputs/open_swe_traces/"
-    "open_swe_java_sample.jsonl"
-)
-OUTPUT_DIR = "/Users/huangzhuochen/PycharmProjects/CodeSense/outputs/open_swe_traces"
+_ROOT = Path(__file__).resolve().parents[1]
+INPUT = str(_ROOT / "outputs/open_swe_traces/open_swe_java_sample.jsonl")
+OUTPUT_DIR = str(_ROOT / "outputs/open_swe_traces")
 OUTPUT = f"{OUTPUT_DIR}/codesense-semantic-query.jsonl"
 LIMIT = 0
 DRY_RUN = False
@@ -27,17 +25,18 @@ PROMPT_VERSION = "trace-search-v3"
 # launched as ``python scripts/mine_trace_queries.py``. The scripts directory
 # contains evaluation.py, so the repository root must precede it even when an
 # IDE has already added the root later in sys.path.
-_ROOT = Path(__file__).resolve().parents[1]
 with suppress(ValueError):
     sys.path.remove(str(_ROOT))
 sys.path.insert(0, str(_ROOT))
 
+from evaluation.answer_cleaning import clean_record  # noqa: E402
 from evaluation.models import TraceCase  # noqa: E402
 from evaluation.query_mining import (  # noqa: E402
     QueryGenerator,
     build_prompt,
     mine_queries,
 )
+from evaluation.repo_cache import resolve_repo  # noqa: E402
 from evaluation.trace_search import supervise_search_episodes  # noqa: E402
 
 
@@ -110,6 +109,7 @@ def _run_cases(
     dry_run: bool,
 ) -> dict[str, object]:
     processed = written = search_episodes = eligible_episodes = 0
+    repo_roots: dict[tuple[str, str], Path] = {}
     skip_reasons: Counter[str] = Counter()
     with output_path.open("w", encoding="utf-8") as output:
         for case in cases:
@@ -122,6 +122,7 @@ def _run_cases(
                     raise ValueError("generator is required unless DRY_RUN is true")
                 batch = mine_queries(case, generator, prompt_version=prompt_version)
                 rows = [query.to_dict() for query in batch.queries]
+                rows = _clean_rows(rows, repo_roots, skip_reasons)
                 search_count = batch.search_episode_count
                 eligible_count = batch.eligible_episode_count
                 reasons = batch.skip_reasons
@@ -132,8 +133,6 @@ def _run_cases(
             written += len(rows)
             search_episodes += search_count
             eligible_episodes += eligible_count
-            if processed % 10 == 0:
-                break
     return {
         "processed_traces": processed,
         "search_episodes": search_episodes,
@@ -141,6 +140,38 @@ def _run_cases(
         "written_queries": written,
         "skipped": dict(skip_reasons),
     }
+
+
+def _clean_rows(
+    rows: list[dict[str, object]],
+    repo_roots: dict[tuple[str, str], Path],
+    skip_reasons: Counter[str],
+) -> list[dict[str, object]]:
+    """Annotate answer existence in mined rows, resolving each repo once.
+
+    A row without a repo/base_commit cannot be pinned to a revision, so it is
+    written through untouched. A resolve failure degrades to "no annotation"
+    for that repository rather than aborting the whole mining run.
+    """
+    cleaned: list[dict[str, object]] = []
+    for row in rows:
+        repo = str(row.get("repo") or "")
+        commit = row.get("base_commit")
+        if not repo or not commit:
+            cleaned.append(row)
+            continue
+        key = (repo, str(commit))
+        root = repo_roots.get(key)
+        if root is None:
+            try:
+                root = resolve_repo(repo, str(commit))
+            except Exception as exc:  # noqa: BLE001 -- one repo must not stop mining
+                skip_reasons[f"repo_resolve_failed:{type(exc).__name__}"] += 1
+                cleaned.append(row)
+                continue
+            repo_roots[key] = root
+        cleaned.append(clean_record(row, root))
+    return cleaned
 
 
 if __name__ == "__main__":
