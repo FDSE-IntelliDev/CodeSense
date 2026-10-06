@@ -1,5 +1,21 @@
 # CodeSense Changelog
 
+## 2026-10-05 — 查询修复与版本感知答案标注
+
+- planned 的结构化 query-understanding 在 Pydantic schema 校验失败后，会自动使用原始
+  prompt、精简校验诊断和上一次完整响应修复一次；修复请求继续使用相同 strict JSON
+  Schema，仍失败则保持现有降级行为，无需额外的 CLI 或搜索参数。
+- codegen 执行前新增确定性的 AST contract normalization，只修复三类已确认的单元素
+  tuple 误写：`QueryUnit.satisfiers` 接三种 satisfier、`LexicalSatisfier.terms` 接
+  `Term`、`AnnotationSatisfier.units` 接 `Term`。规范化保留注释和原脚本其余文本，随后
+  才进入现有签名校验与执行流程。
+- benchmark 挖掘不再删除 base commit 中不存在的答案。每个 answer location 保留原始
+  文件与函数列表，并新增 `file_exist` 和逐函数 `function_exist`；evaluator 完全排除
+  不存在文件，仅将明确存在的函数计入函数级 gold，同时兼容没有新字段的旧 benchmark。
+- evaluator 与 miner 共享按 `repo + base_commit` 隔离的仓库缓存，避免同一仓库不同版本
+  覆盖工作树；命中 commit 专属目录时直接复用，不再重复 fetch/checkout。脚本路径改为
+  仓库相对推导，并移除 mining 流程每十条提前退出的调试截断。
+
 ## 2026-09-29 — 评测版本对齐与降级指标保留
 
 - benchmark 记录新增 `base_commit`：`PreparedQuery` 携带该字段并在 `mine_queries` 从 trace

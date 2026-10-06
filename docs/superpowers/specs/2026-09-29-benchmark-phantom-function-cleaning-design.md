@@ -1,5 +1,32 @@
 # Benchmark 幽灵函数清洗设计
 
+## 2026-10-05 修订（当前权威口径）
+
+实现不再删除 benchmark 中的文件或函数。挖掘阶段保留原始
+`answer` / `trace_answer` / `candidate_answers`，并在每个 location 上增加：
+
+```json
+{
+  "file": "src/Foo.java",
+  "functions": ["existing", "addedLater"],
+  "file_exist": true,
+  "function_exist": {
+    "existing": true,
+    "addedLater": false
+  }
+}
+```
+
+- `file_exist` 表示文件是否存在于该记录的 `base_commit` 工作树。
+- `function_exist` 以原始函数字符串为键，表示归一化后的 callable 是否由该文件声明。
+- evaluator 完全排除 `file_exist=false` 的 location；文件存在时仍保留文件级 gold，
+  但函数级 gold 只使用 `function_exist=true` 的函数。
+- 缺少存在性字段的旧 benchmark 继续按旧口径评分。
+- `evaluation/repo_cache.py` 仍按 `{repo}__{commit}` 隔离工作树，保证存在性标注与索引
+  使用同一版本。
+
+以下“删除幽灵函数”的文字保留为最初方案记录，已由上述标注式方案取代。
+
 ## 背景与目标
 
 评测基准 `codesense-semantic-query.jsonl` 的答案（`answer` / `trace_answer` /

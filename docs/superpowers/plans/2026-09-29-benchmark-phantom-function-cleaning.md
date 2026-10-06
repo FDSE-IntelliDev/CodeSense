@@ -1,5 +1,9 @@
 # Benchmark 幽灵函数清洗 Implementation Plan
 
+> **2026-10-05 amendment:** 本计划最初采用“直接删除不存在函数”。最终实现改为保留
+> 原始答案，并为每个 location 写入 `file_exist` 和 `function_exist`；评分阶段排除不存在
+> 文件及函数。后续维护以对应 spec 的“2026-10-05 修订”为准，下面步骤作为历史计划保留。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 让挖掘产出的 benchmark 中，每个答案只保留在其 base_commit 版本里真实声明过的函数（含构造器），文件一律保留，从根源消除 `function_recall` 分母里的幽灵符号（如 `unquote`）。
