@@ -2,10 +2,11 @@
 
 | 文档 | 什么时候看 |
 |---|---|
+| [current-search-pipeline.md](current-search-pipeline.md) | **当前流程**：init、lexical、planned、codegen、共享收尾与降级 |
 | [TODO.md](TODO.md) | **接下来做什么**：当前实现基线、优先级、依赖关系与分阶段验收标准 |
 | [../ARCHITECTURE.md](../ARCHITECTURE.md) | **入组第一天读**。分层规则、各层职责、planner/executor 契约 |
 | [design/](design/) | **下一版设计**：把 query 编译成 QL 脚本（算子编排）。初稿，未实现 |
-| [search-pipeline.md](search-pipeline.md) | 想搞清楚一次查询到底经过了哪些阶段 |
+| [search-pipeline.md](search-pipeline.md) | **已淘汰流程**：重写前 SemCon → SemQL 方案，仅作历史存档 |
 | [research-pipeline.md](research-pipeline.md) | SemQL 2.0 的研发研究计划，讲动机和路线 |
 | [semql-report.md](semql-report.md) | SemQL 2.0 的完整方案报告 |
 | [search-strategy-codegraph.md](search-strategy-codegraph.md) | CodeGraph 的多级降级 + 多信号重排序策略 |

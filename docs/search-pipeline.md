@@ -1,5 +1,10 @@
 # Code Search Pipeline (SemCon → SemQL → Execution)
 
+> **已淘汰流程，仅作历史存档。** 本文描述的是重写前的 SemCon → SemQL →
+> 三执行器方案，已经被当前 `codesense/` 与 `codesense/ql/` 实现迭代替代，
+> 不参与现役构建、搜索和测试。当前流程请阅读
+> [`current-search-pipeline.md`](current-search-pipeline.md)。
+
 ## 1. 背景与目标
 
 本流程面向代码智能体（Agent）的代码搜索场景。核心目标是：
