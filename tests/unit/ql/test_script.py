@@ -10,7 +10,13 @@ from __future__ import annotations
 import pytest
 
 from codesense.ql import ScriptError, ScriptPolicy, run_script
-from codesense.ql.script import ALLOWED_CALLS, BUILTIN_NAMES, SAFE_BUILTINS, validate_script
+from codesense.ql.script import (
+    ALLOWED_CALLS,
+    BUILTIN_NAMES,
+    SAFE_BUILTINS,
+    normalize_script_contracts,
+    validate_script,
+)
 
 
 class TestControlFlow:
@@ -111,6 +117,55 @@ class TestIsolation:
 
 
 class TestContract:
+    @pytest.mark.parametrize(
+        ("source", "expected"),
+        [
+            (
+                "answer = QueryUnit('q', satisfiers=LexicalSatisfier())",
+                "answer = QueryUnit('q', satisfiers=(LexicalSatisfier(),))",
+            ),
+            (
+                "answer = QueryUnit('q', satisfiers=AnnotationSatisfier())",
+                "answer = QueryUnit('q', satisfiers=(AnnotationSatisfier(),))",
+            ),
+            (
+                "answer = QueryUnit('q', satisfiers=ModifierSatisfier())",
+                "answer = QueryUnit('q', satisfiers=(ModifierSatisfier(),))",
+            ),
+            (
+                "answer = LexicalSatisfier(terms=Term('x'))",
+                "answer = LexicalSatisfier(terms=(Term('x'),))",
+            ),
+            (
+                "answer = AnnotationSatisfier(units=Term('x'))",
+                "answer = AnnotationSatisfier(units=(Term('x'),))",
+            ),
+        ],
+    )
+    def test_direct_singleton_constructor_is_wrapped_for_tuple_contract(
+        self, source: str, expected: str
+    ) -> None:
+        assert normalize_script_contracts(source) == expected
+
+    def test_nested_singleton_contracts_are_normalized_without_losing_comments(self) -> None:
+        source = (
+            "# primary anchor\n"
+            "answer = QueryUnit('q', satisfiers=(LexicalSatisfier(terms=(Term('x')))))"
+        )
+
+        assert normalize_script_contracts(source) == (
+            "# primary anchor\n"
+            "answer = QueryUnit('q', satisfiers=((LexicalSatisfier(terms=((Term('x'),))),)))"
+        )
+
+    def test_existing_tuples_and_unrelated_constructor_keywords_are_unchanged(self) -> None:
+        source = (
+            "a = QueryUnit('q', satisfiers=(LexicalSatisfier(terms=(Term('x'),)),))\n"
+            "answer = AnnotationSatisfier(names='Transactional')"
+        )
+
+        assert normalize_script_contracts(source) == source
+
     def test_direct_operator_missing_ctx_reports_line_before_execution(self) -> None:
         calls: list[str] = []
 

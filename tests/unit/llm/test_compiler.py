@@ -66,6 +66,16 @@ class FakeSession:
         return self.response
 
 
+class SequencedSession:
+    def __init__(self, messages: list[dict[str, object]]) -> None:
+        self._messages = iter(messages)
+        self.calls: list[dict[str, object]] = []
+
+    def post(self, url: str, **kwargs: object) -> FakeResponse:
+        self.calls.append({"url": url, **kwargs})
+        return FakeResponse(next(self._messages))
+
+
 class BrokenSession:
     def post(self, _url: str, **_kwargs: object) -> FakeResponse:
         raise ConnectionError("network unavailable")
@@ -149,6 +159,73 @@ def test_schema_validation_warning_identifies_invalid_field_paths(
     warning = caplog.records[-1].getMessage()
     assert "units: Field required" in warning
     assert "semantic_units: Extra inputs are not permitted" in warning
+
+
+def test_schema_failure_is_retried_with_the_original_prompt_diagnostic_and_response() -> None:
+    invalid = valid_payload()
+    invalid["relations"] = [
+        {
+            "source": {"kind": "unit", "unit": "page_request"},
+            "target": {"kind": "unit", "unit": "page_request"},
+            "edges": ["references"],
+        }
+    ]
+    previous_response = json.dumps(invalid)
+    session = SequencedSession(
+        [
+            {"content": previous_response},
+            {"content": json.dumps(valid_payload())},
+        ]
+    )
+
+    understood = QueryUnderstanding(config(), session=session).understand(
+        "Find files whose code references PageRequest",
+        "demo",
+        (("page", 20),),
+    )
+
+    assert isinstance(understood, QueryUnderstandingResult)
+    assert len(session.calls) == 2
+    original_prompt = PROMPT.format(
+        project="demo",
+        query="Find files whose code references PageRequest",
+        vocab="page:20",
+    )
+    assert session.calls[1]["json"]["messages"][0]["content"] == (  # type: ignore[index]
+        f"{original_prompt}\n"
+        "The previous structured query failed schema validation.\n\n"
+        "Diagnostic:\n"
+        "<root>: Value error, a relation cannot connect a unit to itself\n\n"
+        "Previous response:\n"
+        f"{previous_response}\n\n"
+        "Return a complete corrected JSON object matching the original schema.\n"
+    )
+    assert (
+        session.calls[1]["json"]["response_format"]
+        == (  # type: ignore[index]
+            session.calls[0]["json"]["response_format"]  # type: ignore[index]
+        )
+    )
+
+
+def test_schema_repair_stops_after_the_configured_attempt_count() -> None:
+    invalid = valid_payload()
+    invalid["relations"] = [
+        {
+            "source": {"kind": "unit", "unit": "page_request"},
+            "target": {"kind": "unit", "unit": "page_request"},
+            "edges": ["references"],
+        }
+    ]
+    message = {"content": json.dumps(invalid)}
+    session = SequencedSession([message, message])
+
+    understood = QueryUnderstanding(config(), session=session, max_repairs=1).understand(
+        "query", "demo", ()
+    )
+
+    assert understood is None
+    assert len(session.calls) == 2
 
 
 def test_http_failure_returns_none() -> None:

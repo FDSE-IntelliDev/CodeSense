@@ -32,6 +32,7 @@ __all__ = [
     "ScriptError",
     "ScriptPolicy",
     "check",
+    "normalize_script_contracts",
     "run_script",
     "validate_script",
 ]
@@ -84,6 +85,18 @@ OPERATOR_NAMES = (
 )
 
 ALLOWED_CALLS = frozenset(OPERATOR_NAMES) | frozenset(BUILTIN_NAMES)
+
+#: Constructor keywords whose runtime contract is a tuple, but where a model
+#: commonly emits one direct constructor call with grouping parentheses and no
+#: trailing comma. This deliberately covers only the confirmed singleton-call
+#: shape; scalar strings and arbitrary expressions are not rewritten.
+_SINGLETON_TUPLE_CONTRACTS = {
+    ("QueryUnit", "satisfiers"): frozenset(
+        {"LexicalSatisfier", "AnnotationSatisfier", "ModifierSatisfier"}
+    ),
+    ("LexicalSatisfier", "terms"): frozenset({"Term"}),
+    ("AnnotationSatisfier", "units"): frozenset({"Term"}),
+}
 
 #: Attributes the script may reach. A fragment's structure is public, but
 #: only these -- allowing arbitrary attributes would open escapes such as
@@ -246,6 +259,57 @@ def check(
             if isinstance(target, ast.Attribute) and target.attr not in policy.attributes:
                 raise ScriptError(f"calling .{target.attr}() is not allowed")
     return tree
+
+
+def normalize_script_contracts(source: str) -> str:
+    """Wrap known direct singleton constructor arguments in one-item tuples.
+
+    Python parses ``satisfiers=(LexicalSatisfier(...))`` as the satisfier object
+    itself; only a trailing comma makes it a tuple. The generated script then
+    passes ordinary call-signature validation but fails later when ``eval_unit``
+    iterates the field. Use AST positions to repair only the explicitly listed
+    constructor/keyword/value-call contracts while preserving comments and all
+    unrelated source text.
+    """
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        # Keep syntax diagnostics in the existing validation path.
+        return source
+
+    encoded_lines = [line.encode("utf-8") for line in source.splitlines(keepends=True)]
+    line_offsets: list[int] = []
+    offset = 0
+    for line in encoded_lines:
+        line_offsets.append(offset)
+        offset += len(line)
+
+    insertions: list[tuple[int, bytes]] = []
+    for call in ast.walk(tree):
+        if not isinstance(call, ast.Call) or not isinstance(call.func, ast.Name):
+            continue
+        constructor = call.func.id
+        for keyword in call.keywords:
+            if keyword.arg is None or not isinstance(keyword.value, ast.Call):
+                continue
+            allowed_values = _SINGLETON_TUPLE_CONTRACTS.get((constructor, keyword.arg))
+            value = keyword.value
+            if (
+                not allowed_values
+                or not isinstance(value.func, ast.Name)
+                or value.func.id not in allowed_values
+                or value.end_lineno is None
+                or value.end_col_offset is None
+            ):
+                continue
+            start = line_offsets[value.lineno - 1] + value.col_offset
+            end = line_offsets[value.end_lineno - 1] + value.end_col_offset
+            insertions.extend(((start, b"("), (end, b",)")))
+
+    normalized = source.encode("utf-8")
+    for position, text in sorted(insertions, key=lambda item: item[0], reverse=True):
+        normalized = normalized[:position] + text + normalized[position:]
+    return normalized.decode("utf-8")
 
 
 def _bound_names(tree: ast.Module) -> frozenset[str]:

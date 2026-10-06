@@ -36,7 +36,7 @@ from pydantic import ValidationError
 from codesense.llm.config import LlmConfig
 from codesense.llm.schema import QueryUnderstandingResult, query_understanding_response_format
 
-__all__ = ["PROMPT", "QueryUnderstanding"]
+__all__ = ["PROMPT", "REPAIR_PROMPT", "QueryUnderstanding"]
 
 _log = logging.getLogger(__name__)
 
@@ -75,14 +75,36 @@ Requirements:
 - The criterion must be specific and falsifiable for optional result judging.
 """
 
+REPAIR_PROMPT = """\
+{original_prompt}
+The previous structured query failed schema validation.
+
+Diagnostic:
+{diagnostic}
+
+Previous response:
+{previous_response}
+
+Return a complete corrected JSON object matching the original schema.
+"""
+
 
 class QueryUnderstanding:
     """Interpret the query. Structure and optimisation belong to
     `codesense.ql.compile`."""
 
-    def __init__(self, config: LlmConfig, session: object | None = None) -> None:
+    def __init__(
+        self,
+        config: LlmConfig,
+        session: object | None = None,
+        *,
+        max_repairs: int = 1,
+    ) -> None:
+        if max_repairs < 0:
+            raise ValueError("max_repairs must be non-negative")
         self._config = config
         self._session = session
+        self._max_repairs = max_repairs
 
     def understand(
         self,
@@ -99,29 +121,38 @@ class QueryUnderstanding:
         Returns None on failure; the caller decides whether to degrade or
         give up.
         """
-        message = self._ask(
-            PROMPT.format(project=project, query=query, vocab=_format_vocabulary(vocabulary))
+        original_prompt = PROMPT.format(
+            project=project,
+            query=query,
+            vocab=_format_vocabulary(vocabulary),
         )
-        if message is None:
-            return None
-        if message.get("refusal"):
-            _log.warning("query understanding was refused")
-            return None
-        content = message.get("content")
-        if not isinstance(content, str) or not content:
-            _log.warning("query understanding response has no content")
-            return None
-        try:
-            return QueryUnderstandingResult.model_validate_json(content)
-        except ValidationError as exc:
-            # Keep the provider payload private while exposing the exact
-            # contract locations needed to diagnose schema drift.
-            details = "; ".join(
-                f"{'.'.join(map(str, error['loc'])) or '<root>'}: {error['msg']}"
-                for error in exc.errors(include_url=False, include_input=False)
-            )
-            _log.warning("query understanding schema validation failed: %s", details)
-            return None
+        prompt = original_prompt
+        for attempt in range(self._max_repairs + 1):
+            message = self._ask(prompt)
+            if message is None:
+                return None
+            if message.get("refusal"):
+                _log.warning("query understanding was refused")
+                return None
+            content = message.get("content")
+            if not isinstance(content, str) or not content:
+                _log.warning("query understanding response has no content")
+                return None
+            try:
+                return QueryUnderstandingResult.model_validate_json(content)
+            except ValidationError as exc:
+                details = _validation_details(exc)
+                _log.warning("query understanding schema validation failed: %s", details)
+                if attempt >= self._max_repairs:
+                    return None
+                # A repair sees the same schema-bearing prompt as the first call,
+                # plus the exact rejected output and validator diagnostic.
+                prompt = REPAIR_PROMPT.format(
+                    original_prompt=original_prompt,
+                    diagnostic=details,
+                    previous_response=content,
+                )
+        return None
 
     def _ask(self, prompt: str) -> dict[str, object] | None:
         session = self._session
@@ -161,3 +192,11 @@ def _format_vocabulary(vocabulary: Sequence[tuple[str, int]]) -> str:
             term, document_frequency = item
             rendered.append(f"{term}:{document_frequency}")
     return ", ".join(rendered)
+
+
+def _validation_details(exc: ValidationError) -> str:
+    """Compact Pydantic errors for a repair prompt and operator logs."""
+    return "; ".join(
+        f"{'.'.join(map(str, error['loc'])) or '<root>'}: {error['msg']}"
+        for error in exc.errors(include_url=False, include_input=False)
+    )

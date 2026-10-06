@@ -337,6 +337,7 @@ def search(
 
     ``max_codegen_repairs`` bounds LLM repair calls after static validation
     failures. Once execution starts, no repair is attempted.
+
     """
     if route not in ROUTES:
         raise ValueError(f"route must be one of {ROUTES}, got {route!r}")
@@ -798,7 +799,7 @@ def _codegen(
     """Repair only static script errors, then execute the valid script once."""
     from codesense.llm import ScriptGenerator
     from codesense.ql import ScriptError, run_script
-    from codesense.ql.script import validate_script
+    from codesense.ql.script import normalize_script_contracts, validate_script
 
     _notify(progress, "codegen.generate.start", symbols=ctx.symbols.count())
     generated_started = time.perf_counter()
@@ -828,6 +829,9 @@ def _codegen(
     validation_namespace = namespace if judge else {**namespace, "intent": intent}
     prior_errors: list[str] = []
     while True:
+        # Repair the narrow, deterministic singleton-tuple shape before
+        # signature validation. This cannot trigger operators or paid intent.
+        source = normalize_script_contracts(source)
         _notify(progress, "codegen.validate.start", attempt=attempts)
         try:
             validate_script(source, validation_namespace)

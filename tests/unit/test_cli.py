@@ -17,7 +17,7 @@ from pathlib import Path
 
 import pytest
 
-from codesense.cli import INDEX_DIR, find_index, main
+from codesense.cli import INDEX_DIR, _parser, find_index, main
 from tests.unit.test_search import make_searchable_index
 
 
@@ -125,6 +125,10 @@ class TestQueryOutput:
         )
 
         assert captured["max_codegen_repairs"] == 2
+
+    def test_planned_schema_repair_is_not_a_cli_option(self) -> None:
+        with pytest.raises(SystemExit):
+            _parser().parse_args(["query", "anything", "--planned-repairs", "3"])
 
     def test_vocabulary_flags_reach_project_open(self, tmp_path: Path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
         from codesense.project import Project

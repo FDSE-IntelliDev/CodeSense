@@ -9,6 +9,7 @@ worse than one that quietly does less.
 from __future__ import annotations
 
 import importlib
+import inspect
 from collections.abc import Sequence
 from dataclasses import replace
 
@@ -251,6 +252,9 @@ def ctx():  # type: ignore[no-untyped-def]
 
 
 class TestRouting:
+    def test_planned_schema_repair_is_not_a_public_search_parameter(self) -> None:
+        assert "max_planned_repairs" not in inspect.signature(search).parameters
+
     def test_search_reports_key_stages_by_default(self, ctx, capsys) -> None:  # type: ignore[no-untyped-def]
         result = search("Find Java files containing alloc", ctx, route="lexical")
 
@@ -320,6 +324,24 @@ class TestRouting:
         assert "[codesense.search] operator.start name='eval_unit'" in output
         assert "[codesense.search] operator.done name='top'" in output
         assert "[codesense.search] codegen.execute.done" in output
+
+    def test_codegen_normalizes_direct_singleton_tuple_contracts_before_validation(
+        self, ctx, monkeypatch: pytest.MonkeyPatch
+    ) -> None:  # type: ignore[no-untyped-def]
+        source = (
+            'unit = QueryUnit("q", satisfiers=LexicalSatisfier(terms=Term("alloc")))\n'
+            "answer = top(eval_unit(unit, ctx), 10)\n"
+        )
+        monkeypatch.setattr(
+            "codesense.llm.ScriptGenerator.generate",
+            lambda *args, **kwargs: source,
+        )
+
+        result = search("alloc", ctx, route="codegen", llm=object(), trace=False)
+
+        assert result.route == "codegen"
+        assert result.hits
+        assert 'satisfiers=(LexicalSatisfier(terms=(Term("alloc"),)),)' in result.script
 
     def test_codegen_script_runs_real_intent_when_judging_is_enabled(
         self, ctx, monkeypatch: pytest.MonkeyPatch
