@@ -21,7 +21,7 @@ INPUT = (
     Path(__file__).resolve().parents[1]
     / "outputs"
     / "open_swe_traces"
-    / "codesense-evaluation.json"
+    / "codesense-evaluation-1006-all.json"
 )
 PORT = 8767
 

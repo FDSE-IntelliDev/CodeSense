@@ -1,5 +1,14 @@
 # CodeSense Changelog
 
+## 2026-10-06 — Evaluation query 范围选择
+
+- `scripts/evaluation.py` 新增手动配置的 `RUN_ONLY` / `QUERY_LIST` 和
+  `START_FROM` / `START_ID` 两种评测范围：前者只执行指定 query，后者从指定 query
+  （包含自身）继续执行；均关闭时保持原有全量评测。
+- query ID 按 benchmark 原始顺序选择，错误或空配置会在初始化项目和 LLM 前快速失败；
+  `RUN_ONLY` 同时开启时优先于 `START_FROM`，`QUERY_LIMIT` 继续作用于筛选后的记录。
+- viewer 元数据和最终报告保存本次 selection 配置，便于复现局部评测范围。
+
 ## 2026-10-05 — 查询修复与版本感知答案标注
 
 - planned 的结构化 query-understanding 在 Pydantic schema 校验失败后，会自动使用原始

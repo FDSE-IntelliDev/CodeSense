@@ -22,6 +22,123 @@ def _load_script() -> ModuleType:
     return module
 
 
+def _query_records() -> list[dict[str, str]]:
+    return [
+        {"query_id": "trace-a:1", "query": "first"},
+        {"query_id": "trace-a:2", "query": "second"},
+        {"query_id": "trace-b:1", "query": "third"},
+    ]
+
+
+def test_select_records_keeps_all_queries_when_both_modes_are_disabled() -> None:
+    module = _load_script()
+    records = _query_records()
+
+    selected = module._select_records(
+        records,
+        run_only=False,
+        query_list=(),
+        start_from=False,
+        start_id="",
+    )
+
+    assert selected == records
+
+
+def test_select_records_run_only_keeps_requested_ids_in_benchmark_order() -> None:
+    module = _load_script()
+
+    selected = module._select_records(
+        _query_records(),
+        run_only=True,
+        query_list=("trace-b:1", "trace-a:1"),
+        start_from=False,
+        start_id="",
+    )
+
+    assert [record["query_id"] for record in selected] == ["trace-a:1", "trace-b:1"]
+
+
+def test_select_records_start_from_includes_the_start_query_and_suffix() -> None:
+    module = _load_script()
+
+    selected = module._select_records(
+        _query_records(),
+        run_only=False,
+        query_list=(),
+        start_from=True,
+        start_id="trace-a:2",
+    )
+
+    assert [record["query_id"] for record in selected] == ["trace-a:2", "trace-b:1"]
+
+
+def test_select_records_run_only_takes_precedence_over_start_from() -> None:
+    module = _load_script()
+
+    selected = module._select_records(
+        _query_records(),
+        run_only=True,
+        query_list=("trace-a:1",),
+        start_from=True,
+        start_id="trace-a:2",
+    )
+
+    assert [record["query_id"] for record in selected] == ["trace-a:1"]
+
+
+def test_select_records_run_only_rejects_an_empty_query_list() -> None:
+    module = _load_script()
+
+    with pytest.raises(ValueError, match="QUERY_LIST"):
+        module._select_records(
+            _query_records(),
+            run_only=True,
+            query_list=(),
+            start_from=False,
+            start_id="",
+        )
+
+
+def test_select_records_start_from_rejects_an_empty_start_id() -> None:
+    module = _load_script()
+
+    with pytest.raises(ValueError, match="START_ID"):
+        module._select_records(
+            _query_records(),
+            run_only=False,
+            query_list=(),
+            start_from=True,
+            start_id="",
+        )
+
+
+@pytest.mark.parametrize(
+    ("run_only", "query_list", "start_from", "start_id", "missing"),
+    [
+        (True, ("missing:1",), False, "", "missing:1"),
+        (False, (), True, "missing:1", "missing:1"),
+    ],
+)
+def test_select_records_rejects_unknown_query_ids(
+    run_only: bool,
+    query_list: tuple[str, ...],
+    start_from: bool,
+    start_id: str,
+    missing: str,
+) -> None:
+    module = _load_script()
+
+    with pytest.raises(ValueError, match=missing):
+        module._select_records(
+            _query_records(),
+            run_only=run_only,
+            query_list=query_list,
+            start_from=start_from,
+            start_id=start_id,
+        )
+
+
 def test_open_project_names_the_index_by_repo_and_commit(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -696,7 +813,7 @@ def test_evaluate_query_scores_when_only_trace_gold_is_invalid(tmp_path: Path) -
     assert {"file": "*.java", "reason": "glob", "field": "trace_answer"} in result["gold_problems"]
 
 
-def test_main_streams_each_completed_query_and_summary(
+def test_main_applies_run_only_and_streams_selected_query_and_summary(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     module = _load_script()
@@ -716,6 +833,19 @@ def test_main_streams_each_completed_query_and_summary(
                 "trajectory_id": "trajectory-1",
                 "query": "Find the production logic responsible for creating clients.",
                 "source_event_indices": [3, 8],
+                "answer": [{"file": "src/Client.java", "functions": []}],
+                "trace_answer": [{"file": "src/Client.java", "functions": []}],
+            }
+        )
+        + "\n"
+        + json.dumps(
+            {
+                "query_id": "query-2",
+                "repo": "owner/repo",
+                "instance_id": "instance-1",
+                "trajectory_id": "trajectory-1",
+                "query": "Find another production code path.",
+                "source_event_indices": [9],
                 "answer": [{"file": "src/Client.java", "functions": []}],
                 "trace_answer": [{"file": "src/Client.java", "functions": []}],
             }
@@ -768,6 +898,8 @@ def test_main_streams_each_completed_query_and_summary(
     monkeypatch.setattr(module, "PROJECTS_DIR", str(tmp_path / "projects"))
     monkeypatch.setattr(module, "INDEXES_DIR", str(tmp_path / "indexes"))
     monkeypatch.setattr(module, "ROUTES", ("lexical",))
+    monkeypatch.setattr(module, "RUN_ONLY", True)
+    monkeypatch.setattr(module, "QUERY_LIST", ["query-1"])
     monkeypatch.setattr(module, "_llm", lambda: None)
     monkeypatch.setattr(module, "_open_project", lambda *_args, **_kwargs: Project())
     monkeypatch.setattr(module, "_start_viewer", lambda _meta: viewer, raising=False)
@@ -782,6 +914,13 @@ def test_main_streams_each_completed_query_and_summary(
     assert module.main() == 0
 
     report = json.loads(output.read_text(encoding="utf-8"))
+    assert [case["query_id"] for case in report["cases"]] == ["query-1"]
+    assert report["config"]["selection"] == {
+        "run_only": True,
+        "query_list": ["query-1"],
+        "start_from": False,
+        "start_id": "",
+    }
     assert [record["key"] for record in viewer.records] == ["1"]
     assert viewer.records[0]["evaluation"] == report["cases"][0]["evaluation"]
     assert viewer.records[0]["evaluation"]["routes"]["lexical"]["metrics"]["file_recall"] == 1.0

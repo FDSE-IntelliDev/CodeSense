@@ -31,6 +31,12 @@ ROUTES = ("lexical", "planned", "codegen")
 # ROUTES = ["codegen"]
 SEARCH_LIMIT = 20
 QUERY_LIMIT = 0
+# Optional benchmark slicing. ``RUN_ONLY`` takes precedence when both modes
+# are enabled; identifiers are matched against each record's ``query_id``.
+RUN_ONLY = False
+QUERY_LIST: list[str] = []
+START_FROM = False
+START_ID = ""
 INCLUDE_TEST_FILES = False
 GROUNDING_STRATEGY = "lexical"
 VIEWER_ENABLED = True
@@ -71,6 +77,19 @@ class _Viewer(Protocol):
 def main() -> int:
     """Load the benchmark, prepare repositories, search, score, and save."""
     records = _read_jsonl(Path(BENCHMARK).expanduser())
+    selection = {
+        "run_only": RUN_ONLY,
+        "query_list": list(QUERY_LIST),
+        "start_from": START_FROM,
+        "start_id": START_ID,
+    }
+    records = _select_records(
+        records,
+        run_only=RUN_ONLY,
+        query_list=QUERY_LIST,
+        start_from=START_FROM,
+        start_id=START_ID,
+    )
     llm = _llm()
     viewer = _start_viewer(
         {
@@ -79,6 +98,7 @@ def main() -> int:
             "search_limit": SEARCH_LIMIT,
             "query_limit": QUERY_LIMIT,
             "include_test_files": INCLUDE_TEST_FILES,
+            "selection": selection,
         }
     )
     viewer_active = viewer is not None
@@ -163,6 +183,7 @@ def main() -> int:
                 "routes": list(ROUTES),
                 "search_limit": SEARCH_LIMIT,
                 "query_limit": QUERY_LIMIT,
+                "selection": selection,
                 "include_test_files": INCLUDE_TEST_FILES,
                 "grounding_strategy": GROUNDING_STRATEGY,
                 "model": MODEL,
@@ -678,6 +699,46 @@ def _read_jsonl(path: Path) -> list[Mapping[str, object]]:
                 raise ValueError(f"line {line_number} must contain a JSON object")
             records.append(value)
     return records
+
+
+def _select_records(
+    records: Sequence[Mapping[str, object]],
+    *,
+    run_only: bool,
+    query_list: Sequence[str],
+    start_from: bool,
+    start_id: str,
+) -> list[Mapping[str, object]]:
+    """Select benchmark records by query ID before any project work starts.
+
+    ``run_only`` has precedence over ``start_from`` so accidentally enabling
+    both modes cannot broaden a deliberately narrow query list. Selection
+    always preserves benchmark order, while invalid IDs fail fast instead of
+    silently producing a misleading empty or partial report.
+    """
+    if run_only:
+        requested = tuple(
+            dict.fromkeys(query_id.strip() for query_id in query_list if query_id.strip())
+        )
+        if not requested:
+            raise ValueError("RUN_ONLY requires at least one query ID in QUERY_LIST")
+        available = {str(record.get("query_id") or "") for record in records}
+        missing = [query_id for query_id in requested if query_id not in available]
+        if missing:
+            raise ValueError(f"query IDs not found in benchmark: {missing!r}")
+        requested_set = set(requested)
+        return [record for record in records if str(record.get("query_id") or "") in requested_set]
+
+    if start_from:
+        first_id = start_id.strip()
+        if not first_id:
+            raise ValueError("START_FROM requires START_ID")
+        for index, record in enumerate(records):
+            if str(record.get("query_id") or "") == first_id:
+                return list(records[index:])
+        raise ValueError(f"query ID not found in benchmark: {first_id!r}")
+
+    return list(records)
 
 
 def _is_test_file(file: str) -> bool:
